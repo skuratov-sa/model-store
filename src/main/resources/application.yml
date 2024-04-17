@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: model-store
+  main:
+    allow-circular-references: true
+  codec:
+    max-in-memory-size: 100MB
+  jackson:
+    serialization:
+      indent-output: true
+    mapper:
+      accept-case-insensitive-properties: true
+  r2dbc:
+    url: r2dbc:postgresql://localhost:5432
+    username: postgres
+    password: postgres
