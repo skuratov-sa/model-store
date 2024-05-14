@@ -5,12 +5,14 @@ spring:
     allow-circular-references: true
   codec:
     max-in-memory-size: 100MB
-  jackson:
-    serialization:
-      indent-output: true
-    mapper:
-      accept-case-insensitive-properties: true
   r2dbc:
-    url: r2dbc:postgresql://localhost:5432
-    username: postgres
-    password: postgres
+    url: r2dbc:postgresql://localhost:5432/model_store
+    username: root
+    password: root
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: DEBUG
+    org.springdoc: DEBUG
+

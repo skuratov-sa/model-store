@@ -1,8 +1,13 @@
 plugins {
     id 'java'
+    id 'org.flywaydb.flyway' version '9.20.0'
     id 'org.springframework.boot' version '3.2.4'
     id 'io.spring.dependency-management' version '1.1.4'
 }
+repositories {
+    mavenCentral()
+}
+
 
 group = 'com.model-store'
 version = '0.0.1-SNAPSHOT'
@@ -18,25 +23,35 @@ configurations {
 }
 
 flyway {
-    url = 'jdbc:postgresql://localhost:5432/'
-    user = 'postgres'
-    password = 'postgres'
+    url = 'jdbc:postgresql://localhost:5432/model_store'
+    user = 'root'
+    password = 'root'
     locations = ['filesystem:src/main/resources/migration']
+    baselineVersion = '7.17.7'
     cleanDisabled = false
 }
 
+
 dependencies {
-    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-    implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
-    implementation 'org.springframework.boot:spring-boot-starter-webflux'
-    compileOnly 'org.projectlombok:lombok'
+
+    compileOnly 'org.projectlombok:lombok:1.18.10'
+    annotationProcessor 'org.projectlombok:lombok:1.18.32'
+
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa:3.2.5'
+    implementation 'org.springframework.boot:spring-boot-starter-webflux:3.2.5'
+    implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc:3.2.5'
+    implementation 'org.postgresql:postgresql:42.3.1'
+
+    compileOnly 'org.postgresql:r2dbc-postgresql:1.0.5.RELEASE'
+
+
+    implementation 'org.springdoc:springdoc-openapi-webflux-ui:1.8.0'
+
+    implementation 'org.mapstruct:mapstruct:1.5.5.Final'
+    annotationProcessor 'org.mapstruct:mapstruct-processor:1.5.5.Final'
+
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
-    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
-    annotationProcessor 'org.projectlombok:lombok'
+//    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'io.projectreactor:reactor-test'
-}
-
-tasks.named('test') {
-    useJUnitPlatform()
 }

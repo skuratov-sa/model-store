@@ -1,4 +1,4 @@
-package com.modelstore.modelstore;
+package com.model_store;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
