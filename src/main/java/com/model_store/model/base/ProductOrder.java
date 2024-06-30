@@ -1,13 +1,13 @@
 package com.model_store.model.base;
 
 import com.model_store.model.constant.OrderStatus;
-import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
+import org.springframework.data.annotation.Id;
 
 import java.time.Instant;
 

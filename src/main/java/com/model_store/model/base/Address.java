@@ -1,10 +1,10 @@
 package com.model_store.model.base;
 
-import jakarta.persistence.Id;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
 @Data
@@ -21,5 +21,4 @@ public class Address {
     private String street;
     private String houseNumber;
     private String apartmentNumber;
-    private Long participantId;
 }

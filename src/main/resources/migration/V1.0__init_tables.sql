@@ -42,9 +42,9 @@ CREATE CAST (character varying AS image_tag) WITH INOUT AS ASSIGNMENT;
 
 CREATE TABLE image
 (
-    id   bigserial PRIMARY KEY,
-    path varchar(2000),
-    tag image_tag NOT NULL,
+    id        bigserial PRIMARY KEY,
+    path      varchar(2000),
+    tag       image_tag NOT NULL,
     entity_id bigint
 );
 CREATE INDEX idx_image_entity ON image (entity_id);
@@ -88,13 +88,13 @@ comment on column address.apartment_number is 'Номер квартиры';
 
 CREATE TABLE participant
 (
-    id                     bigserial PRIMARY KEY,
-    login                  varchar(255) UNIQUE NOT NULL,
-    mail                   varchar(255) UNIQUE,
-    full_name               varchar(255),
-    phone_number           varchar(40),
-    state                  participant_status,
-    createdAt              timestamp
+    id           bigserial PRIMARY KEY,
+    login        varchar(255) UNIQUE NOT NULL,
+    mail         varchar(255) UNIQUE,
+    full_name    varchar(255),
+    phone_number varchar(40),
+    status       participant_status,
+    createdAt    timestamp
 );
 comment on table participant is 'Пользователь';
 comment on column participant.id is 'Идентификатор пользователя';
@@ -102,7 +102,7 @@ comment on column participant.login is 'Уникальный ник пользо
 comment on column participant.mail is 'Почта email';
 comment on column participant.full_name is 'Полное имя пользователя через пробел';
 comment on column participant.phone_number is 'Номер телефона ';
-comment on column participant.state is 'Статус пользователя';
+comment on column participant.status is 'Статус пользователя';
 comment on column participant.createdAt is 'Дата создания профиля';
 
 
@@ -122,9 +122,9 @@ comment on column social_network.participant_id is 'Идентификатор �
 
 CREATE TABLE participant_address
 (
-    id         bigserial PRIMARY KEY,
+    id             bigserial PRIMARY KEY,
     participant_id bigint NOT NULL REFERENCES participant (id),
-    address_id bigint NOT NULL REFERENCES address (id)
+    address_id     bigint NOT NULL REFERENCES address (id)
 );
 comment on table participant_address is 'Связь пользователя и адресов';
 comment on column participant_address.id is 'Уникальный идентификатор';
@@ -140,7 +140,7 @@ CREATE TABLE "order"
     amount        integer      NOT NULL,
     status        order_status NOT NULL,
     address_id    bigint       NOT NULL REFERENCES address (id),
-    booking_price integer,
+    booking_price float,
     createdAt     timestamp    NOT NULL
 );
 
@@ -157,14 +157,15 @@ comment on column "order".createdAt is 'Дата создания заказа';
 -- PRODUCT
 CREATE TABLE product
 (
-    id          bigserial PRIMARY KEY,
-    name        varchar(200)  NULL,
-    description varchar(2000) NULL,
-    count       integer       NOT NULL,
-    price       integer       NOT NULL,
-    currency    currency      NOT NULL,
-    originality varchar       NULL,
-    createdAt   timestamp     NOT NULL
+    id             bigserial PRIMARY KEY,
+    name           varchar(200)  NULL,
+    description    varchar(2000) NULL,
+    count          integer       NOT NULL,
+    price          float         NOT NULL,
+    currency       currency      NOT NULL,
+    originality    varchar       NULL,
+    participant_id bigint        NOT NULL REFERENCES participant (id),
+    createdAt      timestamp     NOT NULL
 );
 comment on table product is 'Товары по которым осуществляются сделки';
 comment on column product.id is 'Идентификатор товара';

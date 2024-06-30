@@ -24,16 +24,6 @@ public class ProductController {
         return productService.findByParams(searchParams);
     }
 
-    @PostMapping("/find/favorites")
-    public Flux<Product> findFavorites(@RequestBody FindProductRequest searchParams) {
-        return productService.findFavoriteByParams(searchParams);
-    }
-
-    @PostMapping("/find/cart")
-    public Flux<Product> findCart(@RequestBody FindProductRequest searchParams) {
-        return productService.findCartByParams(searchParams);
-    }
-
     @PostMapping(path = "/product")
     public Mono<Void> createProduct(@RequestBody CreateOrUpdateProductRequest request) {
         return productService.createProduct(request);
@@ -47,5 +37,21 @@ public class ProductController {
     @DeleteMapping(path = "/product/{id}")
     public Mono<Void> deleteProduct(@PathVariable Long id) {
         return productService.deleteProduct(id);
+    }
+
+
+    @PostMapping("/find/favorites/{participantId}")
+    public Flux<Product> findFavorites(@PathVariable Long participantId, @RequestBody FindProductRequest searchParams) {
+        return productService.findFavoriteByParams(participantId, searchParams);
+    }
+
+    @PostMapping("/favorites")
+    public Mono<Void> addToFavorites(@RequestParam Long participantId, @RequestParam Long productId) {
+        return productService.addToFavorites(participantId, productId);
+    }
+
+    @DeleteMapping("/favorites")
+    public Mono<Void> removeFromFavorites(@RequestParam Long participantId, @RequestParam Long productId) {
+        return productService.removeFromFavorites(participantId, productId);
     }
 }

@@ -6,12 +6,10 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
-import org.springframework.data.annotation.Transient;
 import org.springframework.data.relational.core.mapping.Column;
 import org.springframework.data.relational.core.mapping.Table;
 
 import java.time.Instant;
-import java.util.List;
 
 @Data
 @Builder
@@ -26,18 +24,8 @@ public class Participant {
     private String mail;
     private String fullName;
     private String phoneNumber;
-    private ParticipantStatus state;
+    private ParticipantStatus status;
+
     @Column("createdat")
     private Instant createdAt;
-
-    @Transient
-    private List<SocialNetwork> socialNetworks;
-
-    @Transient
-    private List<Address> address;
-
-    @Transient
-    private List<Product> products;
-    @Transient
-    private List<Image> images;
 }
