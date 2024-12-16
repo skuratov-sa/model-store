@@ -15,15 +15,15 @@ public interface ProductService {
 
     Flux<Product> findFavoriteByParams(Long participantId, FindProductRequest searchParams);
 
-    Mono<Void> createProduct(CreateOrUpdateProductRequest request);
+    Mono<Long> createProduct(CreateOrUpdateProductRequest request);
 
     Mono<Void> updateProduct(Long id, CreateOrUpdateProductRequest request);
 
     Mono<Void> deleteProduct(Long id);
 
-    Mono<Void> deleteProductsByParticipant(Long participantId);
-
     Mono<Void> addToFavorites(Long participantId, Long productId);
 
     Mono<Void> removeFromFavorites(Long participantId, Long productId);
+
+    Mono<Void> deleteProductsByParticipant(Long participantId);
 }

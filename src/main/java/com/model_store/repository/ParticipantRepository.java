@@ -7,6 +7,7 @@ import org.springframework.data.r2dbc.repository.Query;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 import org.springframework.stereotype.Repository;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 @Repository
 public interface ParticipantRepository extends ReactiveCrudRepository<Participant, Long> {
@@ -20,7 +21,7 @@ public interface ParticipantRepository extends ReactiveCrudRepository<Participan
                 (:phoneNumber IS NULL OR p.phone_number = :phoneNumber) AND
                 (:login IS NULL OR p.login = :login) AND
                 (:status IS NULL OR p.status = :status::participant_status)
-            ORDER BY p.createdat
+            ORDER BY p.created_at
             """)
     Flux<Participant> findByParams(String fullName,
                                    String mail,
@@ -38,4 +39,8 @@ public interface ParticipantRepository extends ReactiveCrudRepository<Participan
                 searchParams.getStatus()
         );
     }
+
+    @Query("SELECT * FROM participant WHERE status = 'ACTIVE' AND id = :participantId")
+    Mono<Participant> findActualParticipant(Long participantId);
+
 }

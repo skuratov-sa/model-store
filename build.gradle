@@ -1,5 +1,6 @@
 plugins {
     id 'java'
+    id 'application'
     id 'org.flywaydb.flyway' version '9.20.0'
     id 'org.springframework.boot' version '3.2.4'
     id 'io.spring.dependency-management' version '1.1.4'
@@ -8,12 +9,12 @@ repositories {
     mavenCentral()
 }
 
-
 group = 'com.model-store'
 version = '0.0.1-SNAPSHOT'
 
 java {
     sourceCompatibility = '21'
+    targetCompatibility = '21'
 }
 
 configurations {
@@ -33,25 +34,24 @@ flyway {
 
 
 dependencies {
-
-    compileOnly 'org.projectlombok:lombok:1.18.10'
     annotationProcessor 'org.projectlombok:lombok:1.18.32'
 
-    implementation 'org.springframework.boot:spring-boot-starter-data-jpa:3.2.5'
-    implementation 'org.springframework.boot:spring-boot-starter-webflux:3.2.5'
-    implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc:3.2.5'
-    implementation 'org.postgresql:postgresql:42.3.1'
+    implementation 'org.springframework.boot:spring-boot-starter-webflux:3.4.0'
+    implementation 'org.springdoc:springdoc-openapi-starter-webflux-ui:2.6.0'
 
-    compileOnly 'org.postgresql:r2dbc-postgresql:1.0.5.RELEASE'
+    //DB
+    implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc:3.4.0'
+    implementation 'org.postgresql:r2dbc-postgresql:1.0.7.RELEASE'
+    implementation 'org.postgresql:postgresql:42.7.4'
 
+    implementation 'io.minio:minio:8.5.14'
+    implementation 'org.springframework.cloud:spring-cloud-starter-aws:2.2.6.RELEASE'
+    implementation 'software.amazon.awssdk:s3:2.29.24'
+    implementation 'org.springframework.boot:spring-boot-starter-json'
 
-    implementation 'org.springdoc:springdoc-openapi-webflux-ui:1.8.0'
 
     implementation 'org.mapstruct:mapstruct:1.5.5.Final'
     annotationProcessor 'org.mapstruct:mapstruct-processor:1.5.5.Final'
-
-    developmentOnly 'org.springframework.boot:spring-boot-devtools'
-//    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'io.projectreactor:reactor-test'
 }

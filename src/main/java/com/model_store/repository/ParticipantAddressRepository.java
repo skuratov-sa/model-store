@@ -7,5 +7,4 @@ import reactor.core.publisher.Mono;
 
 @Repository
 public interface ParticipantAddressRepository extends ReactiveCrudRepository<ParticipantAddress, Long> {
-    Mono<Void> deleteByParticipantId(Long participantId);
 }

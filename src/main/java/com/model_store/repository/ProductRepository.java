@@ -26,9 +26,9 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 (:minPrice IS NULL OR p.price >= :minPrice) AND
                 (:maxPrice IS NULL OR p.price <= :maxPrice) AND
                 (:originality IS NULL OR p.originality = :originality) AND
-                (:dateTimeFrom IS NULL OR p.createdat >= :dateTimeFrom) AND
-                (:dateTimeTo IS NULL OR p.createdat <= :dateTimeTo)
-            ORDER BY p.createdat
+                (:dateTimeFrom IS NULL OR p.created_at >= :dateTimeFrom) AND
+                (:dateTimeTo IS NULL OR p.created_at <= :dateTimeTo)
+            ORDER BY p.created_at
             """)
     Flux<Product> findByParams(List<Long> productIds,
                                String productName,
@@ -58,9 +58,9 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 (:minPrice IS NULL OR p.price >= :minPrice) AND
                 (:maxPrice IS NULL OR p.price <= :maxPrice) AND
                 (:originality IS NULL OR p.originality = :originality) AND
-                (:dateTimeFrom IS NULL OR p.createdat >= :dateTimeFrom) AND
-                (:dateTimeTo IS NULL OR p.createdat <= :dateTimeTo)
-            ORDER BY p.createdat
+                (:dateTimeFrom IS NULL OR p.created_at >= :dateTimeFrom) AND
+                (:dateTimeTo IS NULL OR p.created_at <= :dateTimeTo)
+            ORDER BY p.created_at
             """)
     Flux<Product> findByParams(String productName,
                                String originality,
@@ -80,5 +80,10 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
         );
     }
 
+    Flux<Product> findByParticipantId(Long participantId);
+
     Mono<Void> deleteAllByParticipantId(Long participantId);
+
+    @Query("SELECT * FROM product WHERE status = 'ACTIVE' AND id = :productId")
+    Mono<Product> findActualProduct(Long productId);
 }

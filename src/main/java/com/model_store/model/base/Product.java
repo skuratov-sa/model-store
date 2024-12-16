@@ -2,15 +2,13 @@ package com.model_store.model.base;
 
 
 import com.model_store.model.constant.Currency;
+import com.model_store.model.constant.ProductStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
-import org.springframework.data.relational.core.mapping.Column;
 import org.springframework.data.relational.core.mapping.Table;
-
-import java.time.Instant;
 
 @Data
 @Builder
@@ -28,7 +26,5 @@ public class Product {
     private Currency currency;
     private String originality;
     private Long participantId;
-
-    @Column("createdat")
-    private Instant createdAt;
+    private ProductStatus status;
 }

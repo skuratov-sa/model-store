@@ -2,26 +2,22 @@ package com.model_store.model.base;
 
 import com.model_store.model.constant.OrderStatus;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
-import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
 @Data
-@SuperBuilder
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name = "order")
-public class ProductOrder {
-
-    @Id
-    private int Id;
-    private Participant seller;
-    private Participant customer;
+public class Order {
+    private Long id;
+    private Long sellerId;
+    private Long customerId;
     private Integer amount;
     private OrderStatus status;
-
-    private Address address;
-    private Integer bookingPrice;
+    private Long addressId;
+    private Long bookingPrice;
 }

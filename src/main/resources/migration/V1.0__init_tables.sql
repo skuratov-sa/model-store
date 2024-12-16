@@ -1,3 +1,13 @@
+-- TIME ZONE
+CREATE OR REPLACE FUNCTION current_utc_timestamp()
+    RETURNS TIMESTAMP WITH TIME ZONE AS
+$$
+BEGIN
+    RETURN CURRENT_TIMESTAMP AT TIME ZONE 'UTC';
+END;
+$$ LANGUAGE plpgsql;
+
+
 -- CREATE DATABASE  model_store;
 CREATE TYPE currency AS enum (
     'USD',
@@ -11,9 +21,17 @@ CREATE CAST (character varying AS currency) WITH INOUT AS ASSIGNMENT;
 
 CREATE TYPE participant_status AS enum (
     'ACTIVE',
-    'BLOCKED'
+    'BLOCKED',
+    'DELETED'
     );
 CREATE CAST (character varying AS participant_status) WITH INOUT AS ASSIGNMENT;
+
+CREATE TYPE product_status AS enum (
+    'ACTIVE',
+    'BLOCKED',
+    'DELETED'
+    );
+CREATE CAST (character varying AS product_status) WITH INOUT AS ASSIGNMENT;
 
 CREATE TYPE order_status AS enum (
     'NEW',
@@ -39,22 +57,32 @@ CREATE TYPE image_tag AS enum (
     );
 CREATE CAST (character varying AS image_tag) WITH INOUT AS ASSIGNMENT;
 
+CREATE TYPE image_status AS enum (
+    'ACTIVE',
+    'TEMPORARY',
+    'DELETE'
+    );
+CREATE CAST (character varying AS image_status) WITH INOUT AS ASSIGNMENT;
+
 
 CREATE TABLE image
 (
-    id        bigserial PRIMARY KEY,
-    path      varchar(2000),
-    tag       image_tag NOT NULL,
-    entity_id bigint
+    id         bigserial PRIMARY KEY,
+    filename   varchar(500),
+    tag        image_tag    NOT NULL,
+    status     image_status NOT NULL DEFAULT 'TEMPORARY',
+    entity_id  bigint       NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT current_utc_timestamp()
 );
 CREATE INDEX idx_image_entity ON image (entity_id);
 CREATE INDEX idx_image_tag ON image (tag);
 
 comment on table image is 'Изображения в карточках товаров';
 comment on column image.id is 'Идентификатор изображения';
-comment on column image.path is 'Путь к файлу';
+comment on column image.filename is 'Название файла';
 comment on column image.tag is 'Тег отношение к сущности';
 comment on column image.entity_id is 'Идентификатор сущности';
+comment on column image.created_at is 'Дата создания записи';
 
 
 CREATE TABLE category
@@ -93,8 +121,8 @@ CREATE TABLE participant
     mail         varchar(255) UNIQUE,
     full_name    varchar(255),
     phone_number varchar(40),
-    status       participant_status,
-    createdAt    timestamp
+    status       participant_status  NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT current_utc_timestamp()
 );
 comment on table participant is 'Пользователь';
 comment on column participant.id is 'Идентификатор пользователя';
@@ -103,15 +131,15 @@ comment on column participant.mail is 'Почта email';
 comment on column participant.full_name is 'Полное имя пользователя через пробел';
 comment on column participant.phone_number is 'Номер телефона ';
 comment on column participant.status is 'Статус пользователя';
-comment on column participant.createdAt is 'Дата создания профиля';
+comment on column participant.created_at is 'Дата создания профиля';
 
 
 CREATE TABLE social_network
 (
     id             bigserial PRIMARY KEY,
-    type           social_network_type,
+    type           social_network_type NOT NULL,
     login          varchar(255),
-    participant_id bigint NOT NULL REFERENCES participant (id)
+    participant_id bigint              NOT NULL REFERENCES participant (id)
 );
 comment on table social_network is 'Информация о социальных сетях';
 comment on column social_network.id is 'Идентификатор записи';
@@ -141,7 +169,7 @@ CREATE TABLE "order"
     status        order_status NOT NULL,
     address_id    bigint       NOT NULL REFERENCES address (id),
     booking_price float,
-    createdAt     timestamp    NOT NULL
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT current_utc_timestamp()
 );
 
 comment on table "order" is 'Заказ товара';
@@ -152,7 +180,7 @@ comment on column "order".amount is 'Количество приобретаем
 comment on column "order".status is 'Статус исполнения заказа';
 comment on column "order".address_id is 'Идентификатор адреса доставки';
 comment on column "order".booking_price is 'Цена бронирования';
-comment on column "order".createdAt is 'Дата создания заказа';
+comment on column "order".created_at is 'Дата создания заказа';
 
 -- PRODUCT
 CREATE TABLE product
@@ -165,7 +193,8 @@ CREATE TABLE product
     currency       currency      NOT NULL,
     originality    varchar       NULL,
     participant_id bigint        NOT NULL REFERENCES participant (id),
-    createdAt      timestamp     NOT NULL
+    status         product_status NOT NULL DEFAULT 'ACTIVE',
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT current_utc_timestamp()
 );
 comment on table product is 'Товары по которым осуществляются сделки';
 comment on column product.id is 'Идентификатор товара';
@@ -175,7 +204,7 @@ comment on column product.count is 'Количество единиц';
 comment on column product.price is 'Цена товара поштучно';
 comment on column product.currency is 'Валюта для цены товара';
 comment on column product.originality is 'Показатель оригинальности товара';
-comment on column product.createdAt is 'Дата создания товара';
+comment on column product.created_at is 'Дата создания товара';
 
 
 CREATE TABLE product_category

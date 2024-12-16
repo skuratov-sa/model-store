@@ -10,6 +10,31 @@ spring:
     username: root
     password: root
 
+  #  web:
+#    cors:
+#      allowed-origins: http://192.168.0.16:8888
+#      allowed-methods: GET, POST, PUT, DELETE
+#      allowed-headers: Authorization, Content-Type
+#      allow-credentials: true
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+s3:
+  access-key: minio_user               # Ключ доступа к MinIO
+  secret-key: minio_password           # Секретный ключ MinIO
+  endpoint: http://localhost:9000      # Адрес MinIO (если развернут локально)
+  region: us-east-1                    # Регион (для MinIO можно указать любой, но это необходимо для корректной работы
+  participant-bucket-name: participant-bucket # Папка фотографий пользователей
+  product-bucket-name: product-bucket # Папка фотографий продуктов
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
 logging:
   level:
     root: INFO

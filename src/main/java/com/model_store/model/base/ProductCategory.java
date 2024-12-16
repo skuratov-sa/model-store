@@ -1,6 +1,5 @@
 package com.model_store.model.base;
 
-import com.model_store.model.constant.ParticipantStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -12,14 +11,10 @@ import org.springframework.data.relational.core.mapping.Table;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "participant")
-public class Participant {
-
+@Table(name = "product_category")
+public class ProductCategory {
     @Id
     private Long id;
-    private String login;
-    private String mail;
-    private String fullName;
-    private String phoneNumber;
-    private ParticipantStatus status;
+    private Long productId;
+    private Long categoryId;
 }

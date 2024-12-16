@@ -1,7 +1,6 @@
 package com.model_store.model.constant;
 
-public enum ParticipantStatus {
+public enum ProductStatus {
     ACTIVE,
-    BLOCKED,
     DELETED
 }

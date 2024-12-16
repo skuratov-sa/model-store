@@ -3,9 +3,10 @@ package com.model_store.model;
 import com.model_store.model.constant.Currency;
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 public class CreateOrUpdateProductRequest {
-    private Long id;
     private String name;
     private String description;
     private Double price;
@@ -13,4 +14,5 @@ public class CreateOrUpdateProductRequest {
     private Currency currency;
     private Long participantId;
     private String originality;
+    private List<Long> imageIds;
 }

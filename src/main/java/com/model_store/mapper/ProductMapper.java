@@ -22,7 +22,7 @@ public interface ProductMapper {
                 .currency(Optional.ofNullable(productRequest.getCurrency()).orElse(product.getCurrency()))
                 .originality(Optional.ofNullable(productRequest.getOriginality()).orElse(product.getOriginality()))
                 .participantId(product.getParticipantId())
-                .createdAt(product.getCreatedAt())
+                .status(product.getStatus())
                 .build();
     }
 }

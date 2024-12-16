@@ -4,8 +4,16 @@ import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.Product;
 import com.model_store.service.ProductService;
+import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -14,42 +22,50 @@ import reactor.core.publisher.Mono;
 public class ProductController {
     private final ProductService productService;
 
+    @Operation(summary = "Полная информация о товаре")
     @GetMapping(path = "/product/{id}")
     public Mono<Product> getProduct(@PathVariable Long id) {
         return productService.findById(id);
     }
 
-    @PostMapping(path = "/find/products")
+    @Operation(summary = "Поиск списка товаров")
+    @PostMapping(path = "/products/find")
     public Flux<Product> findProducts(@RequestBody FindProductRequest searchParams) {
         return productService.findByParams(searchParams);
     }
 
+    @Operation(summary = "Создать товар")
     @PostMapping(path = "/product")
-    public Mono<Void> createProduct(@RequestBody CreateOrUpdateProductRequest request) {
+    public Mono<Long> createProduct(@RequestBody CreateOrUpdateProductRequest request) {
         return productService.createProduct(request);
     }
 
+    @Operation(summary = "Обновить товар по id")
     @PutMapping(path = "/product/{id}")
     public Mono<Void> updateProduct(@PathVariable Long id, @RequestBody CreateOrUpdateProductRequest request) {
         return productService.updateProduct(id, request);
     }
 
+    @Operation(summary = "Удалить товар")
     @DeleteMapping(path = "/product/{id}")
     public Mono<Void> deleteProduct(@PathVariable Long id) {
         return productService.deleteProduct(id);
     }
 
 
-    @PostMapping("/find/favorites/{participantId}")
+    @Operation(summary = "Получения списка избранных товаров пользователя")
+    @PostMapping("/favorites/{participantId}")
     public Flux<Product> findFavorites(@PathVariable Long participantId, @RequestBody FindProductRequest searchParams) {
         return productService.findFavoriteByParams(participantId, searchParams);
     }
 
+    @Operation(summary = "Добавить товар в избранное")
     @PostMapping("/favorites")
     public Mono<Void> addToFavorites(@RequestParam Long participantId, @RequestParam Long productId) {
         return productService.addToFavorites(participantId, productId);
     }
 
+    @Operation(summary = "Удалить товар из избранного")
     @DeleteMapping("/favorites")
     public Mono<Void> removeFromFavorites(@RequestParam Long participantId, @RequestParam Long productId) {
         return productService.removeFromFavorites(participantId, productId);
