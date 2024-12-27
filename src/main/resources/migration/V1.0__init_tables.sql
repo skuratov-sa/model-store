@@ -88,11 +88,13 @@ comment on column image.created_at is 'Дата создания записи';
 CREATE TABLE category
 (
     id   bigserial PRIMARY KEY,
-    name varchar(255)
+    name varchar(255),
+    parent_id bigint REFERENCES category (id)
 );
 comment on table category is 'Виды категорий';
 comment on column category.id is 'Идентификатор категории';
 comment on column category.name is 'Название категории';
+comment on column category.parent_id is 'Идентификатор родительской категории';
 
 
 CREATE TABLE address

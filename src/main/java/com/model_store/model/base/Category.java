@@ -16,4 +16,5 @@ public class Category {
     @Id
     private int id;
     private String name;
+    private Integer parentId;
 }
