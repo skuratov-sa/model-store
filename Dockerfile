@@ -10,14 +10,8 @@ COPY . .
 # Убедитесь, что Gradle Wrapper имеет права на выполнение
 RUN chmod +x ./gradlew
 
-# Выполняем тесты через Gradle Wrapper
-RUN ./gradlew test --no-daemon
-
 # Выполняем сборку приложения через Gradle Wrapper
 RUN ./gradlew build --no-daemon
-
-# Открываем порт для приложения (если ваше приложение работает на порту 8080)
-EXPOSE 8080
 
 # Определяем команду, которая будет выполнена при запуске контейнера
 CMD ["java", "-jar", "build/libs/model-store-0.0.1-SNAPSHOT.jar"]
