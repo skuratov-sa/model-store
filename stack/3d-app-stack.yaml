@@ -1,0 +1,30 @@
+version: '3.8'
+
+networks:
+  3d-network:
+    external: true
+
+services:
+  3dback:
+    image: ready555/model_store:v1.1
+    deploy:
+      replicas: 1
+    environment:
+      SPRING_R2DBC_URL: r2dbc:postgresql://postgres:5432/model_store
+      SPRING_R2DBC_USERNAME: root
+      SPRING_R2DBC_PASSWORD: root
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    networks:
+      - 3d-network
+  
+  3dfront:
+    image: atupenov/3d-printmarket:latest
+    deploy:
+      replicas: 1
+    ports:
+      - "3000:3000"
+    networks:
+      - 3d-network
