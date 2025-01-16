@@ -19,4 +19,4 @@ target/
 .git/
 .gitignore
 
-tests/
+src/tests/
