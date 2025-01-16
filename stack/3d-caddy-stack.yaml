@@ -1,0 +1,30 @@
+version: '3.8'
+
+volumes:
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+
+services:
+  caddy:
+    image: caddy:latest
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+    volumes:
+      - /Users/vrevyakin/projects/model-store/stack/certs:/root/certs
+      - /Users/vrevyakin/projects/model-store/stack/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - 80:80
+      - 443:443
+    networks:
+      - 3d-network
+
+networks:
+  3d-network:
+    external: true
+    
