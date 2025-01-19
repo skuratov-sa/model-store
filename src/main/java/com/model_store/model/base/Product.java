@@ -21,10 +21,14 @@ public class Product {
     private Long id;
     private String name;
     private String description;
-    private Double price;
+    private Float price;
     private Integer count;
     private Currency currency;
     private String originality;
     private Long participantId;
+    private Long categoryId;
     private ProductStatus status;
+
+//    @JsonFormat(pattern = "dd.MM.yyyy HH:mm:ss", timezone = "Europe/Moscow")
+//    private Instant createdAt;
 }

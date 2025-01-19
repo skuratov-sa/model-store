@@ -2,5 +2,7 @@ package com.model_store.model.constant;
 
 public enum ImageTag {
     PARTICIPANT,
-    PRODUCT
+    PRODUCT,
+    ORDER,
+    SYSTEM
 }

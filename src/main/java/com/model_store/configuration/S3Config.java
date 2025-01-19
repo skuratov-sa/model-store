@@ -5,7 +5,9 @@ import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.CreateBucketRequest;
 import com.model_store.configuration.property.S3ConfigurationProperties;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,5 +27,18 @@ public class S3Config {
                 .withCredentials(new AWSStaticCredentialsProvider(credentials))
                 .withPathStyleAccessEnabled(true)
                 .build();
+    }
+
+    @PostConstruct
+    public void createBuckets() {
+        AmazonS3 s3Client = amazonS3();
+        String[] bucketNames = {properties.getParticipantBucketName(), properties.getProductBucketName(), properties.getOrderBucketName(), properties.getSystemBucketName()};
+
+        for (String bucketName : bucketNames) {
+            if (!s3Client.doesBucketExistV2(bucketName)) {
+                s3Client.createBucket(new CreateBucketRequest(bucketName));
+                System.out.println("Создан бакет: " + bucketName);
+            }
+        }
     }
 }

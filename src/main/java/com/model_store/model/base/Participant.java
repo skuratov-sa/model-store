@@ -1,5 +1,6 @@
 package com.model_store.model.base;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.model_store.model.constant.ParticipantStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -7,6 +8,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
+
+import java.time.Instant;
 
 @Data
 @Builder
@@ -22,4 +25,15 @@ public class Participant {
     private String fullName;
     private String phoneNumber;
     private ParticipantStatus status;
+    /**
+     * Крайний срок ожидания отправки
+     */
+    private Integer deadlineSending;
+    /**
+     * Крайний срок ожидания оплаты
+     */
+    private Integer deadlinePayment;
+
+    @JsonFormat(pattern = "dd.MM.yyyy HH:mm:ss", timezone = "Europe/Moscow")
+    private Instant createdAt;
 }

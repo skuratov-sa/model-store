@@ -1,6 +1,7 @@
 package com.model_store.mapper;
 
 import com.model_store.model.base.Category;
+import com.model_store.model.dto.CategoryDto;
 import com.model_store.model.dto.CategoryResponse;
 import org.mapstruct.Mapper;
 
@@ -14,12 +15,12 @@ import static java.util.Objects.isNull;
 public interface CategoryMapper {
 
     default List<CategoryResponse> toCategoryResponse(List<Category> categories) {
-        Map<Integer, CategoryResponse> map = new HashMap<>();
+        Map<Long, CategoryResponse> map = new HashMap<>();
         categories.forEach(category -> map.put(category.getId(), new CategoryResponse(category)));
 
         for (Category category : categories) {
-            Integer parentId = category.getParentId();
-            Integer categoryId = category.getId();
+            Long parentId = category.getParentId();
+            Long categoryId = category.getId();
 
             if (!isNull(parentId)) {
                 var parent = map.get(parentId);
@@ -34,4 +35,6 @@ public interface CategoryMapper {
                 .map(map::get)
                 .toList();
     }
+
+    CategoryDto toCategoryDto(Category category);
 }

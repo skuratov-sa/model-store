@@ -3,6 +3,7 @@ version: '3.8'
 services:
   db:
     image: postgres:15.3
+    container_name: postgres-with-cron
     environment:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: root
@@ -10,22 +11,16 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - app-network
+      - db_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d # Папка с init-скриптами
+    command: >
+      bash -c "
+      apt-get update && apt-get install -y postgresql-15-cron && \
+      echo \"shared_preload_libraries = 'pg_cron'\" >> /usr/share/postgresql/postgresql.conf.sample && \
+      echo \"cron.database_name = 'model_store'\" >> /usr/share/postgresql/postgresql.conf.sample && \
+      docker-entrypoint.sh postgres
+      "
 
-  app:
-    image: ready555/model_store:v1.0
-    ports:
-      - "8080:8080"
-    environment:
-      SPRING_R2DBC_URL: r2dbc:postgresql://db:5432/model_store
-      SPRING_R2DBC_USERNAME: root
-      SPRING_R2DBC_PASSWORD: root
-    depends_on:
-      - db
-    networks:
-      - app-network
   minio:
     image: quay.io/minio/minio:RELEASE.2022-02-18T01-50-10Z
     volumes:
@@ -39,12 +34,52 @@ services:
       MINIO_ADDRESS: ':9000'
       MINIO_CONSOLE_ADDRESS: ':9001'
     command: minio server /data
+  flyway:
+    image: flyway/flyway:latest
+    depends_on:
+      - db
+    environment:
+      FLYWAY_URL: jdbc:postgresql://db:5432/model_store
+      FLYWAY_USER: root
+      FLYWAY_PASSWORD: root
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql  # Указываем путь, который будет доступен в контейнере
+    volumes:
+      - ./app/src/main/resources/db/migration:/flyway/sql  # Монтируем миграции из app
+    command: [ "migrate" ]  # Просто команда для выполнения миграций
+    networks:
+      - app-network
+  app:
+    image: ready555/model_store:v1.3
+    depends_on:
+      - db
+      - flyway  # Убедитесь, что контейнер Flyway запускается перед приложением
+      - minio
+    ports:
+      - "8081:8080"
+    environment:
+      SPRING_R2DBC_URL: r2dbc:postgresql://db:5432/model_store
+      SPRING_R2DBC_USERNAME: root
+      SPRING_R2DBC_PASSWORD: root
+
+      SPRING_S3_ACCESS_KEY: minio_user
+      SPRING_S3_SECRET_KEY: minio_password
+      SPRING_S3_ENDPOINT: http://minio:9000  # Перекроет значение из application.yml
+      SPRING_S3_REGION: us-east-1
+      SPRING_S3_PARTICIPANT_BUCKET_NAME: participant-bucket # Папка фотографий пользователей
+      SPRING_S3_PRODUCT_BUCKET_NAME: product-bucket # Папка фотографий продуктов
+
+      # Настройки для CORS
+      CORS_ALLOWED_ORIGINS: "http://localhost:8081"
+      CORS_ALLOWED_METHODS: "GET, POST, PUT, DELETE"
+      CORS_ALLOWED_HEADERS: "Authorization, Content-Type"
+    networks:
+      - app-network
 
 networks:
   app-network:
     driver: bridge
 
 volumes:
-  postgres_data:
+  db_data:
   minio_data:
     driver: local

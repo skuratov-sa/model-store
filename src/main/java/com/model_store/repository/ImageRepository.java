@@ -17,9 +17,26 @@ public interface ImageRepository extends ReactiveCrudRepository<Image, Long> {
     @Query("UPDATE image SET status = :status WHERE id = :id")
     Mono<Void> updateStatusById(Long id, ImageStatus status);
 
+    @Modifying
+    @Query("UPDATE image SET status = :status WHERE entity_id = :entityId AND tag = :tag::image_tag")
+    Mono<Void> updateStatusById(Long entityId, ImageTag tag, ImageStatus status);
+
     @Query("SELECT id FROM image WHERE entity_id = :entityId AND tag = :tag::image_tag")
     Flux<Long> findIdsByEntityIdAndTag(Long entityId, ImageTag tag);
 
-    @Query("SELECT id FROM image WHERE entity_id = :entityId AND tag = :tag::image_tag AND status = 'ACTIVE'")
+    @Query("""
+            SELECT id
+            FROM image
+            WHERE entity_id = :entityId
+              AND tag = :tag::image_tag
+              AND status = 'ACTIVE'
+            ORDER BY created_at
+            """)
     Flux<Long> findActualIdsByEntity(Long entityId, ImageTag tag);
+
+    @Query("SELECT i.status FROM Image i WHERE i.id = :id AND i.status = 'TEMPORARY'")
+    Mono<Boolean> isTemporaryStatusById(Long id);
+
+    @Query("SELECT * FROM image WHERE status in ('DELETE', 'TEMPORARY') AND created_at <= NOW() - INTERVAL '24 HOURS'")
+    Flux<Image> findImagesToDelete();
 }

@@ -1,5 +1,8 @@
 package com.model_store.model.dto;
 
+import com.model_store.model.base.Account;
+import com.model_store.model.base.Address;
+import com.model_store.model.base.Transfer;
 import com.model_store.model.constant.ParticipantStatus;
 import lombok.Builder;
 import lombok.Data;
@@ -17,4 +20,7 @@ public class FullParticipantDto {
     private String phoneNumber;
     private ParticipantStatus status;
     private List<Long> imageIds;
+    private List<Address> addresses;
+    private List<Account> accounts;
+    private List<Transfer> transfers;
 }

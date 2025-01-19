@@ -51,28 +51,35 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
     }
 
     @Query("""
-            SELECT *
+            SELECT p.*
             FROM product p
             WHERE
-                (:productName IS NULL OR p.name = :productName) AND
+                (:productName IS NULL OR p.name LIKE '%' || :productName || '%') AND
+                (:categoryId IS NULL OR p.category_id = :categoryId) AND
+                (:originality IS NULL OR p.originality = :originality) AND
+                (:participantId IS NULL OR p.participant_id = :participantId) AND
                 (:minPrice IS NULL OR p.price >= :minPrice) AND
                 (:maxPrice IS NULL OR p.price <= :maxPrice) AND
-                (:originality IS NULL OR p.originality = :originality) AND
                 (:dateTimeFrom IS NULL OR p.created_at >= :dateTimeFrom) AND
-                (:dateTimeTo IS NULL OR p.created_at <= :dateTimeTo)
-            ORDER BY p.created_at
+                (:dateTimeTo IS NULL OR p.created_at <= :dateTimeTo) AND
+                p.status = 'ACTIVE'
+            ORDER BY p.created_at DESC
             """)
-    Flux<Product> findByParams(String productName,
-                               String originality,
-                               Integer minPrice,
-                               Integer maxPrice,
-                               LocalDateTime dateTimeFrom,
-                               LocalDateTime dateTimeTo);
+    Flux<Product> findBySearchParams(String productName,
+                                     Long categoryId,
+                                     String originality,
+                                     Long participantId,
+                                     Integer minPrice,
+                                     Integer maxPrice,
+                                     LocalDateTime dateTimeFrom,
+                                     LocalDateTime dateTimeTo);
 
     default Flux<Product> findByParams(FindProductRequest searchParams) {
-        return findByParams(
+        return findBySearchParams(
                 searchParams.getProductName(),
+                searchParams.getCategoryId(),
                 searchParams.getOriginality(),
+                searchParams.getParticipantId(),
                 Optional.ofNullable(searchParams.getPriceRange()).map(PriceRange::getMinPrice).orElse(null),
                 Optional.ofNullable(searchParams.getPriceRange()).map(PriceRange::getMaxPrice).orElse(null),
                 Optional.ofNullable(searchParams.getDateRange()).map(DateRange::getStart).orElse(null),

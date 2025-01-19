@@ -7,7 +7,9 @@ import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
+import com.model_store.configuration.property.S3ConfigurationProperties;
 import com.model_store.mapper.ImageMapper;
+import com.model_store.model.constant.ImageTag;
 import com.model_store.model.dto.ImageResponse;
 import com.model_store.service.S3Service;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +23,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.InputStream;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static java.util.Objects.isNull;
@@ -31,19 +34,20 @@ public class S3ServiceImpl implements S3Service {
 
     private final AmazonS3 amazonS3;
     private final ImageMapper imageMapper;
+    private final S3ConfigurationProperties s3properties;
 
     /**
      * Метод для загрузки файла в MinIO.
      *
      * @param file - файл, который нужно загрузить.
-     * @param key  - ключ (имя файла) в корзине.
+     * @param tag  - ключ (имя файла) в корзине.
      * @return путь к файлу
      */
     @SneakyThrows
-    public Mono<String> uploadFile(FilePart file, String key) {
+    public Mono<String> uploadFile(FilePart file, ImageTag tag) {
         return convertMultipartFileToFile(file)
                 .flatMap(tempFile -> Mono.fromRunnable(() -> {
-                    uploadFile(tempFile, key);
+                    uploadFile(tempFile, resolveBucket(tag));
                     tempFile.delete(); // Удаляем временный файл после загрузки
                 }).thenReturn(tempFile.getName()))
                 .subscribeOn(Schedulers.boundedElastic()); // Используем отдельный пул потоков для блокирующих операций
@@ -74,13 +78,13 @@ public class S3ServiceImpl implements S3Service {
     /**
      * Метод для получения файла по ключу.
      *
-     * @param bucketName - название корзины
+     * @param imageTag - тэг категории файла
      * @param fileName   - ключ файла в корзине.
      * @return объект S3 с файлом.
      */
     @SneakyThrows
-    public Mono<ImageResponse> getFile(String bucketName, String fileName) {
-        return Mono.fromCallable(() -> amazonS3.getObject(new GetObjectRequest(bucketName, fileName)))
+    public Mono<ImageResponse> getFile(ImageTag imageTag, String fileName) {
+        return Mono.fromCallable(() -> amazonS3.getObject(new GetObjectRequest(resolveBucket(imageTag), fileName)))
                 .map(s3 -> imageMapper.toImageResponseDto(fileName, getContentType(s3), toByteArray(s3.getObjectContent())))
                 .subscribeOn(Schedulers.boundedElastic());
     }
@@ -91,9 +95,9 @@ public class S3ServiceImpl implements S3Service {
      * @param bucketName - название корзины
      * @param fileName   - ключ файла, который нужно удалить.
      */
-    public Mono<Void> deleteFile(String bucketName, String fileName) {
+    public Mono<Void> deleteFile(ImageTag bucketName, String fileName) {
         return Mono.fromCallable(() -> {
-                    amazonS3.deleteObject(new DeleteObjectRequest(bucketName, fileName));
+                    amazonS3.deleteObject(new DeleteObjectRequest(resolveBucket(bucketName), fileName));
                     return Mono.empty();
                 })
                 .subscribeOn(Schedulers.boundedElastic())
@@ -107,7 +111,8 @@ public class S3ServiceImpl implements S3Service {
      * @return - File, готовый для загрузки.
      */
     private Mono<File> convertMultipartFileToFile(FilePart file) {
-        File tempFile = new File(System.getProperty("java.io.tmpdir") + "/" + file.filename());
+        String uniqueId = UUID.randomUUID().toString().substring(0, 10);
+        File tempFile = new File(System.getProperty("java.io.tmpdir") + "/" + uniqueId + "_" + file.filename());
         return file.transferTo(tempFile).then(Mono.just(tempFile));
     }
 
@@ -157,5 +162,17 @@ public class S3ServiceImpl implements S3Service {
         } else {
             return "application/octet-stream"; // Если тип не удалось определить, возвращаем общий тип
         }
+    }
+
+    public String resolveBucket(ImageTag tag) {
+        String bucketName = "";
+        switch (tag) {
+            case PARTICIPANT -> bucketName = s3properties.getParticipantBucketName();
+            case PRODUCT -> bucketName = s3properties.getProductBucketName();
+            case ORDER -> bucketName = s3properties.getOrderBucketName();
+            case SYSTEM -> bucketName = s3properties.getSystemBucketName();
+            default -> bucketName = s3properties.getErrorBucketName();
+        }
+        return bucketName;
     }
 }

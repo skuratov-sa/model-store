@@ -14,7 +14,7 @@ import org.springframework.data.relational.core.mapping.Table;
 @Table(name = "category")
 public class Category {
     @Id
-    private int id;
+    private Long id;
     private String name;
-    private Integer parentId;
+    private Long parentId;
 }

@@ -1,10 +1,36 @@
 package com.model_store.model.constant;
 
 public enum OrderStatus {
-    NEW,
+    /**
+     * Забронирован
+     */
     BOOKED,
-    PAID_FOR,
+    /**
+     * Ожидает оплаты
+     */
+    AWAITING_PAYMENT,
+    /**
+     * Заказ находится в процессе сборки
+     */
+    ASSEMBLING,
+    /**
+     * В пути следования
+     */
     ON_THE_WAY,
-    DELIVERED,
-    RECEIVED
+    /**
+     * Полученный
+     */
+    RECEIVED,
+    /**
+     * Ведется спор по заказу
+     */
+    DISPUTED,
+    /**
+     * Заказ успешно завершен
+     */
+    COMPLETED,
+    /**
+     * Заказ отклонён
+     */
+    FAILED
 }

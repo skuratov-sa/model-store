@@ -1,5 +1,6 @@
 package com.model_store.service;
 
+import com.model_store.model.base.Image;
 import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
 import com.model_store.model.dto.ImageResponse;
@@ -14,9 +15,15 @@ public interface ImageService {
 
     Flux<ImageResponse> findImagesByIds(List<Long> imageIds);
 
-    Flux<Long> findActualByParticipantId(Long participantId);
+    Flux<Long> findActualImages(Long entityId, ImageTag tag);
+
+    Mono<Long> findMainImage(Long entityId, ImageTag tag);
 
     Mono<Void> updateImagesStatus(List<Long> imageIds, Long entityId, ImageStatus status, ImageTag tag);
 
     Mono<Boolean> isActualEntity(Long entityId, ImageTag tag);
+
+    Flux<Image> findTemporaryImages();
+
+    Mono<Void> deleteById(Long id);
 }

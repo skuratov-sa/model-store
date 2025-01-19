@@ -3,17 +3,23 @@ package com.model_store.service;
 import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.Product;
+import com.model_store.model.dto.GetProductResponse;
+import com.model_store.model.dto.ProductDto;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 
 public interface ProductService {
 
+    Mono<GetProductResponse> getProductById(Long productId);
+
     Mono<Product> findById(Long productId);
 
-    Flux<Product> findByParams(FindProductRequest searchParams);
+    Mono<ProductDto> shortInfoById(Long productId);
 
-    Flux<Product> findFavoriteByParams(Long participantId, FindProductRequest searchParams);
+    Flux<ProductDto> findByParams(FindProductRequest searchParams);
+
+    Flux<GetProductResponse> findFavoriteByParams(Long participantId, FindProductRequest searchParams);
 
     Mono<Long> createProduct(CreateOrUpdateProductRequest request);
 
@@ -26,4 +32,6 @@ public interface ProductService {
     Mono<Void> removeFromFavorites(Long participantId, Long productId);
 
     Mono<Void> deleteProductsByParticipant(Long participantId);
+
+    Mono<Long> save(Product product);
 }

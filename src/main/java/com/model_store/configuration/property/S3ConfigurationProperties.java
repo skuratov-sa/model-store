@@ -15,6 +15,8 @@ public class S3ConfigurationProperties {
     private String bucket;
     private String participantBucketName;
     private String productBucketName;
+    private String systemBucketName;
+    private String orderBucketName;
     private String errorBucketName;
     private String region;
 

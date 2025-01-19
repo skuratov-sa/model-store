@@ -7,11 +7,14 @@ WORKDIR /backend
 # Копируем все файлы проекта в контейнер
 COPY . .
 
+# Устанавливаем утилиту dos2unix (если она не установлена в образе)
+RUN apt-get update && apt-get install -y dos2unix
+
+# Преобразуем файл gradlew в формат с окончаниями строк LF
+RUN dos2unix gradlew
+
 # Убедитесь, что Gradle Wrapper имеет права на выполнение
 RUN chmod +x ./gradlew
-
-# Выполняем тесты через Gradle Wrapper
-RUN ./gradlew test --no-daemon
 
 # Выполняем сборку приложения через Gradle Wrapper
 RUN ./gradlew build --no-daemon

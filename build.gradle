@@ -27,7 +27,7 @@ flyway {
     url = 'jdbc:postgresql://localhost:5432/model_store'
     user = 'root'
     password = 'root'
-    locations = ['filesystem:src/main/resources/migration']
+    locations = ['filesystem:src/main/resources/db/migration']
     baselineVersion = '7.17.7'
     cleanDisabled = false
 }
@@ -46,7 +46,7 @@ dependencies {
 
     implementation 'io.minio:minio:8.5.14'
     implementation 'org.springframework.cloud:spring-cloud-starter-aws:2.2.6.RELEASE'
-    implementation 'software.amazon.awssdk:s3:2.29.24'
+    implementation 'software.amazon.awssdk:s3:2.30.2'
     implementation 'org.springframework.boot:spring-boot-starter-json'
 
 

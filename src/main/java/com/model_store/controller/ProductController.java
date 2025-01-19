@@ -2,10 +2,12 @@ package com.model_store.controller;
 
 import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.FindProductRequest;
-import com.model_store.model.base.Product;
+import com.model_store.model.dto.GetProductResponse;
+import com.model_store.model.dto.ProductDto;
 import com.model_store.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,13 +26,15 @@ public class ProductController {
 
     @Operation(summary = "Полная информация о товаре")
     @GetMapping(path = "/product/{id}")
-    public Mono<Product> getProduct(@PathVariable Long id) {
-        return productService.findById(id);
+    public Mono<ResponseEntity<GetProductResponse>> getProduct(@PathVariable Long id) {
+        return productService.getProductById(id)
+                .map(ResponseEntity::ok)
+                .defaultIfEmpty(ResponseEntity.notFound().build());
     }
 
     @Operation(summary = "Поиск списка товаров")
     @PostMapping(path = "/products/find")
-    public Flux<Product> findProducts(@RequestBody FindProductRequest searchParams) {
+    public Flux<ProductDto> findProducts(@RequestBody FindProductRequest searchParams) {
         return productService.findByParams(searchParams);
     }
 
@@ -52,10 +56,9 @@ public class ProductController {
         return productService.deleteProduct(id);
     }
 
-
     @Operation(summary = "Получения списка избранных товаров пользователя")
     @PostMapping("/favorites/{participantId}")
-    public Flux<Product> findFavorites(@PathVariable Long participantId, @RequestBody FindProductRequest searchParams) {
+    public Flux<GetProductResponse> findFavorites(@PathVariable Long participantId, @RequestBody FindProductRequest searchParams) {
         return productService.findFavoriteByParams(participantId, searchParams);
     }
 

@@ -1,5 +1,7 @@
 package com.model_store.model.base;
 
+import com.model_store.model.constant.Currency;
+import com.model_store.model.constant.ShippingMethodsType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -11,10 +13,13 @@ import org.springframework.data.relational.core.mapping.Table;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "product_category")
-public class ProductCategory {
+@Table(name = "transfer")
+public class Transfer {
+
     @Id
     private Long id;
-    private Long productId;
-    private Long categoryId;
+    private ShippingMethodsType sending;
+    private Integer price;
+    private Currency currency;
+    private Long participantId;
 }

@@ -1,3 +1,6 @@
+server:
+  port: 8081
+
 spring:
   application:
     name: model-store
@@ -9,13 +12,17 @@ spring:
     url: r2dbc:postgresql://localhost:5432/model_store
     username: root
     password: root
+  flyway:
+    locations: classpath:/db/migration  # Путь к миграциям
+    baseline-version: 7.17.7
+    enabled: true  # Убедитесь, что миграции включены
 
   #  web:
-#    cors:
-#      allowed-origins: http://192.168.0.16:8888
-#      allowed-methods: GET, POST, PUT, DELETE
-#      allowed-headers: Authorization, Content-Type
-#      allow-credentials: true
+  #    cors:
+  #      allowed-origins: http://192.168.0.16:8888
+  #      allowed-methods: GET, POST, PUT, DELETE
+  #      allowed-headers: Authorization, Content-Type
+  #      allow-credentials: true
   servlet:
     multipart:
       enabled: true
@@ -28,7 +35,9 @@ s3:
   endpoint: http://localhost:9000      # Адрес MinIO (если развернут локально)
   region: us-east-1                    # Регион (для MinIO можно указать любой, но это необходимо для корректной работы
   participant-bucket-name: participant-bucket # Папка фотографий пользователей
-  product-bucket-name: product-bucket # Папка фотографий продуктов
+  product-bucket-name: product-bucket  # Папка фотографий продуктов
+  system-bucket-name: system-bucket  # Папка системный фото
+  order-bucket-name: order-bucket  # Папка доказательств (оплаты, споров) пользователей
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
@@ -40,4 +49,4 @@ logging:
     root: INFO
     org.springframework.web: DEBUG
     org.springdoc: DEBUG
-
+    org.flywaydb.core: DEBUG

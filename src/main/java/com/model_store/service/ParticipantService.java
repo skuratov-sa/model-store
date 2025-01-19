@@ -4,11 +4,12 @@ import com.model_store.model.CreateOrUpdateParticipantRequest;
 import com.model_store.model.FindParticipantRequest;
 import com.model_store.model.dto.FindParticipantsDto;
 import com.model_store.model.dto.FullParticipantDto;
+import com.model_store.model.dto.UserInfoDto;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public interface ParticipantService {
-    Mono<FullParticipantDto> findById(Long id);
+    Mono<FullParticipantDto> findActualById(Long id);
 
     Flux<FindParticipantsDto> findByParams(FindParticipantRequest searchParams);
 
@@ -25,4 +26,12 @@ public interface ParticipantService {
     Mono<Void> updateParticipant(Long id, CreateOrUpdateParticipantRequest request);
 
     Mono<Void> deleteParticipant(Long id);
+
+    /**
+     * Поиск пользователя для отображения в списках заказов
+     *
+     * @param id
+     * @return
+     */
+    Mono<UserInfoDto> findShortInfo(Long id);
 }

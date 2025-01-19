@@ -25,11 +25,11 @@ public class ParticipantController {
     @Operation(summary = "Поиск пользователя по id")
     @GetMapping(path = "/participant/{id}")
     public Mono<FullParticipantDto> getParticipant(@PathVariable Long id) {
-        return participantService.findById(id);
+        return participantService.findActualById(id);
     }
 
     @Operation(summary = "Поиск пользователей по параметрам")
-    @PostMapping(path = "/find/participants")
+    @PostMapping(path = "/participants/find")
     public Flux<FindParticipantsDto> findParticipants(@RequestBody FindParticipantRequest searchParams) {
         return participantService.findByParams(searchParams);
     }

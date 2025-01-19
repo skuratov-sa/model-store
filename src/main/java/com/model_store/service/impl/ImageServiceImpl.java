@@ -1,7 +1,6 @@
 package com.model_store.service.impl;
 
 import com.amazonaws.services.kms.model.NotFoundException;
-import com.model_store.configuration.property.S3ConfigurationProperties;
 import com.model_store.mapper.ImageMapper;
 import com.model_store.model.base.Image;
 import com.model_store.model.constant.ImageStatus;
@@ -29,7 +28,6 @@ import static java.util.Objects.isNull;
 @Service
 @RequiredArgsConstructor
 public class ImageServiceImpl implements ImageService {
-    private final S3ConfigurationProperties s3properties;
     private final ImageRepository imageRepository;
     private final S3Service s3Service;
     private final ImageMapper imageMapper;
@@ -38,24 +36,22 @@ public class ImageServiceImpl implements ImageService {
 
     public Flux<ImageResponse> findImagesByIds(List<Long> imageIds) {
         return findImagesById(imageIds)
-                .flatMap(image -> s3Service.getFile(
-                        resolveBucket(image.getTag()), image.getFilename())
-                );
+                .flatMap(image -> s3Service.getFile(image.getTag(), image.getFilename()));
     }
 
-    public Flux<Long> findByParticipantId(Long participantId) {
-        return imageRepository.findIdsByEntityIdAndTag(participantId, ImageTag.PARTICIPANT);
+    public Mono<Long> findMainImage(Long entityId, ImageTag tag) {
+        return findActualImages(entityId, tag).next();
     }
 
-    public Flux<Long> findActualByParticipantId(Long participantId) {
-        return imageRepository.findActualIdsByEntity(participantId, ImageTag.PARTICIPANT);
+    public Flux<Long> findActualImages(Long entityId, ImageTag tag) {
+        return imageRepository.findActualIdsByEntity(entityId, tag);
     }
 
     @Transactional
     public Mono<Void> updateImagesStatus(List<Long> imageIds, Long entityId, ImageStatus status, ImageTag tag) {
         return Flux.fromIterable(imageIds)
                 .flatMap(imageRepository::findById)
-                .filter(image -> image.getEntityId().equals(entityId) && (isNull(tag) || image.getTag().equals(tag)))
+                .filter(image -> (isNull(tag) || image.getTag().equals(tag)) && (isNull(image.getEntityId()) || isNull(image.getEntityId()) || image.getEntityId().equals(entityId)))
                 .switchIfEmpty(Mono.error(new NotFoundException("Image not found")))
                 .flatMap(image -> {
                     image.setStatus(status);
@@ -68,16 +64,21 @@ public class ImageServiceImpl implements ImageService {
 
     private @NotNull Flux<Image> findImagesById(List<Long> imageIds) {
         return Flux.fromIterable(imageIds)
-                .flatMap(imageRepository::findById);
+                .flatMap(imageRepository::findById)
+                .filter(image -> image.getStatus().equals(ImageStatus.ACTIVE));
     }
 
 
     public Flux<Long> saveImages(ImageTag tag, Long entityId, List<FilePart> files) {
         return Flux.fromIterable(files)
-                .flatMap(file -> s3Service.uploadFile(file, resolveBucket(tag)))
+                .flatMap(file -> s3Service.uploadFile(file, tag))
                 .map(name -> imageMapper.toImage(entityId, tag, name, ImageStatus.TEMPORARY))
                 .flatMap(imageRepository::save)
                 .map(Image::getId);
+    }
+
+    public Mono<Void> deleteImagesByEntityId(Long entityId, ImageTag tag) {
+        return imageRepository.updateStatusById(entityId, tag, ImageStatus.DELETE);
     }
 
     @Transactional
@@ -94,13 +95,22 @@ public class ImageServiceImpl implements ImageService {
         return switch (tag) {
             case PARTICIPANT -> participantRepository.findActualParticipant(entityId).hasElement();
             case PRODUCT -> productRepository.findActualProduct(entityId).hasElement();
-            default -> Mono.just(false);
+            case SYSTEM, ORDER -> Mono.just(true);
         };
+    }
+
+    @Override
+    public Flux<Image> findTemporaryImages() {
+        return imageRepository.findImagesToDelete();
+    }
+
+    public Mono<Void> deleteById(Long id) {
+        return imageRepository.deleteById(id);
     }
 
     private Mono<Void> removeImages(List<Long> ids) {
         return findImagesById(ids) // Найдем изображения по id
-                .flatMap(image -> s3Service.deleteFile(resolveBucket(image.getTag()), image.getFilename())) // Удаляем файл из S3
+                .flatMap(image -> s3Service.deleteFile(image.getTag(), image.getFilename())) // Удаляем файл из S3
                 .then(Mono.defer(() -> imageRepository.deleteAllById(ids))) // Удаляем все записи из базы данных
                 .onErrorResume(e -> {
                     // Здесь можно добавить обработку ошибок, например логирование или возврат ошибки
@@ -110,13 +120,4 @@ public class ImageServiceImpl implements ImageService {
     }
 
 
-    public String resolveBucket(ImageTag tag) {
-        String bucketName = "";
-        switch (tag) {
-            case PARTICIPANT -> bucketName = s3properties.getParticipantBucketName();
-            case PRODUCT -> bucketName = s3properties.getProductBucketName();
-            default -> bucketName = s3properties.getErrorBucketName();
-        }
-        return bucketName;
-    }
 }

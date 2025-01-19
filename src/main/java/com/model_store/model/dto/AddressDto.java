@@ -11,4 +11,5 @@ public class AddressDto {
     private String street;
     private String houseNumber;
     private String apartmentNumber;
+    private Integer index;
 }

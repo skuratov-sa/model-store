@@ -21,4 +21,9 @@ public class Address {
     private String street;
     private String houseNumber;
     private String apartmentNumber;
+    private Integer index;
+
+    public String getFullAddress() {
+        return country + " г. " + city + " ул. " + street + " " + houseNumber + " кв. " + apartmentNumber + ", индекс: " + index;
+    }
 }

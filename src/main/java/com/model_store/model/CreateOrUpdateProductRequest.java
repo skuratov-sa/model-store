@@ -9,7 +9,8 @@ import java.util.List;
 public class CreateOrUpdateProductRequest {
     private String name;
     private String description;
-    private Double price;
+    private Float price;
+    private Long categoryId;
     private Integer count;
     private Currency currency;
     private Long participantId;

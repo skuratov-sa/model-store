@@ -12,7 +12,7 @@ import java.util.Objects;
 @Getter
 @Setter
 public class CategoryResponse {
-    private final Integer id;
+    private final Long id;
     private final String name;
     private List<CategoryResponse> childs = new ArrayList<>();
 

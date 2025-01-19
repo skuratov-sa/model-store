@@ -51,6 +51,6 @@ public class ImageController {
     @Operation(summary = "Удалить список картинок")
     @DeleteMapping(path = "/image")
     public Mono<Void> deleteImages(@RequestParam @Parameter(description = "Идентификаторы картинок", required = true) List<Long> ids) {
-        return imageService.updateImagesStatus(ids, null, ImageStatus.DELETE, ImageTag.PRODUCT);
+        return imageService.updateImagesStatus(ids, null, ImageStatus.DELETE, null);
     }
 }

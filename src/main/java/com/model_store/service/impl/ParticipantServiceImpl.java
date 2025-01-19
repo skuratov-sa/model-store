@@ -2,21 +2,31 @@ package com.model_store.service.impl;
 
 import com.amazonaws.services.kms.model.NotFoundException;
 import com.model_store.exeption.ParticipantNotFoundException;
+import com.model_store.mapper.AccountMapper;
+import com.model_store.mapper.AddressMapper;
 import com.model_store.mapper.ParticipantMapper;
+import com.model_store.mapper.TransferMapper;
 import com.model_store.model.CreateOrUpdateParticipantRequest;
 import com.model_store.model.FindParticipantRequest;
 import com.model_store.model.base.Participant;
 import com.model_store.model.base.ParticipantAddress;
 import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
+import com.model_store.model.constant.TransferMoneyType;
+import com.model_store.model.dto.AccountDto;
 import com.model_store.model.dto.AddressDto;
 import com.model_store.model.dto.FindParticipantsDto;
 import com.model_store.model.dto.FullParticipantDto;
 import com.model_store.model.dto.SocialNetworkDto;
+import com.model_store.model.dto.TransferDto;
+import com.model_store.model.dto.UserInfoDto;
+import com.model_store.repository.AccountRepository;
 import com.model_store.repository.AddressRepository;
+import com.model_store.repository.OrderRepository;
 import com.model_store.repository.ParticipantAddressRepository;
 import com.model_store.repository.ParticipantRepository;
 import com.model_store.repository.SocialNetworkRepository;
+import com.model_store.repository.TransferRepository;
 import com.model_store.service.ImageService;
 import com.model_store.service.ParticipantService;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +40,7 @@ import java.util.List;
 
 import static com.model_store.model.constant.ParticipantStatus.ACTIVE;
 import static com.model_store.model.constant.ParticipantStatus.DELETED;
+import static com.model_store.service.util.UtilService.getExpensive;
 import static java.util.Objects.isNull;
 
 @Slf4j
@@ -38,31 +49,69 @@ import static java.util.Objects.isNull;
 public class ParticipantServiceImpl implements ParticipantService {
     private final ImageService imageService;
     private final ParticipantMapper participantMapper;
+    private final AccountMapper accountMapper;
+    private final TransferMapper transferMapper;
+    private final AddressMapper addressMapper;
 
     private final ParticipantAddressRepository participantAddressRepository;
     private final SocialNetworkRepository socialNetworkRepository;
     private final ParticipantRepository participantRepository;
     private final AddressRepository addressRepository;
+    private final AccountRepository accountRepository;
+    private final TransferRepository transferRepository;
+    private final OrderRepository orderRepository;
 
-    public Mono<FullParticipantDto> findById(Long id) {
-        return participantRepository.findById(id)
-                .flatMap(participant ->
-                        imageService.findActualByParticipantId(id).collectList()
-                                .map(imageIds -> participantMapper.toFullParticipantDto(participant, imageIds))
+    @Override
+    public Mono<UserInfoDto> findShortInfo(Long id) {
+        return participantRepository.findActualParticipant(id)
+                .flatMap(p -> imageService.findMainImage(id, ImageTag.PARTICIPANT).defaultIfEmpty(-1L)
+                        .map(imageId -> participantMapper.toUserInfoDto(p, imageId == -1 ? null : imageId))
+                );
+    }
+
+    public Mono<FullParticipantDto> findActualById(Long id) {
+        return Mono.zip(
+                        participantRepository.findActualParticipant(id),
+                        addressRepository.findByParticipantId(id).collectList().defaultIfEmpty(List.of()),
+                        accountRepository.findByParticipantId(id).collectList().defaultIfEmpty(List.of()),
+                        transferRepository.findByParticipantId(id).collectList().defaultIfEmpty(List.of()),
+                        imageService.findActualImages(id, ImageTag.PARTICIPANT).collectList().defaultIfEmpty(List.of())
+                )
+                .map(tuple5 ->
+                        participantMapper.toFullParticipantDto(tuple5.getT1(), tuple5.getT2(), tuple5.getT3(), tuple5.getT4(), tuple5.getT5())
                 );
     }
 
     public Flux<FindParticipantsDto> findByParams(FindParticipantRequest searchParams) {
         return participantRepository.findByParams(searchParams)
-                .flatMap(participant ->
-                        imageService.findActualByParticipantId(participant.getId())
-                                .collectList()
-                                .map(imageList -> {
-                                    Long imageId = imageList.isEmpty() ? null : imageList.getFirst();
-                                    return participantMapper.toFindParticipantDto(participant, imageId);
-                                })
-                );
+                .flatMap(participant -> {
+                    // Создание DTO
+                    Mono<FindParticipantsDto> dtoMono = imageService.findMainImage(participant.getId(), ImageTag.PARTICIPANT)
+                            .defaultIfEmpty(-1L)
+                            .map(imageId -> {
+                                FindParticipantsDto dto = participantMapper.toFindParticipantDto(participant, imageId == -1L ? null : imageId);
+                                dto.setExperience(getExpensive(participant.getCreatedAt())); // Рассчитываем стаж
+                                dto.setCountry(searchParams.getCountry()); // Устанавливаем страну
+                                return dto;
+                            });
+
+                    // Обогащение DTO
+                    return dtoMono.flatMap(dto ->
+                            orderRepository.findCompletedCountBySellerId(dto.getId())
+                                    .defaultIfEmpty(0)
+                                    .doOnNext(dto::setOrderCompletedCount)
+                                    .then(orderRepository.findCompletedCountByCustomerId(dto.getId())
+                                            .defaultIfEmpty(0)
+                                            .doOnNext(dto::setOrderPurchaseCount))
+                                    .thenMany(accountRepository.findTypeByParticipantId(dto.getId())
+                                            .map(TransferMoneyType::valueOf)
+                                            .collectList()
+                                            .doOnNext(dto::setTransferMoneys))
+                                    .then(Mono.just(dto))
+                    );
+                });
     }
+
 
     @Transactional
     public Mono<Void> createParticipant(CreateOrUpdateParticipantRequest request) {
@@ -72,7 +121,9 @@ public class ParticipantServiceImpl implements ParticipantService {
                 .flatMap(savedParticipant -> {
                     Mono<Void> savedAddressesMono = saveAddresses(request.getAddress(), savedParticipant.getId());
                     Mono<Void> savedSocialNetworksMono = saveSocialNetworks(request.getSocialNetworks(), savedParticipant.getId());
-                    return Mono.when(savedAddressesMono, savedSocialNetworksMono).then();
+                    Mono<Void> savedAccountsMono = saveAccounts(request.getAccounts(), savedParticipant.getId());
+                    Mono<Void> savedTransfersMono = saveTransfers(request.getTransfers(), savedParticipant.getId());
+                    return Mono.when(savedAddressesMono, savedSocialNetworksMono, savedAccountsMono, savedTransfersMono).then();
                 });
     }
 
@@ -91,11 +142,13 @@ public class ParticipantServiceImpl implements ParticipantService {
                     Participant updatedParticipant = participantMapper.toParticipant(request);
                     updatedParticipant.setId(existingParticipant.getId());
 
+                    Mono<Void> savedAccountsMono = saveAccounts(request.getAccounts(), updatedParticipant.getId());
+                    Mono<Void> savedTransfersMono = saveTransfers(request.getTransfers(), updatedParticipant.getId());
                     Mono<Void> savedAddressesMono = saveAddresses(request.getAddress(), updatedParticipant.getId());
                     Mono<Void> savedSocialNetworksMono = saveSocialNetworks(request.getSocialNetworks(), updatedParticipant.getId());
                     Mono<Void> updateImagesStatus = updateImagesStatus(request.getImageIds(), existingParticipant.getId());
 
-                    return Mono.when(savedAddressesMono, savedSocialNetworksMono, updateImagesStatus)
+                    return Mono.when(savedAddressesMono, savedSocialNetworksMono, updateImagesStatus, savedAccountsMono, savedTransfersMono)
                             .then(Mono.defer(() -> participantRepository.save(updatedParticipant)))
                             .doOnError(throwable -> log.error("Пользователь {} не сохранен причина: {}", updatedParticipant.getId(), throwable.getMessage()))
                             .doOnSuccess(participantId -> log.info("Пользователь {} успешно сохоанен", participantId))
@@ -113,17 +166,27 @@ public class ParticipantServiceImpl implements ParticipantService {
                 }).then();
     }
 
+
     private Mono<Void> saveAddresses(List<AddressDto> addresses, Long participantId) {
         if (addresses == null || addresses.isEmpty()) {
             return Mono.empty();
         }
-        return addressRepository.saveAll(participantMapper.toAddress(addresses))
-                .flatMap(address -> participantAddressRepository.save(ParticipantAddress.builder()
-                        .addressId(address.getId())
-                        .participantId(participantId)
-                        .build())
+
+        return participantAddressRepository.findByParticipantId(participantId)
+                .flatMap(participantAddress ->
+                        participantAddressRepository.deleteById(participantAddress.getId())
+                                .thenMany(addressRepository.deleteById(participantAddress.getAddressId()))
+                ).thenMany(Flux.fromIterable(addresses) // Обрабатываем новые адреса
+                        .map(addressMapper::toAddress) // Преобразуем DTO в Address
+                        .flatMap(addressRepository::save) // Сохраняем новые адреса
+                        .flatMap(savedAddress -> participantAddressRepository.save( // Создаём новые связи
+                                ParticipantAddress.builder()
+                                        .addressId(savedAddress.getId())
+                                        .participantId(participantId)
+                                        .build()
+                        ))
                 )
-                .doOnError(throwable -> log.error("Ошибка при сохраниении ParticipantAddress: {}", throwable.getMessage()))
+                .doOnError(throwable -> log.error("Ошибка при сохранении адресов: {}", throwable.getMessage()))
                 .then();
     }
 
@@ -131,11 +194,31 @@ public class ParticipantServiceImpl implements ParticipantService {
         if (socialNetworksDto == null || socialNetworksDto.isEmpty()) {
             return Mono.empty();
         }
+        return socialNetworkRepository.findByParticipantId(participantId).collectList()
+                .map(socialNetworks -> participantMapper.toSocialNetwork(socialNetworksDto, socialNetworks, participantId))
+                .flatMapMany(socialNetworkRepository::saveAll)
+                .then();
+    }
 
-        return Flux.fromIterable(socialNetworksDto)
-                .map(dto -> participantMapper.toSocialNetwork(dto, participantId))
-                .flatMap(socialNetworkRepository::save)
-                .doOnError(throwable -> log.error("Ошибка при сохраниении SocialNetwork: {}", throwable.getMessage()))
+
+    private Mono<Void> saveAccounts(List<AccountDto> accountDtos, Long participantId) {
+        if (accountDtos == null || accountDtos.isEmpty()) {
+            return Mono.empty();
+        }
+        return accountRepository.findByParticipantId(participantId).collectList()
+                .map(accounts -> accountMapper.toAccount(accountDtos, accounts, participantId))
+                .flatMapMany(accountRepository::saveAll)
+                .then();
+    }
+
+    private Mono<Void> saveTransfers(List<TransferDto> transferDtos, Long participantId) {
+        if (transferDtos == null || transferDtos.isEmpty()) {
+            return Mono.empty();
+        }
+
+        return transferRepository.findByParticipantId(participantId).collectList()
+                .map(accounts -> transferMapper.toTransfer(transferDtos, accounts, participantId))
+                .flatMapMany(transferRepository::saveAll)
                 .then();
     }
 
@@ -145,5 +228,4 @@ public class ParticipantServiceImpl implements ParticipantService {
         }
         return imageService.updateImagesStatus(imageIds, id, ImageStatus.ACTIVE, ImageTag.PARTICIPANT);
     }
-
 }

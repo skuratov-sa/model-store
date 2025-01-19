@@ -2,9 +2,13 @@ package com.model_store.mapper;
 
 import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.base.Product;
+import com.model_store.model.dto.CategoryDto;
+import com.model_store.model.dto.GetProductResponse;
+import com.model_store.model.dto.ProductDto;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
+import java.util.List;
 import java.util.Optional;
 
 @Mapper(componentModel = "spring")
@@ -21,8 +25,17 @@ public interface ProductMapper {
                 .price(Optional.ofNullable(productRequest.getPrice()).orElse(product.getPrice()))
                 .currency(Optional.ofNullable(productRequest.getCurrency()).orElse(product.getCurrency()))
                 .originality(Optional.ofNullable(productRequest.getOriginality()).orElse(product.getOriginality()))
+                .categoryId(Optional.ofNullable(productRequest.getCategoryId()).orElse(product.getCategoryId()))
                 .participantId(product.getParticipantId())
                 .status(product.getStatus())
                 .build();
     }
+
+    @Mapping(target = "id", source = "product.id")
+    @Mapping(target = "name", source = "product.name")
+    ProductDto toProductDto(Product product, CategoryDto category, Long imageId);
+
+    @Mapping(target = "id", source = "product.id")
+    @Mapping(target = "name", source = "product.name")
+    GetProductResponse toGetProductResponse(Product product, CategoryDto category, List<Long> imageIds);
 }
