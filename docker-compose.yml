@@ -20,7 +20,6 @@ services:
       echo \"cron.database_name = 'model_store'\" >> /usr/share/postgresql/postgresql.conf.sample && \
       docker-entrypoint.sh postgres
       "
-
   minio:
     image: quay.io/minio/minio:RELEASE.2022-02-18T01-50-10Z
     volumes:
@@ -34,47 +33,26 @@ services:
       MINIO_ADDRESS: ':9000'
       MINIO_CONSOLE_ADDRESS: ':9001'
     command: minio server /data
-  flyway:
-    image: flyway/flyway:latest
+  backend:
+    image: ready555/model_store:v1.4
     depends_on:
       - db
-    environment:
-      FLYWAY_URL: jdbc:postgresql://db:5432/model_store
-      FLYWAY_USER: root
-      FLYWAY_PASSWORD: root
-      FLYWAY_LOCATIONS: filesystem:/flyway/sql  # Указываем путь, который будет доступен в контейнере
-    volumes:
-      - ./app/src/main/resources/db/migration:/flyway/sql  # Монтируем миграции из app
-    command: [ "migrate" ]  # Просто команда для выполнения миграций
-    networks:
-      - app-network
-  app:
-    image: ready555/model_store:v1.3
-    depends_on:
-      - db
-      - flyway  # Убедитесь, что контейнер Flyway запускается перед приложением
       - minio
     ports:
-      - "8081:8080"
+      - "8081:8081"
     environment:
       SPRING_R2DBC_URL: r2dbc:postgresql://db:5432/model_store
       SPRING_R2DBC_USERNAME: root
       SPRING_R2DBC_PASSWORD: root
 
-      SPRING_S3_ACCESS_KEY: minio_user
-      SPRING_S3_SECRET_KEY: minio_password
-      SPRING_S3_ENDPOINT: http://minio:9000  # Перекроет значение из application.yml
-      SPRING_S3_REGION: us-east-1
-      SPRING_S3_PARTICIPANT_BUCKET_NAME: participant-bucket # Папка фотографий пользователей
-      SPRING_S3_PRODUCT_BUCKET_NAME: product-bucket # Папка фотографий продуктов
-
-      # Настройки для CORS
-      CORS_ALLOWED_ORIGINS: "http://localhost:8081"
-      CORS_ALLOWED_METHODS: "GET, POST, PUT, DELETE"
-      CORS_ALLOWED_HEADERS: "Authorization, Content-Type"
-    networks:
-      - app-network
-
+      S3_ACCESS-KEY: minio_user
+      S3_SECRET-KEY: minio_password
+      S3_ENDPOINT: http://minio:9000  # Перекроет значение из application.yml
+      S3_REGION: us-east-1
+      S3_PARTICIPANT_BUCKET_NAME: participant-bucket # Папка фотографий пользователей
+      S3_PRODUCT_BUCKET_NAME: product-bucket # Папка фотографий продуктов
+      S3_SYSTEM_BUCKET_NAME: system-bucket  # Папка системный фото
+      S3_ORDER_BUCKET_NAME: order-bucket   # Папка доказательств (оплаты, споров) пользователей
 networks:
   app-network:
     driver: bridge
