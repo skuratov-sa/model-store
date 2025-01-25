@@ -1,0 +1,5 @@
+mydomain.ru {
+    reverse_proxy pgadmin
+    tls /root/certs/caddy-cert.pem /root/certs/caddy-key.pem
+    # tls internal
+}

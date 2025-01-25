@@ -18,3 +18,5 @@ target/
 # Исключаем системы контроля версий
 .git/
 .gitignore
+
+src/tests/
