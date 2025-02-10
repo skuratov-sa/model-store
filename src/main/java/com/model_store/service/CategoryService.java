@@ -12,4 +12,6 @@ public interface CategoryService {
     Mono<Long> createCategory(String name, Long parentId);
 
     Mono<CategoryDto> findById(Long categoryId);
+
+    Mono<Void> updateCategory(Long categoryId, String name);
 }

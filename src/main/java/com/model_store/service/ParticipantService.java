@@ -13,7 +13,7 @@ public interface ParticipantService {
 
     Flux<FindParticipantsDto> findByParams(FindParticipantRequest searchParams);
 
-    Mono<Void> createParticipant(CreateOrUpdateParticipantRequest request);
+    Mono<Long> createParticipant(CreateOrUpdateParticipantRequest request);
 
     /**
      * Сохраняем адреса соц сети картинки (Если они есть)

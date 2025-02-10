@@ -4,6 +4,6 @@ import lombok.Data;
 
 @Data
 public class PriceRange {
-    private Integer minPrice;
-    private Integer maxPrice;
+    private int minPrice;
+    private int maxPrice;
 }

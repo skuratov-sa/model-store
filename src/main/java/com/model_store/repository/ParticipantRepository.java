@@ -11,6 +11,8 @@ import reactor.core.publisher.Mono;
 @Repository
 public interface ParticipantRepository extends ReactiveCrudRepository<Participant, Long> {
 
+    Mono<Participant> findByLogin(String login);
+
     @Query(value = """
             SELECT DISTINCT p.*
             FROM participant p

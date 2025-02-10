@@ -1,6 +1,7 @@
 package com.model_store.model.base;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.model_store.model.constant.ParticipantRole;
 import com.model_store.model.constant.ParticipantStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,6 +26,9 @@ public class Participant {
     private String fullName;
     private String phoneNumber;
     private ParticipantStatus status;
+
+    private String password;
+    private ParticipantRole role = ParticipantRole.USER; // Роль по умолчанию для участника
     /**
      * Крайний срок ожидания отправки
      */

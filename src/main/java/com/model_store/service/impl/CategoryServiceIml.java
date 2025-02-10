@@ -36,4 +36,12 @@ public class CategoryServiceIml implements CategoryService {
         return categoryRepository.findById(categoryId)
                 .map(categoryMapper::toCategoryDto);
     }
+
+    @Override
+    public Mono<Void> updateCategory(Long categoryId, String name) {
+        return categoryRepository.findById(categoryId)
+                .doOnNext(category -> category.setName(name))
+                .flatMap(categoryRepository::save)
+                .then();
+    }
 }

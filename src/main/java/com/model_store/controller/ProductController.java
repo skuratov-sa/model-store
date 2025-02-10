@@ -2,8 +2,10 @@ package com.model_store.controller;
 
 import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.FindProductRequest;
+import com.model_store.model.base.Product;
 import com.model_store.model.dto.GetProductResponse;
 import com.model_store.model.dto.ProductDto;
+import com.model_store.model.page.PagedResult;
 import com.model_store.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +36,7 @@ public class ProductController {
 
     @Operation(summary = "Поиск списка товаров")
     @PostMapping(path = "/products/find")
-    public Flux<ProductDto> findProducts(@RequestBody FindProductRequest searchParams) {
+    public Mono<PagedResult<ProductDto>> findProducts(@RequestBody FindProductRequest searchParams) {
         return productService.findByParams(searchParams);
     }
 
@@ -58,7 +60,7 @@ public class ProductController {
 
     @Operation(summary = "Получения списка избранных товаров пользователя")
     @PostMapping("/favorites/{participantId}")
-    public Flux<GetProductResponse> findFavorites(@PathVariable Long participantId, @RequestBody FindProductRequest searchParams) {
+    public Flux<PagedResult<Product>> findFavorites(@PathVariable Long participantId, @RequestBody FindProductRequest searchParams) {
         return productService.findFavoriteByParams(participantId, searchParams);
     }
 

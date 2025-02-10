@@ -36,7 +36,7 @@ public class ParticipantController {
 
     @Operation(summary = "Создать пользователя")
     @PostMapping(path = "/participant")
-    public Mono<Void> createParticipant(@RequestBody CreateOrUpdateParticipantRequest request) {
+    public Mono<Long> createParticipant(@RequestBody CreateOrUpdateParticipantRequest request) {
         return participantService.createParticipant(request);
     }
 
@@ -48,7 +48,7 @@ public class ParticipantController {
     }
 
     @Operation(summary = "Удалить пользователя по id")
-    @DeleteMapping(path = "/participant/{id}")
+    @DeleteMapping(path = "/admin/actions/participant/{id}")
     public Mono<Void> deleteParticipant(@PathVariable Long id) {
         return participantService.deleteParticipant(id);
     }

@@ -6,6 +6,7 @@ import com.model_store.model.base.Address;
 import com.model_store.model.base.Participant;
 import com.model_store.model.base.SocialNetwork;
 import com.model_store.model.base.Transfer;
+import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.model.dto.AddressDto;
 import com.model_store.model.dto.FindParticipantsDto;
 import com.model_store.model.dto.FullParticipantDto;
@@ -21,7 +22,7 @@ import java.util.stream.Collectors;
 
 @Mapper(componentModel = "spring")
 public interface ParticipantMapper {
-    Participant toParticipant(CreateOrUpdateParticipantRequest request);
+    Participant toParticipant(CreateOrUpdateParticipantRequest request, ParticipantStatus status);
 
     List<Address> toAddress(List<AddressDto> addressDto);
 
@@ -48,4 +49,14 @@ public interface ParticipantMapper {
     }
 
     UserInfoDto toUserInfoDto(Participant participant, Long imageId);
+
+    default Participant toParticipant(String login, String mail, String fullName, String passwordEncoder) {
+        return Participant.builder()
+                .login(login)
+                .password(passwordEncoder)
+                .fullName(fullName)
+                .mail(mail)
+                .status(ParticipantStatus.ACTIVE)  // Указываем статус
+                .build();
+    }
 }

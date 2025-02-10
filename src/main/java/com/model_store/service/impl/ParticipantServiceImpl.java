@@ -31,6 +31,7 @@ import com.model_store.service.ImageService;
 import com.model_store.service.ParticipantService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
@@ -61,6 +62,8 @@ public class ParticipantServiceImpl implements ParticipantService {
     private final TransferRepository transferRepository;
     private final OrderRepository orderRepository;
 
+    private final PasswordEncoder passwordEncoder;
+
     @Override
     public Mono<UserInfoDto> findShortInfo(Long id) {
         return participantRepository.findActualParticipant(id)
@@ -69,6 +72,7 @@ public class ParticipantServiceImpl implements ParticipantService {
                 );
     }
 
+    @Override
     public Mono<FullParticipantDto> findActualById(Long id) {
         return Mono.zip(
                         participantRepository.findActualParticipant(id),
@@ -114,16 +118,22 @@ public class ParticipantServiceImpl implements ParticipantService {
 
 
     @Transactional
-    public Mono<Void> createParticipant(CreateOrUpdateParticipantRequest request) {
-        Participant participant = participantMapper.toParticipant(request);
+    public Mono<Long> createParticipant(CreateOrUpdateParticipantRequest request) {
+        Participant participant = participantMapper.toParticipant(request, ACTIVE);
 
-        return participantRepository.save(participant)
-                .flatMap(savedParticipant -> {
-                    Mono<Void> savedAddressesMono = saveAddresses(request.getAddress(), savedParticipant.getId());
-                    Mono<Void> savedSocialNetworksMono = saveSocialNetworks(request.getSocialNetworks(), savedParticipant.getId());
-                    Mono<Void> savedAccountsMono = saveAccounts(request.getAccounts(), savedParticipant.getId());
-                    Mono<Void> savedTransfersMono = saveTransfers(request.getTransfers(), savedParticipant.getId());
-                    return Mono.when(savedAddressesMono, savedSocialNetworksMono, savedAccountsMono, savedTransfersMono).then();
+        return participantRepository.findByLogin(request.getLogin())
+                .flatMap(existingParticipant -> Mono.error(new RuntimeException("Participant already exists")))
+                .switchIfEmpty(Mono.defer(() -> {
+                    participant.setPassword(passwordEncoder.encode(request.getPassword()));
+                    return participantRepository.save(participant).map(Participant::getId);
+                }))
+                .flatMap(participantId -> {
+                    Mono<Void> savedAddressesMono = saveAddresses(request.getAddress(), (Long) participantId);
+                    Mono<Void> savedSocialNetworksMono = saveSocialNetworks(request.getSocialNetworks(), (Long) participantId);
+                    Mono<Void> savedAccountsMono = saveAccounts(request.getAccounts(), (Long) participantId);
+                    Mono<Void> savedTransfersMono = saveTransfers(request.getTransfers(), (Long) participantId);
+                    return Mono.when(savedAddressesMono, savedSocialNetworksMono, savedAccountsMono, savedTransfersMono)
+                            .thenReturn((Long) participantId);
                 });
     }
 
@@ -139,7 +149,7 @@ public class ParticipantServiceImpl implements ParticipantService {
                 .filter(participant -> ACTIVE.equals(participant.getStatus()))
                 .switchIfEmpty(Mono.error(new ParticipantNotFoundException(id)))
                 .flatMap(existingParticipant -> {
-                    Participant updatedParticipant = participantMapper.toParticipant(request);
+                    Participant updatedParticipant = participantMapper.toParticipant(request, ACTIVE);
                     updatedParticipant.setId(existingParticipant.getId());
 
                     Mono<Void> savedAccountsMono = saveAccounts(request.getAccounts(), updatedParticipant.getId());

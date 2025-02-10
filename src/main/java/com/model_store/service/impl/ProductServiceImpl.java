@@ -11,6 +11,7 @@ import com.model_store.model.constant.ImageTag;
 import com.model_store.model.constant.ProductStatus;
 import com.model_store.model.dto.GetProductResponse;
 import com.model_store.model.dto.ProductDto;
+import com.model_store.model.page.PagedResult;
 import com.model_store.repository.ProductFavoriteRepository;
 import com.model_store.repository.ProductRepository;
 import com.model_store.service.CategoryService;
@@ -63,30 +64,34 @@ public class ProductServiceImpl implements ProductService {
                 );
     }
 
-    public Flux<ProductDto> findByParams(FindProductRequest searchParams) {
-        return productRepository.findByParams(searchParams)
+    public Mono<PagedResult<ProductDto>> findByParams(FindProductRequest searchParams) {
+        // 1. Получаем список продуктов
+        Mono<List<ProductDto>> products = productRepository.findByParams(searchParams, null)
                 .flatMap(product -> categoryService.findById(product.getCategoryId())
                         .zipWith(imageService.findMainImage(product.getId(), ImageTag.PRODUCT).defaultIfEmpty(-1L))
-                        .map(tuple2 ->
-                                productMapper.toProductDto(product, tuple2.getT1(), tuple2.getT2() == -1L ? null : tuple2.getT2())
-                        )
-                );
+                        .map(tuple -> productMapper.toProductDto(product, tuple.getT1(), tuple.getT2() == -1L ? null : tuple.getT2()))
+                ).collectList();
+
+        // 2. Получаем общее количество
+        Mono<Integer> totalCount = productRepository.findCountBySearchParams(searchParams, null).defaultIfEmpty(0);
+
+        return products.zipWith(totalCount)
+                .map(tuple -> new PagedResult<>(tuple.getT1(), tuple.getT2(), searchParams.getPageable()));
     }
 
-    public Flux<GetProductResponse> findFavoriteByParams(Long participantId, FindProductRequest searchParams) {
+    public Flux<PagedResult<Product>> findFavoriteByParams(Long participantId, FindProductRequest searchParams) {
+
         return productFavoriteRepository.findByParticipantId(participantId)
                 .map(ProductFavorite::getProductId)
-                .flatMap(id -> productRepository.findByParams(searchParams, List.of(id)))
-                .flatMap(product ->
-                        imageService.findMainImage(product.getId(), ImageTag.PRODUCT)
-                                .defaultIfEmpty(-1L)
-                                .flatMap(imageId ->
-                                        categoryService.findById(product.getCategoryId())
-                                                .map(category ->
-                                                        productMapper.toGetProductResponse(product, category, imageId == -1L ? List.of() : List.of(imageId))
-                                                )
-                                )
-                );
+                .collectList()
+                .flatMapMany(productIds -> {
+                    var monoProducts = productRepository.findByParams(searchParams, productIds.toArray(Long[]::new)).collectList();
+                    var monoTotalCount = productRepository.findCountBySearchParams(searchParams, null).defaultIfEmpty(0);
+
+                    return monoProducts.zipWith(monoTotalCount)
+                            .map(tuple -> new PagedResult<>(tuple.getT1(), tuple.getT2(), searchParams.getPageable()));
+
+                });
     }
 
     public Mono<Void> addToFavorites(Long participantId, Long productId) {

@@ -16,6 +16,7 @@ public class UtilService {
             case RUSSIAN_POST -> 1L;
             case PRODUCT_PICKUP -> 2L;
             case TRANSPORT_COMPANY -> 3L;
+            case FREE_POST -> 4L;
         };
     }
 

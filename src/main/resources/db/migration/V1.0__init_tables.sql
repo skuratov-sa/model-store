@@ -26,6 +26,12 @@ CREATE TYPE participant_status AS enum (
     );
 CREATE CAST (character varying AS participant_status) WITH INOUT AS ASSIGNMENT;
 
+CREATE TYPE participant_role AS enum (
+    'USER',
+    'ADMIN'
+    );
+CREATE CAST (character varying AS participant_role) WITH INOUT AS ASSIGNMENT;
+
 CREATE TYPE product_status AS enum (
     'ACTIVE',
     'BLOCKED',
@@ -160,6 +166,8 @@ CREATE TABLE participant
 (
     id               bigserial PRIMARY KEY,
     login            varchar(255) UNIQUE      NOT NULL,
+    password         varchar(500)             NOT NULL,
+    role             participant_role NOT NULL DEFAULT 'USER',
     mail             varchar(255) UNIQUE,
     full_name        varchar(255),
     phone_number     varchar(40),
