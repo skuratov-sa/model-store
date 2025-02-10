@@ -1,12 +1,13 @@
 package com.model_store.configuration;
 
+import com.model_store.configuration.property.ApplicationProperties;
 import com.model_store.model.CustomUserDetails;
 import com.model_store.repository.ParticipantRepository;
+import com.model_store.service.impl.KeyLoader;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.authentication.ReactiveAuthenticationManager;
@@ -26,7 +27,6 @@ import org.springframework.security.oauth2.server.resource.authentication.Reacti
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import reactor.core.publisher.Mono;
 
-import java.nio.file.Files;
 import java.security.KeyFactory;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.X509EncodedKeySpec;
@@ -38,6 +38,7 @@ import java.util.Base64;
 @RequiredArgsConstructor
 public class WebSecurityConfig {
     private final ParticipantRepository participantRepository;
+    private final ApplicationProperties applicationProperties;
 
     @Bean
     public ReactiveUserDetailsService userDetailsService() {
@@ -56,8 +57,7 @@ public class WebSecurityConfig {
 
     @Bean
     public NimbusReactiveJwtDecoder jwtDecoder() throws Exception {
-        ClassPathResource publicKeyResource = new ClassPathResource("keys/public.key");
-        String publicKeyString = new String(Files.readAllBytes(publicKeyResource.getFile().toPath()));
+        String publicKeyString = KeyLoader.loadKey(applicationProperties.getPublicKeyPath());
 
         // Убираем начальные и конечные разделители и пробелы для публичного ключа
         publicKeyString = publicKeyString.replace("-----BEGIN PUBLIC KEY-----", "")

@@ -10,4 +10,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class ApplicationProperties {
     private Integer maxParticipantImages;
     private Integer maxProductImages;
+    private String privateKeyPath;
+    private String publicKeyPath;
 }

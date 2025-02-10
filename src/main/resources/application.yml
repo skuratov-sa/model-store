@@ -44,6 +44,11 @@ springdoc:
   api-docs:
     path: /v3/api-docs
 
+app:
+  max-participant-images: 1
+  max-product-images: 4
+  private-key-path: test/private.pk8
+  public-key-path: test/public.key
 logging:
   level:
     root: INFO

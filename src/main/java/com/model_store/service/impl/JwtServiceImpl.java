@@ -1,16 +1,19 @@
 package com.model_store.service.impl;
 
+import com.model_store.configuration.property.ApplicationProperties;
 import com.model_store.model.CustomUserDetails;
 import com.model_store.service.JwtService;
-import io.jsonwebtoken.*;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jws;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.JwtParser;
+import io.jsonwebtoken.Jwts;
 import io.micrometer.common.lang.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
-import java.nio.file.Files;
 import java.security.KeyFactory;
 import java.security.PrivateKey;
 import java.security.PublicKey;
@@ -29,10 +32,9 @@ public class JwtServiceImpl implements JwtService {
     private PublicKey publicKey;
 
     @Autowired
-    public JwtServiceImpl(ReactiveUserDetailsService userDetailsService) throws Exception {
+    public JwtServiceImpl(ReactiveUserDetailsService userDetailsService, ApplicationProperties applicationProperties) throws Exception {
         // Чтение приватного ключа для верификации JWT
-        ClassPathResource privateKeyResource = new ClassPathResource("keys/private.pk8");
-        String privateKeyString = new String(Files.readAllBytes(privateKeyResource.getFile().toPath()));
+        String privateKeyString = KeyLoader.loadKey(applicationProperties.getPrivateKeyPath());
 
         // Убираем начальные и конечные разделители и пробелы
         privateKeyString = privateKeyString.replace("-----BEGIN PRIVATE KEY-----", "")
@@ -47,8 +49,7 @@ public class JwtServiceImpl implements JwtService {
 
 
         // Чтение публичного ключа для верификации JWT (в формате X.509)
-        ClassPathResource publicKeyResource = new ClassPathResource("keys/public.key");
-        String publicKeyString = new String(Files.readAllBytes(publicKeyResource.getFile().toPath()));
+        String publicKeyString = KeyLoader.loadKey(applicationProperties.getPublicKeyPath());
 
         // Убираем начальные и конечные разделители и пробелы для публичного ключа
         publicKeyString = publicKeyString.replace("-----BEGIN PUBLIC KEY-----", "")

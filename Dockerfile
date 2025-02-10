@@ -19,6 +19,9 @@ RUN chmod +x ./gradlew
 # Выполняем сборку приложения через Gradle Wrapper
 RUN ./gradlew build --no-daemon
 
+# Копируем ключи в контейнер (из папки resources)
+COPY src/main/resources/keys /backend/keys
+
 # Открываем порт для приложения (если ваше приложение работает на порту 8080)
 EXPOSE 8080
 
