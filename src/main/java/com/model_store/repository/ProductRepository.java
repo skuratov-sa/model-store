@@ -55,9 +55,10 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 (:dateTimeFrom IS NULL OR p.created_at >= :dateTimeFrom) AND
                 (:dateTimeTo IS NULL OR p.created_at <= :dateTimeTo) AND
                 (:productIds IS NULL OR p.id = ANY(:productIds)) AND
-                p.status = 'ACTIVE'
+                p.status = 'ACTIVE' AND
+                p.id >= :offset
             ORDER BY p.created_at DESC
-            LIMIT :limit OFFSET :offset;
+            LIMIT :limit
             """)
     Flux<Product> findByParams(
             Long categoryId,
@@ -75,7 +76,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
     default Flux<Product> findByParams(FindProductRequest searchParams, Long[] ids) {
         int limit = Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSize).orElse(50); // limit
         int page = Optional.ofNullable(searchParams.getPageable()).map(Pageable::getPage).orElse(0); // номер страницы
-        int offset = page * Math.max(limit, 50); // offset = page * limit
+        int offset = page * limit; // offset = page * limit
 
         return findByParams(
                 searchParams.getCategoryId(),

@@ -12,6 +12,7 @@ import com.model_store.model.base.Participant;
 import com.model_store.model.base.ParticipantAddress;
 import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
+import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.model.constant.TransferMoneyType;
 import com.model_store.model.dto.AccountDto;
 import com.model_store.model.dto.AddressDto;
@@ -172,6 +173,17 @@ public class ParticipantServiceImpl implements ParticipantService {
                 .switchIfEmpty(Mono.error(new NotFoundException("No participant found with id: " + id)))
                 .flatMap(participant -> {
                     participant.setStatus(DELETED);
+                    return participantRepository.save(participant);
+                }).then();
+    }
+
+    @Override
+    public Mono<Void> updateParticipantStatus(Long participantId, ParticipantStatus status) {
+        return participantRepository.findById(participantId)
+                .filter(participant -> ACTIVE.equals(participant.getStatus()))
+                .switchIfEmpty(Mono.error(new NotFoundException("No participant found with id: " + participantId)))
+                .flatMap(participant -> {
+                    participant.setStatus(status);
                     return participantRepository.save(participant);
                 }).then();
     }

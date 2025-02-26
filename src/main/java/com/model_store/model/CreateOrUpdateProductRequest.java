@@ -13,7 +13,6 @@ public class CreateOrUpdateProductRequest {
     private Long categoryId;
     private Integer count;
     private Currency currency;
-    private Long participantId;
     private String originality;
     private List<Long> imageIds;
 }

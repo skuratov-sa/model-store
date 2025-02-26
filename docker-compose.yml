@@ -34,7 +34,7 @@ services:
       MINIO_CONSOLE_ADDRESS: ':9001'
     command: minio server /data
   backend:
-    image: backend:v1.5
+    image: ready555/model_store:v1.6
     depends_on:
       - db
       - minio
@@ -53,6 +53,11 @@ services:
       S3_PRODUCT_BUCKET_NAME: product-bucket # Папка фотографий продуктов
       S3_SYSTEM_BUCKET_NAME: system-bucket  # Папка системный фото
       S3_ORDER_BUCKET_NAME: order-bucket   # Папка доказательств (оплаты, споров) пользователей
+
+      APP_MAX_PARTICIPANT_IMAGES: 1
+      APP_MAX_PRODUCT_IMAGES: 4
+      APP_PRIVATE_KEY_PATH: /backend/keys/private.pk8
+      APP_PUBLIC_KEY_PATH: /backend/keys/public.key
 networks:
   app-network:
     driver: bridge

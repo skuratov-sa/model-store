@@ -25,6 +25,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.oauth2.server.resource.authentication.ReactiveJwtAuthenticationConverterAdapter;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.web.cors.reactive.CorsConfigurationSource;
 import reactor.core.publisher.Mono;
 
 import java.security.KeyFactory;
@@ -51,6 +52,7 @@ public class WebSecurityConfig {
                                 .fullName(participant.getFullName())
                                 .role(participant.getRole().name())
                                 .password(participant.getPassword())
+                                .status(participant.getStatus())
                                 .build()
                 );
     }
@@ -86,14 +88,17 @@ public class WebSecurityConfig {
 
 
     @Bean
-    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http, NimbusReactiveJwtDecoder jwtDecoder) {
+    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http, NimbusReactiveJwtDecoder jwtDecoder, CorsConfigurationSource corsConfigurationSource) {
         http
+                .cors(cors -> cors.configurationSource(corsConfigurationSource)) // Явно указываем CORS-конфигурацию
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
                 .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers("/auth/login", "/auth/refresh", "/webjars/swagger-ui/**", "/v3/api-docs/**").permitAll() // Эти пути не требуют токен
-                        .pathMatchers(HttpMethod.POST, "/participant").permitAll()
+                        .pathMatchers("/auth/login", "/auth/refresh", "/images", "/dictionary", "/regions").permitAll() // Эти пути не требуют токен
+                        .pathMatchers(HttpMethod.GET,"/categories", "/product/*").permitAll() // Эти пути не требуют токен
+                        .pathMatchers(HttpMethod.POST, "/participant", "/products/find","/participant","/participants/find").permitAll()
                         .pathMatchers("/admin/actions/**").hasAuthority("SCOPE_ADMIN")
                         .anyExchange().authenticated() // Все остальные требуют токен
                 ).oauth2ResourceServer(oauth2 ->

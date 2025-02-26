@@ -2,8 +2,10 @@ package com.model_store.controller;
 
 import com.model_store.model.CreateOrUpdateParticipantRequest;
 import com.model_store.model.FindParticipantRequest;
+import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.model.dto.FindParticipantsDto;
 import com.model_store.model.dto.FullParticipantDto;
+import com.model_store.service.JwtService;
 import com.model_store.service.ParticipantService;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -21,11 +24,13 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class ParticipantController {
     private final ParticipantService participantService;
+    private final JwtService jwtService;
 
-    @Operation(summary = "Поиск пользователя по id")
-    @GetMapping(path = "/participant/{id}")
-    public Mono<FullParticipantDto> getParticipant(@PathVariable Long id) {
-        return participantService.findActualById(id);
+    @Operation(summary = "Личный кабинет пользователя")
+    @GetMapping(path = "/participant")
+    public Mono<FullParticipantDto> getParticipant(@RequestHeader("Authorization") String authorizationHeader) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return participantService.findActualById(participantId);
     }
 
     @Operation(summary = "Поиск пользователей по параметрам")
@@ -41,15 +46,24 @@ public class ParticipantController {
     }
 
     @Operation(summary = "Обновить пользователя по id")
-    @PutMapping(path = "/participant/{id}")
-    public Mono<Void> updateParticipant(@PathVariable Long id,
+    @PutMapping(path = "/participant")
+    public Mono<Void> updateParticipant(@RequestHeader("Authorization") String authorizationHeader,
                                         @RequestBody CreateOrUpdateParticipantRequest request) {
-        return participantService.updateParticipant(id, request);
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return participantService.updateParticipant(participantId, request);
     }
 
-    @Operation(summary = "Удалить пользователя по id")
-    @DeleteMapping(path = "/admin/actions/participant/{id}")
-    public Mono<Void> deleteParticipant(@PathVariable Long id) {
-        return participantService.deleteParticipant(id);
+    @Operation(summary = "Удалить анкету текущего пользователя")
+    @DeleteMapping(path = "/participant")
+    public Mono<Void> deleteParticipant(@RequestHeader("Authorization") String authorizationHeader) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return participantService.updateParticipantStatus(participantId, ParticipantStatus.DELETED);
+    }
+
+
+    @Operation(summary = "Изменить статус пользователя")
+    @PutMapping("/admin/actions/participants/{participantId}/status")
+    public Mono<Void> blockedParticipant(@PathVariable Long participantId) {
+        return participantService.updateParticipantStatus(participantId, ParticipantStatus.BLOCKED);
     }
 }

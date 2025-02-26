@@ -12,7 +12,6 @@ public class S3ConfigurationProperties {
     private String accessKey;
     private String secretKey;
     private String endpoint;
-    private String bucket;
     private String participantBucketName;
     private String productBucketName;
     private String systemBucketName;
@@ -22,6 +21,7 @@ public class S3ConfigurationProperties {
 
     @PostConstruct
     public void init() {
-        log.info("S3 INIT: accessKey = {} endpoint = {}, bucket = {},region = {}", accessKey, endpoint, bucket, region);
+        log.info("S3 INIT: accessKey = {} endpoint = {},region = {}, participantBucketName = {}, productBucketName = {}, systemBucketName = {}, orderBucketName = {}",
+                accessKey, endpoint, region, participantBucketName, productBucketName, systemBucketName, orderBucketName);
     }
 }

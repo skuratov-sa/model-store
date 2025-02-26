@@ -1,6 +1,7 @@
 package com.model_store.service.impl;
 
 import com.model_store.configuration.property.ApplicationProperties;
+import com.model_store.exception.InvalidTokenException;
 import com.model_store.model.CustomUserDetails;
 import com.model_store.service.JwtService;
 import io.jsonwebtoken.Claims;
@@ -9,6 +10,7 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.JwtParser;
 import io.jsonwebtoken.Jwts;
 import io.micrometer.common.lang.NonNull;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
 import org.springframework.stereotype.Service;
@@ -25,46 +27,21 @@ import java.time.ZoneId;
 import java.util.Base64;
 import java.util.Date;
 
+@Slf4j
 @Service
 public class JwtServiceImpl implements JwtService {
     private final ReactiveUserDetailsService userDetailsService;
-    private PrivateKey privateKey;
-    private PublicKey publicKey;
+    private final PrivateKey privateKey;
+    private final PublicKey publicKey;
 
     @Autowired
     public JwtServiceImpl(ReactiveUserDetailsService userDetailsService, ApplicationProperties applicationProperties) throws Exception {
-        // Чтение приватного ключа для верификации JWT
-        String privateKeyString = KeyLoader.loadKey(applicationProperties.getPrivateKeyPath());
-
-        // Убираем начальные и конечные разделители и пробелы
-        privateKeyString = privateKeyString.replace("-----BEGIN PRIVATE KEY-----", "")
-                .replace("-----END PRIVATE KEY-----", "")
-                .replaceAll("\\s+", "");
-
-
-        byte[] privateKeyBytes = Base64.getDecoder().decode(privateKeyString);
-        PKCS8EncodedKeySpec privateKeySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
-        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        this.privateKey = keyFactory.generatePrivate(privateKeySpec);
-
-
-        // Чтение публичного ключа для верификации JWT (в формате X.509)
-        String publicKeyString = KeyLoader.loadKey(applicationProperties.getPublicKeyPath());
-
-        // Убираем начальные и конечные разделители и пробелы для публичного ключа
-        publicKeyString = publicKeyString.replace("-----BEGIN PUBLIC KEY-----", "")
-                .replace("-----END PUBLIC KEY-----", "")
-                .replaceAll("\\s+", "");
-
-        // Декодируем публичный ключ
-        byte[] publicKeyBytes = Base64.getDecoder().decode(publicKeyString);
-        X509EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(publicKeyBytes);
-        this.publicKey = keyFactory.generatePublic(publicKeySpec);
-
         this.userDetailsService = userDetailsService;
+
+        this.privateKey = loadPrivateKey(applicationProperties.getPrivateKeyPath());
+        this.publicKey = loadPublicKey(applicationProperties.getPublicKeyPath());
     }
 
-    // Генерация JWT
     @Override
     public String generateAccessToken(@NonNull CustomUserDetails userDetails) {
         final LocalDateTime now = LocalDateTime.now();
@@ -97,30 +74,15 @@ public class JwtServiceImpl implements JwtService {
                 .compact();
     }
 
-    // Верификация JWT токена
-    @Override
-    public Claims parseAccessToken(@NonNull String token) {
-        try {
-            JwtParser jwtParser = Jwts.parserBuilder()
-                    .setSigningKey(publicKey) // Устанавливаем публичный ключ для проверки подписи
-                    .build();
-
-            // Парсим токен и извлекаем его тело (claims)
-            Jws<Claims> claimsJws = jwtParser.parseClaimsJws(token);
-            return claimsJws.getBody();  // Получаем claims
-        } catch (JwtException | IllegalArgumentException e) {
-            // В случае ошибки при верификации токена
-            throw new RuntimeException("Invalid JWT token", e);
-        }
-    }
-
-    // Верификация refresh токена и создание нового access токена
     @Override
     public Mono<String> refreshAccessToken(@NonNull String refreshToken) {
         try {
-            // Проверяем refresh токен
+            if (refreshToken.startsWith("Bearer ")) {
+                refreshToken = refreshToken.substring(7);  // Убираем "Bearer " (7 символов)
+            }
+
             JwtParser jwtParser = Jwts.parserBuilder()
-                    .setSigningKey(publicKey) // Устанавливаем публичный ключ для проверки подписи
+                    .setSigningKey(publicKey)
                     .build();
 
             Jws<Claims> claimsJws = jwtParser.parseClaimsJws(refreshToken);
@@ -149,4 +111,60 @@ public class JwtServiceImpl implements JwtService {
             return Mono.error(new RuntimeException("Invalid or expired refresh token", e));
         }
     }
+
+    @Override
+    public Long getIdByAccessToken(@NonNull String token) {
+        Claims claims = parseAccessToken(token);
+        return Long.valueOf(claims.get("id").toString());
+    }
+
+
+    @Override
+    public Claims parseAccessToken(@NonNull String token) {
+        try {
+            if (token.startsWith("Bearer ")) {
+                token = token.substring(7);  // Убираем "Bearer " (7 символов)
+            }
+
+            JwtParser jwtParser = Jwts.parserBuilder()
+                    .setSigningKey(publicKey) // Устанавливаем публичный ключ для проверки подписи
+                    .build();
+
+            Jws<Claims> claimsJws = jwtParser.parseClaimsJws(token);
+            return claimsJws.getBody();
+        } catch (JwtException | IllegalArgumentException e) {
+            throw new InvalidTokenException();
+        }
+    }
+
+    private PrivateKey loadPrivateKey(String privateKeyPath) throws Exception {
+        String privateKeyString = KeyLoader.loadKey(privateKeyPath);
+        privateKeyString = cleanKey(privateKeyString);
+
+        byte[] privateKeyBytes = Base64.getDecoder().decode(privateKeyString);
+        PKCS8EncodedKeySpec privateKeySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
+        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+
+        return keyFactory.generatePrivate(privateKeySpec);
+    }
+
+    private PublicKey loadPublicKey(String publicKeyPath) throws Exception {
+        String publicKeyString = KeyLoader.loadKey(publicKeyPath);
+        publicKeyString = cleanKey(publicKeyString);
+
+        byte[] publicKeyBytes = Base64.getDecoder().decode(publicKeyString);
+        X509EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(publicKeyBytes);
+        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+
+        return keyFactory.generatePublic(publicKeySpec);
+    }
+
+    private String cleanKey(String keyString) {
+        return keyString.replace("-----BEGIN PRIVATE KEY-----", "")
+                .replace("-----END PRIVATE KEY-----", "")
+                .replace("-----BEGIN PUBLIC KEY-----", "")
+                .replace("-----END PUBLIC KEY-----", "")
+                .replaceAll("\\s+", "");
+    }
+
 }

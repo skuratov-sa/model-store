@@ -2,6 +2,7 @@ package com.model_store.service;
 
 import com.model_store.model.CreateOrUpdateParticipantRequest;
 import com.model_store.model.FindParticipantRequest;
+import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.model.dto.FindParticipantsDto;
 import com.model_store.model.dto.FullParticipantDto;
 import com.model_store.model.dto.UserInfoDto;
@@ -34,4 +35,6 @@ public interface ParticipantService {
      * @return
      */
     Mono<UserInfoDto> findShortInfo(Long id);
+
+    Mono<Void> updateParticipantStatus(Long participantId, ParticipantStatus status);
 }

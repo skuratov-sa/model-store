@@ -1,15 +1,20 @@
 package com.model_store.controller;
 
+import com.model_store.exception.InvalidTokenException;
 import com.model_store.model.CustomUserDetails;
 import com.model_store.model.dto.LoginRequest;
 import com.model_store.service.JwtService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.ReactiveAuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
 import java.util.HashMap;
@@ -41,29 +46,21 @@ public class AuthController {
         );
     }
 
-
-    // Обновление токена с использованием refresh token
     @PostMapping("/refresh")
     public Mono<ResponseEntity<String>> refreshToken(@RequestHeader("X-Refresh-Token") String refreshToken) {
-        String token = refreshToken.replace("Bearer ", ""); // Если ты всё ещё передаёшь с "Bearer" префиксом
-
-        return jwtService.refreshAccessToken(token)
+        return jwtService.refreshAccessToken(refreshToken)
                 .map(ResponseEntity::ok)
-                .onErrorReturn(ResponseEntity.status(HttpStatus.FORBIDDEN).body("Invalid or expired refresh token"));
+                .onErrorMap(ex -> new InvalidTokenException());
     }
 
     @GetMapping("/profile")
     public Mono<ResponseEntity<Map<String, Object>>> getCurrentUser(@RequestHeader("Authorization") String token) {
         return Mono.justOrEmpty(token)
-                .filter(t -> t.startsWith("Bearer "))  // Проверяем, что токен начинается с "Bearer "
-                .map(t -> t.substring(7))  // Убираем "Bearer " из токена
-                .map(jwtService::parseAccessToken)  // Парсим токен и получаем claims
+                .map(jwtService::parseAccessToken)
                 .map(claims -> {
-                    // Возвращаем все claims в Map, чтобы Spring сам сериализовал в JSON
                     Map<String, Object> claimsMap = new HashMap<>(claims);
                     return ResponseEntity.ok(claimsMap);
-                })
-                .switchIfEmpty(Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid token"))));
+                }).onErrorMap(ex -> new InvalidTokenException());
     }
 
 }

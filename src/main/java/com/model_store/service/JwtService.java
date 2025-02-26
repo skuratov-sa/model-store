@@ -7,14 +7,28 @@ import reactor.core.publisher.Mono;
 
 public interface JwtService {
 
-    // Генерация JWT
+    /**
+     * Генерация Access токена
+     */
     String generateAccessToken(@NonNull CustomUserDetails userDetails);
 
+    /**
+     * Генерация Refresh токена
+     */
     String generateRefreshToken(@NonNull CustomUserDetails userDetails);
 
-    // Верификация JWT токена
+    /**
+     * Получаем список параметров, которые хранит token
+     */
     Claims parseAccessToken(@NonNull String token);
 
-    // Верификация refresh токена и создание нового access токена
+    /**
+     * Верификация refresh токена и создание нового access токена
+     */
     Mono<String> refreshAccessToken(@NonNull String refreshToken);
+
+    /**
+     * Получить id пользователя по токену
+     */
+    Long getIdByAccessToken(@NonNull String accessToken);
 }

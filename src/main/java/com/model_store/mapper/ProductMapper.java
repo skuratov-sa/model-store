@@ -14,7 +14,7 @@ import java.util.Optional;
 @Mapper(componentModel = "spring")
 public interface ProductMapper {
     @Mapping(target = "id", ignore = true)
-    Product toProduct(CreateOrUpdateProductRequest product);
+    Product toProduct(CreateOrUpdateProductRequest product, Long participantId);
 
     default Product updateProduct(CreateOrUpdateProductRequest productRequest, Product product) {
         return Product.builder()

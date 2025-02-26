@@ -9,6 +9,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
 import java.util.Collections;
+
 @Builder
 @Data
 public class CustomUserDetails implements UserDetails {
@@ -43,7 +44,7 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public boolean isAccountNonLocked() {
-        return true;
+        return status == ParticipantStatus.ACTIVE;
     }
 
     @Override

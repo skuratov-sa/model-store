@@ -285,6 +285,18 @@ comment on column product_favorite.participant_id is 'Идентификатор
 comment on column product_favorite.product_id is 'Идентификатор продукта';
 
 
+CREATE TABLE product_basket
+(
+    id             bigserial PRIMARY KEY,
+    participant_id bigint NOT NULL REFERENCES participant (id),
+    product_id     bigint NOT NULL REFERENCES product (id)
+);
+comment on table product_basket is 'Корзина товары';
+comment on column product_basket.id is 'Идентификатор записи';
+comment on column product_basket.participant_id is 'Идентификатор пользователя';
+comment on column product_basket.product_id is 'Идентификатор продукта';
+
+
 CREATE TABLE product_cart
 (
     id             bigserial PRIMARY KEY,

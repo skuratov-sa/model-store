@@ -5,25 +5,22 @@ import com.model_store.mapper.ProductMapper;
 import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.Product;
-import com.model_store.model.base.ProductFavorite;
 import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
 import com.model_store.model.constant.ProductStatus;
 import com.model_store.model.dto.GetProductResponse;
 import com.model_store.model.dto.ProductDto;
 import com.model_store.model.page.PagedResult;
-import com.model_store.repository.ProductFavoriteRepository;
 import com.model_store.repository.ProductRepository;
 import com.model_store.service.CategoryService;
-import com.model_store.service.ParticipantService;
 import com.model_store.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.Objects;
 
 import static java.util.Objects.isNull;
 
@@ -31,8 +28,6 @@ import static java.util.Objects.isNull;
 @RequiredArgsConstructor
 public class ProductServiceImpl implements ProductService {
     private final ProductRepository productRepository;
-    private final ParticipantService participantService;
-    private final ProductFavoriteRepository productFavoriteRepository;
     private final CategoryService categoryService;
     private final ProductMapper productMapper;
     private final ImageServiceImpl imageService;
@@ -79,41 +74,14 @@ public class ProductServiceImpl implements ProductService {
                 .map(tuple -> new PagedResult<>(tuple.getT1(), tuple.getT2(), searchParams.getPageable()));
     }
 
-    public Flux<PagedResult<Product>> findFavoriteByParams(Long participantId, FindProductRequest searchParams) {
-
-        return productFavoriteRepository.findByParticipantId(participantId)
-                .map(ProductFavorite::getProductId)
-                .collectList()
-                .flatMapMany(productIds -> {
-                    var monoProducts = productRepository.findByParams(searchParams, productIds.toArray(Long[]::new)).collectList();
-                    var monoTotalCount = productRepository.findCountBySearchParams(searchParams, null).defaultIfEmpty(0);
-
-                    return monoProducts.zipWith(monoTotalCount)
-                            .map(tuple -> new PagedResult<>(tuple.getT1(), tuple.getT2(), searchParams.getPageable()));
-
-                });
-    }
-
-    public Mono<Void> addToFavorites(Long participantId, Long productId) {
-        return Mono.zip(productRepository.findActualProduct(productId), participantService.findActualById(participantId))
-                .switchIfEmpty(Mono.error(new NotFoundException("Product or participant not found")))
-                .flatMap(ignore ->
-                        productFavoriteRepository.findByParticipantIdAndProductId(participantId, productId)
-                                .switchIfEmpty(productFavoriteRepository.save(ProductFavorite.builder()
-                                        .participantId(participantId)
-                                        .productId(productId)
-                                        .build())
-                                ).then()
-                );
-    }
-
-    public Mono<Void> removeFromFavorites(Long participantId, Long productId) {
-        return productFavoriteRepository.deleteByParticipantIdAndProductId(participantId, productId);
+    @Override
+    public Mono<Product> findActualProduct(Long productId) {
+        return productRepository.findActualProduct(productId);
     }
 
     @Transactional
-    public Mono<Long> createProduct(CreateOrUpdateProductRequest request) {
-        Product product = productMapper.toProduct(request);
+    public Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId) {
+        Product product = productMapper.toProduct(request, participantId);
         return productRepository.save(product)
                 .flatMap(p -> updateImagesStatus(request.getImageIds(), p.getId())
                         .then(Mono.just(p.getId()))
@@ -121,8 +89,9 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Transactional
-    public Mono<Void> updateProduct(Long id, CreateOrUpdateProductRequest request) {
+    public Mono<Void> updateProduct(Long id, CreateOrUpdateProductRequest request, Long participantId) {
         return productRepository.findActualProduct(id)
+                .filter(product -> Objects.equals(product.getParticipantId(), participantId))
                 .switchIfEmpty(Mono.error(new NotFoundException("Product not found")))
                 .map(product -> productMapper.updateProduct(request, product))
                 .flatMap(productRepository::save)
@@ -130,8 +99,9 @@ public class ProductServiceImpl implements ProductService {
                 .then();
     }
 
-    public Mono<Void> deleteProduct(Long id) {
+    public Mono<Void> deleteProduct(Long id, Long participantId) {
         return productRepository.findActualProduct(id)
+                .filter(product -> Objects.equals(product.getParticipantId(), participantId))
                 .switchIfEmpty(Mono.error(new NotFoundException("Product not found")))
                 .flatMap(product -> {
                     product.setStatus(ProductStatus.DELETED);
@@ -140,8 +110,14 @@ public class ProductServiceImpl implements ProductService {
                 });
     }
 
-    public Mono<Void> deleteProductsByParticipant(Long participantId) {
-        return productRepository.findByParticipantId(participantId).then();
+    @Override
+    public Mono<Void> updateProductStatus(Long id, ProductStatus status) {
+        return productRepository.findActualProduct(id)
+                .switchIfEmpty(Mono.error(new NotFoundException("Product not found")))
+                .flatMap(product -> {
+                    product.setStatus(status);
+                    return productRepository.save(product).then();
+                });
     }
 
     @Override
