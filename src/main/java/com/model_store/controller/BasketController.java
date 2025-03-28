@@ -2,6 +2,7 @@ package com.model_store.controller;
 
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.Product;
+import com.model_store.model.dto.ProductDto;
 import com.model_store.model.page.PagedResult;
 import com.model_store.service.BasketService;
 import com.model_store.service.JwtService;
@@ -27,7 +28,7 @@ public class BasketController {
 
     @Operation(summary = "Получить список товаров из корзины")
     @PostMapping("/find")
-    public Flux<PagedResult<Product>> findBasketProductsByParams(@RequestHeader("Authorization") String authorizationHeader, @RequestBody @Valid FindProductRequest request) {
+    public Mono<PagedResult<ProductDto>> findBasketProductsByParams(@RequestHeader("Authorization") String authorizationHeader, @RequestBody @Valid FindProductRequest request) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
         return basketService.findBasketProductsByParams(participantId, request);
     }

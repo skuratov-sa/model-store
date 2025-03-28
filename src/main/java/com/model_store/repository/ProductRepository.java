@@ -55,10 +55,9 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 (:dateTimeFrom IS NULL OR p.created_at >= :dateTimeFrom) AND
                 (:dateTimeTo IS NULL OR p.created_at <= :dateTimeTo) AND
                 (:productIds IS NULL OR p.id = ANY(:productIds)) AND
-                p.status = 'ACTIVE' AND
-                p.id >= :offset
+                p.status = 'ACTIVE'
             ORDER BY p.created_at DESC
-            LIMIT :limit
+            OFFSET :offset LIMIT :limit
             """)
     Flux<Product> findByParams(
             Long categoryId,

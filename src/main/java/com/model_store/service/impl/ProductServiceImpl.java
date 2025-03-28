@@ -62,7 +62,7 @@ public class ProductServiceImpl implements ProductService {
     public Mono<PagedResult<ProductDto>> findByParams(FindProductRequest searchParams) {
         // 1. Получаем список продуктов
         Mono<List<ProductDto>> products = productRepository.findByParams(searchParams, null)
-                .flatMap(product -> categoryService.findById(product.getCategoryId())
+                .concatMap(product -> categoryService.findById(product.getCategoryId())
                         .zipWith(imageService.findMainImage(product.getId(), ImageTag.PRODUCT).defaultIfEmpty(-1L))
                         .map(tuple -> productMapper.toProductDto(product, tuple.getT1(), tuple.getT2() == -1L ? null : tuple.getT2()))
                 ).collectList();

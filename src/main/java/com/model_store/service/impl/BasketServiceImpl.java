@@ -2,18 +2,20 @@ package com.model_store.service.impl;
 
 import com.model_store.exception.EntityAlreadyExistException;
 import com.model_store.exception.EntityNotFoundException;
+import com.model_store.mapper.ProductMapper;
 import com.model_store.model.FindProductRequest;
-import com.model_store.model.base.Product;
 import com.model_store.model.base.ProductBasket;
+import com.model_store.model.constant.ImageTag;
+import com.model_store.model.dto.ProductDto;
 import com.model_store.model.page.PagedResult;
 import com.model_store.repository.ProductBasketRepository;
 import com.model_store.repository.ProductRepository;
 import com.model_store.service.BasketService;
+import com.model_store.service.ImageService;
 import com.model_store.service.ParticipantService;
 import com.model_store.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import static com.model_store.exception.constant.EntityException.BASKET;
@@ -25,14 +27,21 @@ public class BasketServiceImpl implements BasketService {
     private final ProductService productService;
     private final ProductRepository productRepository;
     private final ProductBasketRepository productBasketRepository;
+    private final ProductMapper productMapper;
+    private final ImageService imageService;
 
     @Override
-    public Flux<PagedResult<Product>> findBasketProductsByParams(Long participantId, FindProductRequest searchParams) {
+    public Mono<PagedResult<ProductDto>> findBasketProductsByParams(Long participantId, FindProductRequest searchParams) {
         return productBasketRepository.findByParticipantId(participantId)
                 .map(ProductBasket::getProductId)
                 .collectList()
-                .flatMapMany(productIds -> {
-                    var monoProducts = productRepository.findByParams(searchParams, productIds.toArray(Long[]::new)).collectList();
+                .flatMap(productIds -> {
+                    var monoProducts = productRepository.findByParams(searchParams, productIds.toArray(Long[]::new))
+                            .flatMap(product ->
+                                    imageService.findMainImage(product.getId(), ImageTag.PRODUCT)
+                                            .map(imageId -> productMapper.toProductDto(product, imageId))
+                            ).collectList();
+
                     return monoProducts.map(list -> new PagedResult<>(list, productIds.size(), searchParams.getPageable()));
                 });
     }
