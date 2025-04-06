@@ -14,8 +14,8 @@ services:
       restart_policy:
         condition: any
     volumes:
-      - /Users/vrevyakin/projects/model-store/stack/certs:/root/certs
-      - /Users/vrevyakin/projects/model-store/stack/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /root/certs:/root/certs
+      - /root/model-store/stack/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     ports:

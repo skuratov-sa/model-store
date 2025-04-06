@@ -1,0 +1,14 @@
+version: '3.8'
+
+networks:
+  3d-network:
+    external: true
+
+services:
+  python:
+    image: python:latest
+    deploy:
+      replicas: 1
+    networks:
+      - 3d-network
+    command: 'tail -f /dev/null'

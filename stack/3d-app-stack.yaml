@@ -6,22 +6,31 @@ networks:
 
 services:
   3dback:
-    image: ready555/model_store:v1.1
+    image: ready555/model_store:v1.4
     deploy:
       replicas: 1
     environment:
       SPRING_R2DBC_URL: r2dbc:postgresql://postgres:5432/model_store
       SPRING_R2DBC_USERNAME: root
-      SPRING_R2DBC_PASSWORD: root
+      SPRING_R2DBC_PASSWORD: lB5KVXldMj78
+
+      S3_ACCESS-KEY: root
+      S3_SECRET-KEY: ItLS122jSf2x
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: 'us-east-1'
+      S3_PARTICIPANT_BUCKET_NAME: participant-bucket
+      S3_PRODUCT_BUCKET_NAME: product-bucket
+      S3_SYSTEM_BUCKET_NAME: system-bucket
+      S3_ORDER_BUCKET_NAME: order-bucket
     ports:
-      - "8080:8080"
+      - "8080:8081"
     depends_on:
       - db
     networks:
       - 3d-network
   
   3dfront:
-    image: atupenov/3d-printmarket:latest
+    image: atupenov/frontend_app:v1.0
     deploy:
       replicas: 1
     ports:

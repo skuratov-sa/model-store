@@ -19,7 +19,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     environment:
       POSTGRES_USER: root
-      POSTGRES_PASSWORD: root
+      POSTGRES_PASSWORD: lB5KVXldMj78
       POSTGRES_DB: model_store
       TZ: Europe/Moscow
     ports:

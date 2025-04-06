@@ -1,5 +1,14 @@
-mydomain.ru {
-    reverse_proxy pgadmin
-    tls /root/certs/caddy-cert.pem /root/certs/caddy-key.pem
-    # tls internal
+figurzilla.ru {
+
+    handle {
+      #reverse_proxy minio:9001
+      reverse_proxy 3dfront:3000
+      #reverse_proxy pgadmin
+    }
+
+    handle_path /internal-api/v1/* {
+      reverse_proxy * 3dback:8081
+    }
+
+    tls /root/certs/figurzilla-cert.pem /root/certs/figurzilla-key.pem
 }
