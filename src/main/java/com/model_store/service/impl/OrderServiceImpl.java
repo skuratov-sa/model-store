@@ -2,13 +2,16 @@ package com.model_store.service.impl;
 
 import com.amazonaws.services.kms.model.NotFoundException;
 import com.model_store.mapper.OrderMapper;
+import com.model_store.model.base.Address;
 import com.model_store.model.base.Order;
 import com.model_store.model.base.Product;
+import com.model_store.model.base.Transfer;
 import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
 import com.model_store.model.constant.OrderStatus;
 import com.model_store.model.dto.CreateOrderRequest;
 import com.model_store.model.dto.FindOrderResponse;
+import com.model_store.model.dto.GetRequiredODataOrderDto;
 import com.model_store.model.dto.UpdateOrderRequest;
 import com.model_store.repository.OrderRepository;
 import com.model_store.service.AddressService;
@@ -24,10 +27,13 @@ import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
 import static com.model_store.service.util.UtilService.getImageId;
+import static java.util.Collections.emptyList;
+import static java.util.Collections.singletonList;
 import static java.util.Objects.isNull;
 
 @Service
@@ -43,12 +49,26 @@ public class OrderServiceImpl implements OrderService {
     private final ImageService imageService;
 
     @Override
+    public Mono<GetRequiredODataOrderDto> getRequiredDataForCreateOrder(Long participantId, Long productId) {
+        Mono<Product> productMono = productService.findById(productId);
+        Mono<List<Address>> addressMono = productMono.flatMapMany(e -> addressService.findByParticipantId(e.getParticipantId())).collectList().defaultIfEmpty(emptyList());
+        Mono<List<Transfer>> transferMono = productMono.flatMapMany(e -> transferService.findByParticipantId(e.getParticipantId())).collectList().defaultIfEmpty(emptyList());
+
+        return Mono.zip(addressMono, transferMono)
+                .map(tuple -> GetRequiredODataOrderDto.builder()
+                        .addresses(tuple.getT1())
+                        .sellerTransfers(tuple.getT2())
+                        .build()
+                );
+    }
+
+    @Override
     @Transactional
-    public Mono<Long> createOrder(CreateOrderRequest request) {
+    public Mono<Long> createOrder(CreateOrderRequest request, Long participantId) {
         return productService.findById(request.getProductId())
-                .filter(product -> product.getCount() - request.getCount() > 0 && Objects.equals(request.getProductId(), request.getSellerId()))
-                .switchIfEmpty(Mono.error(new RuntimeException("Данный товар нельзя заказать")))
-                .flatMap(product -> createOrderAndUpdateProduct(product, request));
+                .filter(product -> product.getCount() - request.getCount() >= 0)
+                .switchIfEmpty(Mono.error(new RuntimeException("Данный товар закончился")))
+                .flatMap(product -> createOrderAndUpdateProduct(product, request, participantId));
     }
 
     @Override
@@ -171,9 +191,12 @@ public class OrderServiceImpl implements OrderService {
         return orderRepository.findCompletedCountByCustomerId(customerId);
     }
 
-    protected Mono<Long> createOrderAndUpdateProduct(Product product, CreateOrderRequest request) {
+    @Transactional
+    protected Mono<Long> createOrderAndUpdateProduct(Product product, CreateOrderRequest request, Long participantId) {
         Order order = orderMapper.toOrder(request);
         order.setStatus(OrderStatus.BOOKED);
+        order.setSellerId(participantId);
+        order.setCustomerId(product.getParticipantId());
         order.setTotalPrice(product.getPrice() * request.getCount());
         product.setCount(product.getCount() - request.getCount());
         return productService.save(product)

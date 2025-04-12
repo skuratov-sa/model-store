@@ -8,11 +8,13 @@ import com.model_store.model.base.SocialNetwork;
 import com.model_store.model.base.Transfer;
 import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.model.dto.AddressDto;
+import com.model_store.model.dto.FindParticipantByLoginDto;
 import com.model_store.model.dto.FindParticipantsDto;
 import com.model_store.model.dto.FullParticipantDto;
 import com.model_store.model.dto.SocialNetworkDto;
 import com.model_store.model.dto.UserInfoDto;
 import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,6 +25,8 @@ import java.util.stream.Collectors;
 @Mapper(componentModel = "spring")
 public interface ParticipantMapper {
     Participant toParticipant(CreateOrUpdateParticipantRequest request, ParticipantStatus status);
+
+    FindParticipantByLoginDto toFindParticipantByLoginDto(Participant participant, Long imageId);
 
     List<Address> toAddress(List<AddressDto> addressDto);
 

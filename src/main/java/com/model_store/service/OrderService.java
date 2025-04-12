@@ -2,6 +2,7 @@ package com.model_store.service;
 
 import com.model_store.model.dto.CreateOrderRequest;
 import com.model_store.model.dto.FindOrderResponse;
+import com.model_store.model.dto.GetRequiredODataOrderDto;
 import com.model_store.model.dto.UpdateOrderRequest;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -9,7 +10,7 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 
 public interface OrderService {
-    Mono<Long> createOrder(CreateOrderRequest request);
+    Mono<Long> createOrder(CreateOrderRequest request, Long participantId);
 
     Mono<Long> updateStatusOrder(UpdateOrderRequest request);
 
@@ -43,4 +44,6 @@ public interface OrderService {
      * @param customerId - id покупателя
      */
     Mono<Integer> findCompletedCountByCustomerId(Long customerId);
+
+    Mono<GetRequiredODataOrderDto> getRequiredDataForCreateOrder(Long participantId, Long productId);
 }

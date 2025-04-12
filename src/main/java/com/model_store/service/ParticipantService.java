@@ -3,6 +3,7 @@ package com.model_store.service;
 import com.model_store.model.CreateOrUpdateParticipantRequest;
 import com.model_store.model.FindParticipantRequest;
 import com.model_store.model.constant.ParticipantStatus;
+import com.model_store.model.dto.FindParticipantByLoginDto;
 import com.model_store.model.dto.FindParticipantsDto;
 import com.model_store.model.dto.FullParticipantDto;
 import com.model_store.model.dto.UserInfoDto;
@@ -11,6 +12,8 @@ import reactor.core.publisher.Mono;
 
 public interface ParticipantService {
     Mono<FullParticipantDto> findActualById(Long id);
+
+    Mono<FindParticipantByLoginDto> findByLogin(String login);
 
     Flux<FindParticipantsDto> findByParams(FindParticipantRequest searchParams);
 

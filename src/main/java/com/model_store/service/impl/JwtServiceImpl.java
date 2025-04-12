@@ -56,6 +56,7 @@ public class JwtServiceImpl implements JwtService {
                 .claim("login", userDetails.getLogin())
                 .claim("email", userDetails.getEmail())
                 .claim("fullName", userDetails.getFullName())
+                .claim("imageId", userDetails.getImageId())
                 .claim("role", userDetails.getAuthorities().iterator().next().getAuthority())
                 .signWith(privateKey)
                 .compact();

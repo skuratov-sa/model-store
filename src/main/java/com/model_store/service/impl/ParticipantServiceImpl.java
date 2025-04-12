@@ -16,6 +16,7 @@ import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.model.constant.TransferMoneyType;
 import com.model_store.model.dto.AccountDto;
 import com.model_store.model.dto.AddressDto;
+import com.model_store.model.dto.FindParticipantByLoginDto;
 import com.model_store.model.dto.FindParticipantsDto;
 import com.model_store.model.dto.FullParticipantDto;
 import com.model_store.model.dto.SocialNetworkDto;
@@ -87,6 +88,14 @@ public class ParticipantServiceImpl implements ParticipantService {
                 );
     }
 
+    @Override
+    public Mono<FindParticipantByLoginDto> findByLogin(String login) {
+        return participantRepository.findByLogin(login)
+                .flatMap(participant -> imageService.findMainImage(participant.getId(), ImageTag.PARTICIPANT)
+                        .map(imageId -> participantMapper.toFindParticipantByLoginDto(participant, imageId))
+                );
+    }
+
     public Flux<FindParticipantsDto> findByParams(FindParticipantRequest searchParams) {
         return participantRepository.findByParams(searchParams)
                 .flatMap(participant -> {
@@ -152,6 +161,8 @@ public class ParticipantServiceImpl implements ParticipantService {
                 .flatMap(existingParticipant -> {
                     Participant updatedParticipant = participantMapper.toParticipant(request, ACTIVE);
                     updatedParticipant.setId(existingParticipant.getId());
+                    updatedParticipant.setRole(existingParticipant.getRole());
+                    updatedParticipant.setCreatedAt(existingParticipant.getCreatedAt());
 
                     Mono<Void> savedAccountsMono = saveAccounts(request.getAccounts(), updatedParticipant.getId());
                     Mono<Void> savedTransfersMono = saveTransfers(request.getTransfers(), updatedParticipant.getId());

@@ -7,21 +7,13 @@ import lombok.Data;
 @Builder
 public class CreateOrderRequest {
     /**
-     * Идентификатор продавца
+     * Идентификатор товара
      */
-    private Long sellerId;
-    /**
-     * Идентификатор покупателя
-     */
-    private Long customerId;
+    private Long productId;
     /**
      * Количество товара
      */
     private Integer count;
-    /**
-     * Идентификатор товара
-     */
-    private Long productId;
     /**
      * Идентификатор адреса получения
      */

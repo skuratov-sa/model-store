@@ -20,6 +20,7 @@ public class CustomUserDetails implements UserDetails {
     private String email;
     private String fullName;
     private ParticipantStatus status;
+    private Long imageId;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

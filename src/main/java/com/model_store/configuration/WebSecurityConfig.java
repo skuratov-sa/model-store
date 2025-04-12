@@ -2,11 +2,13 @@ package com.model_store.configuration;
 
 import com.model_store.configuration.property.ApplicationProperties;
 import com.model_store.model.CustomUserDetails;
-import com.model_store.repository.ParticipantRepository;
+import com.model_store.service.ParticipantService;
 import com.model_store.service.impl.KeyLoader;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
@@ -36,14 +38,18 @@ import java.util.Base64;
 
 @Configuration
 @EnableWebFluxSecurity
-@RequiredArgsConstructor
 public class WebSecurityConfig {
-    private final ParticipantRepository participantRepository;
+    private final ParticipantService participantService;
     private final ApplicationProperties applicationProperties;
+
+    public WebSecurityConfig(@Lazy ParticipantService participantService, ApplicationProperties applicationProperties) {
+        this.participantService = participantService;
+        this.applicationProperties = applicationProperties;
+    }
 
     @Bean
     public ReactiveUserDetailsService userDetailsService() {
-        return login -> participantRepository.findByLogin(login)
+        return login -> participantService.findByLogin(login)
                 .map(participant ->
                         CustomUserDetails.builder()
                                 .id(participant.getId())
@@ -52,6 +58,7 @@ public class WebSecurityConfig {
                                 .fullName(participant.getFullName())
                                 .role(participant.getRole().name())
                                 .password(participant.getPassword())
+                                .imageId(participant.getImageId())
                                 .status(participant.getStatus())
                                 .build()
                 );

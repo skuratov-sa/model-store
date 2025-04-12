@@ -2,6 +2,8 @@ package com.model_store.controller;
 
 import com.model_store.model.dto.CreateOrderRequest;
 import com.model_store.model.dto.FindOrderResponse;
+import com.model_store.model.dto.GetRequiredODataOrderDto;
+import com.model_store.service.JwtService;
 import com.model_store.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -22,11 +25,20 @@ import java.util.List;
 @RequestMapping("/order")
 public class OrderController {
     private final OrderService orderService;
+    private final JwtService jwtService;
+
+    @Operation(summary = "Получить данные для создания заказа")
+    @GetMapping
+    public Mono<GetRequiredODataOrderDto> getRequiredDataForCreateOrder(@RequestHeader("Authorization") String authorizationHeader, Long productId) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return orderService.getRequiredDataForCreateOrder(participantId, productId);
+    }
 
     @Operation(summary = "Создать новый заказ")
     @PostMapping()
-    public Mono<Long> createOrder(@RequestBody CreateOrderRequest request) {
-        return orderService.createOrder(request);
+    public Mono<Long> createOrder(@RequestHeader("Authorization") String authorizationHeader, @RequestBody CreateOrderRequest request) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return orderService.createOrder(request, participantId);
     }
 
     @Operation(summary = "Продавец подтверждает заказ")
