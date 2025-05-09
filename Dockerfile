@@ -1,29 +1,10 @@
-# Используем официальный образ OpenJDK как базовый образ
 FROM openjdk:21-jdk-slim AS builder
-
-# Указываем рабочую директорию внутри контейнера
-WORKDIR /backend
-
-# Копируем все файлы проекта в контейнер
-COPY . .
-
-# Устанавливаем утилиту dos2unix (если она не установлена в образе)
 RUN apt-get update && apt-get install -y dos2unix
 
-# Преобразуем файл gradlew в формат с окончаниями строк LF
+WORKDIR /backend
+COPY . .
 RUN dos2unix gradlew
+RUN chmod +x /backend/gradlew && chmod +x /backend/entrypoint.sh && /backend/gradlew build --no-daemon
 
-# Убедитесь, что Gradle Wrapper имеет права на выполнение
-RUN chmod +x ./gradlew
-
-# Выполняем сборку приложения через Gradle Wrapper
-RUN ./gradlew build --no-daemon
-
-# Копируем ключи в контейнер (из папки resources)
-COPY src/main/resources/keys /backend/keys
-
-# Открываем порт для приложения (если ваше приложение работает на порту 8080)
-EXPOSE 8080
-
-# Определяем команду, которая будет выполнена при запуске контейнера
+ENTRYPOINT ["bash", "-c", "source /backend/entrypoint.sh && \"$@\"", "--"]
 CMD ["java", "-jar", "build/libs/model-store-0.0.1-SNAPSHOT.jar"]
