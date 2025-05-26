@@ -77,7 +77,9 @@ public class ImageServiceImpl implements ImageService {
     public Flux<Long> saveImages(ImageTag tag, Long entityId, List<FilePart> files) {
         return Flux.fromIterable(files)
                 .flatMap(file -> s3Service.uploadFile(file, tag))
-                .map(name -> imageMapper.toImage(entityId, tag, name, ImageStatus.TEMPORARY))
+                .map(name -> imageMapper.toImage(entityId, tag, name,
+                        tag == ImageTag.PARTICIPANT ? ImageStatus.ACTIVE : ImageStatus.TEMPORARY
+                ))
                 .flatMap(imageRepository::save)
                 .map(Image::getId);
     }

@@ -187,6 +187,11 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    public Mono<Order> findById(Long orderId) {
+        return orderRepository.findById(orderId);
+    }
+
+    @Override
     public Mono<Integer> findCompletedCountByCustomerId(Long customerId) {
         return orderRepository.findCompletedCountByCustomerId(customerId);
     }

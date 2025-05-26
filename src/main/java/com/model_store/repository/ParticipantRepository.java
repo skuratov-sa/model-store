@@ -2,7 +2,9 @@ package com.model_store.repository;
 
 import com.model_store.model.FindParticipantRequest;
 import com.model_store.model.base.Participant;
+import com.model_store.model.constant.SellerStatus;
 import org.springframework.data.r2dbc.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 import org.springframework.stereotype.Repository;
 import reactor.core.publisher.Flux;
@@ -12,6 +14,11 @@ import reactor.core.publisher.Mono;
 public interface ParticipantRepository extends ReactiveCrudRepository<Participant, Long> {
 
     Mono<Participant> findByLogin(String login);
+
+    Mono<Participant> findByMail(String mail);
+
+    @Query("SELECT full_name FROM participant WHERE id = :id")
+    Mono<String> findFullNameById(@Param("id") Long id);
 
     @Query(value = """
             SELECT DISTINCT p.*
@@ -30,4 +37,7 @@ public interface ParticipantRepository extends ReactiveCrudRepository<Participan
 
     @Query("SELECT * FROM participant WHERE status = 'ACTIVE' AND id = :participantId")
     Mono<Participant> findActualParticipant(Long participantId);
+
+    Flux<Participant> findBySellerStatus(SellerStatus status);
+
 }

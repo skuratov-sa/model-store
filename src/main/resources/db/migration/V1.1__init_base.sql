@@ -58,3 +58,7 @@ VALUES
     ('трансфер.jpg', 'SYSTEM', 'ACTIVE', NULL, current_timestamp),
     ('самовывоз.png', 'SYSTEM', 'ACTIVE', NULL, current_timestamp);
 
+-- TODO Добавить категории от Анрэ
+-- INSERT INTO category (name, parent_id) VALUES ()
+
+

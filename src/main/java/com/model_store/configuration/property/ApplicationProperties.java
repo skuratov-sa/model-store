@@ -12,4 +12,5 @@ public class ApplicationProperties {
     private Integer maxProductImages;
     private String privateKeyPath;
     private String publicKeyPath;
+    private String emailFrom;
 }

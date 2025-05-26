@@ -5,10 +5,8 @@ import com.model_store.model.CustomUserDetails;
 import com.model_store.service.ParticipantService;
 import com.model_store.service.impl.KeyLoader;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
@@ -17,7 +15,6 @@ import org.springframework.security.authentication.UserDetailsRepositoryReactive
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
@@ -37,19 +34,16 @@ import java.util.Base64;
 
 
 @Configuration
+@RequiredArgsConstructor
 @EnableWebFluxSecurity
 public class WebSecurityConfig {
     private final ParticipantService participantService;
     private final ApplicationProperties applicationProperties;
 
-    public WebSecurityConfig(@Lazy ParticipantService participantService, ApplicationProperties applicationProperties) {
-        this.participantService = participantService;
-        this.applicationProperties = applicationProperties;
-    }
 
     @Bean
     public ReactiveUserDetailsService userDetailsService() {
-        return login -> participantService.findByLogin(login)
+        return email -> participantService.findByMail(email)
                 .map(participant ->
                         CustomUserDetails.builder()
                                 .id(participant.getId())
@@ -102,8 +96,8 @@ public class WebSecurityConfig {
                 .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
                 .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
                 .authorizeExchange(exchanges -> exchanges
-                        .pathMatchers("/auth/login", "/auth/refresh", "/webjars/swagger-ui/**", "/v3/api-docs/**").permitAll() // Эти пути не требуют токен
-                        .pathMatchers("/auth/login", "/auth/refresh", "/images", "/dictionary", "/regions").permitAll() // Эти пути не требуют токен
+                        .pathMatchers("/auth/login", "/auth/verify-code", "/auth/refresh", "/webjars/swagger-ui/**", "/v3/api-docs/**").permitAll() // Эти пути не требуют токен
+                        .pathMatchers("/images", "/dictionary", "/regions").permitAll() // Эти пути не требуют токен
                         .pathMatchers(HttpMethod.GET,"/categories", "/product/*").permitAll() // Эти пути не требуют токен
                         .pathMatchers(HttpMethod.POST, "/participant", "/products/find","/participant","/participants/find").permitAll()
                         .pathMatchers("/admin/actions/**").hasAuthority("SCOPE_ADMIN")
@@ -114,16 +108,12 @@ public class WebSecurityConfig {
         return http.build();
     }
 
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
 
     @Bean
-    public ReactiveAuthenticationManager authenticationManager(ReactiveUserDetailsService userDetailsService) {
+    public ReactiveAuthenticationManager authenticationManager(ReactiveUserDetailsService userDetailsService, PasswordEncoder passwordEncoder) {
         UserDetailsRepositoryReactiveAuthenticationManager authenticationManager =
                 new UserDetailsRepositoryReactiveAuthenticationManager(userDetailsService);
-        authenticationManager.setPasswordEncoder(passwordEncoder());
+        authenticationManager.setPasswordEncoder(passwordEncoder);
         return authenticationManager;
     }
 

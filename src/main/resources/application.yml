@@ -15,7 +15,19 @@ spring:
   flyway:
     locations: classpath:/db/migration  # Путь к миграциям
     baseline-version: 7.17.7
-    enabled: true  # Убедитесь, что миграции включены
+    enabled: true
+  mail:
+    host: smtp.mail.ru                      # Хост SMTP-сервера (например: smtp.gmail.com, smtp.mail.ru)
+    port: 587                               # Порт SMTP (587 для STARTTLS, 465 для SSL, 25 — редко)
+    username: skuratov-750@mail.ru          # Имя пользователя для SMTP (обычно — ваш email)
+    password: fN6vEjvAeAjd19tgP5yn          # Пароль от почты или отдельный SMTP-пароль (например, app-password у Gmail)
+    properties:
+      mail:
+        smtp:
+          auth: true                 # Требуется ли авторизация (обычно — да)
+          starttls:
+            enable: true            # Включить шифрование через STARTTLS (рекомендуется для порта 587)
+
 
   #  web:
   #    cors:
@@ -49,6 +61,8 @@ app:
   max-product-images: 4
   private-key-path: test/private.pk8
   public-key-path: test/public.key
+  email-from: ${spring.mail.username}
+
 logging:
   level:
     root: INFO

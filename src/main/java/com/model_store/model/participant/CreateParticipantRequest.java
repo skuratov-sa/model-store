@@ -1,4 +1,4 @@
-package com.model_store.model;
+package com.model_store.model.participant;
 
 import com.model_store.model.dto.AccountDto;
 import com.model_store.model.dto.AddressDto;
@@ -9,8 +9,7 @@ import lombok.Data;
 import java.util.List;
 
 @Data
-public class CreateOrUpdateParticipantRequest {
-    private String login;
+public class CreateParticipantRequest {
     private String mail;
     private String password;
     private String fullName;

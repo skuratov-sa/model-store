@@ -22,6 +22,7 @@ CREATE CAST (character varying AS currency) WITH INOUT AS ASSIGNMENT;
 CREATE TYPE participant_status AS enum (
     'ACTIVE',
     'BLOCKED',
+    'WAITING_VERIFY',
     'DELETED'
     );
 CREATE CAST (character varying AS participant_status) WITH INOUT AS ASSIGNMENT;
@@ -165,7 +166,7 @@ comment on column address.index is 'Почтовый индекс';
 CREATE TABLE participant
 (
     id               bigserial PRIMARY KEY,
-    login            varchar(255) UNIQUE      NOT NULL,
+    login            varchar(255) UNIQUE,
     password         varchar(500)             NOT NULL,
     role             participant_role NOT NULL DEFAULT 'USER',
     mail             varchar(255) UNIQUE,
@@ -174,6 +175,7 @@ CREATE TABLE participant
     status           participant_status       NOT NULL,
     deadline_sending smallint                 NOT NULL DEFAULT 1,
     deadline_payment smallint                 NOT NULL DEFAULT 1,
+    seller_status VARCHAR(10) DEFAULT 'DEFAULT',  -- Статус продавца (DEFAULT, VIP, PRO)
     created_at       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT current_utc_timestamp()
 );
 comment on table participant is 'Пользователь';
@@ -185,6 +187,7 @@ comment on column participant.phone_number is 'Номер телефона ';
 comment on column participant.status is 'Статус пользователя';
 comment on column participant.deadline_sending is 'Крайний срок отправки товара';
 comment on column participant.deadline_payment is 'Крайний срок оплаты товара';
+comment on column participant.seller_status is 'Статус продавца: DEFAULT, VIP или PRO';
 comment on column participant.created_at is 'Дата создания профиля';
 
 CREATE TABLE transfer
@@ -352,3 +355,33 @@ CREATE TABLE order_status_history
     comment    varchar(500)             NULL,
     changed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT current_timestamp
 );
+
+
+CREATE TABLE review (
+                        id BIGSERIAL PRIMARY KEY,
+                        order_id BIGINT NOT NULL REFERENCES "order"(id) ON DELETE CASCADE,
+                        reviewer_id BIGINT NOT NULL REFERENCES participant(id) ON DELETE CASCADE, -- кто оставил отзыв
+                        seller_id BIGINT NOT NULL REFERENCES participant(id) ON DELETE CASCADE,   -- кому отзыв
+                        rating SMALLINT CHECK (rating BETWEEN 1 AND 5),
+                        comment varchar (500),
+                        created_at TIMESTAMP NOT NULL DEFAULT now(),
+                        updated_at TIMESTAMP
+);
+
+comment on column review.id is 'Идентификатор отзыва';
+comment on column review.order_id is 'Идентификатор связанного товара в заказе';
+comment on column review.reviewer_id is 'Идентификатор участника, оставившего отзыв (покупатель)';
+comment on column review.seller_id is 'Идентификатор продавца, получившего отзыв';
+comment on column review.rating is 'Оценка продавцу (от 1 до 5)';
+comment on column review.comment is 'Текстовый комментарий к отзыву';
+comment on column review.created_at is 'Дата и время создания отзыва';
+comment on column review.updated_at is 'Дата и время последнего обновления отзыва';
+
+
+CREATE TABLE seller_rating (
+                               seller_id BIGINT PRIMARY KEY REFERENCES participant(id) ON DELETE CASCADE,
+                               average_rating NUMERIC(3, 2) DEFAULT 0.0,
+                               total_reviews INTEGER DEFAULT 0,
+                               CONSTRAINT unique_seller_status UNIQUE(seller_id)
+);
+

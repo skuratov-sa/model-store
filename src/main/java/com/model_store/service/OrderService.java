@@ -1,5 +1,6 @@
 package com.model_store.service;
 
+import com.model_store.model.base.Order;
 import com.model_store.model.dto.CreateOrderRequest;
 import com.model_store.model.dto.FindOrderResponse;
 import com.model_store.model.dto.GetRequiredODataOrderDto;
@@ -37,6 +38,9 @@ public interface OrderService {
      * @param sellerId -  id продавца
      */
     Mono<Integer> findCompletedCountBySellerId(Long sellerId);
+
+
+    Mono<Order> findById(Long orderId);
 
     /**
      * Получить количество купленных товаров

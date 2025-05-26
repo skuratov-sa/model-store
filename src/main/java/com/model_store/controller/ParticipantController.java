@@ -1,7 +1,9 @@
 package com.model_store.controller;
 
-import com.model_store.model.CreateOrUpdateParticipantRequest;
+import com.model_store.model.UpdateParticipantRequest;
+import com.model_store.model.CreateParticipantRequest;
 import com.model_store.model.FindParticipantRequest;
+import com.model_store.model.base.Participant;
 import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.model.dto.FindParticipantsDto;
 import com.model_store.model.dto.FullParticipantDto;
@@ -41,14 +43,14 @@ public class ParticipantController {
 
     @Operation(summary = "Создать пользователя")
     @PostMapping(path = "/participant")
-    public Mono<Long> createParticipant(@RequestBody CreateOrUpdateParticipantRequest request) {
+    public Mono<Long> createParticipant(@RequestBody CreateParticipantRequest request) {
         return participantService.createParticipant(request);
     }
 
     @Operation(summary = "Обновить пользователя по id")
     @PutMapping(path = "/participant")
-    public Mono<Void> updateParticipant(@RequestHeader("Authorization") String authorizationHeader,
-                                        @RequestBody CreateOrUpdateParticipantRequest request) {
+    public Mono<Long> updateParticipant(@RequestHeader("Authorization") String authorizationHeader,
+                                               @RequestBody UpdateParticipantRequest request) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
         return participantService.updateParticipant(participantId, request);
     }
@@ -60,10 +62,17 @@ public class ParticipantController {
         return participantService.updateParticipantStatus(participantId, ParticipantStatus.DELETED);
     }
 
+    @Operation(summary = "Изменить пароль пользователя")
+    @PutMapping("/participant/password")
+    public Mono<Long> updatePassword(@RequestHeader("Authorization") String authorizationHeader, String oldPassword, String newPassword) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return participantService.updateParticipantPassword(participantId, oldPassword, newPassword);
+    }
+
 
     @Operation(summary = "Изменить статус пользователя")
     @PutMapping("/admin/actions/participants/{participantId}/status")
-    public Mono<Void> blockedParticipant(@PathVariable Long participantId) {
+    public Mono<Void> updateParticipantStatus(@PathVariable Long participantId) {
         return participantService.updateParticipantStatus(participantId, ParticipantStatus.BLOCKED);
     }
 }

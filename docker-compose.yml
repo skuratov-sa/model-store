@@ -34,7 +34,7 @@ services:
       MINIO_CONSOLE_ADDRESS: ':9001'
     command: minio server /data
   backend:
-    image: ready555/model_store:v1.6
+    image: ready555/model_store:v1.8
     depends_on:
       - db
       - minio
@@ -44,6 +44,11 @@ services:
       SPRING_R2DBC_URL: r2dbc:postgresql://db:5432/model_store
       SPRING_R2DBC_USERNAME: root
       SPRING_R2DBC_PASSWORD: root
+
+      SPRING_MAIL_HOST: smtp.mail.ru
+      SPRING_MAIL_PORT: 587
+      SPRING_MAIL_USERNAME: yourMail
+      SPRING_MAIL_PASSWORD: yourPass
 
       S3_ACCESS-KEY: minio_user
       S3_SECRET-KEY: minio_password
@@ -58,6 +63,7 @@ services:
       APP_MAX_PRODUCT_IMAGES: 4
       APP_PRIVATE_KEY_PATH: /backend/keys/private.pk8
       APP_PUBLIC_KEY_PATH: /backend/keys/public.key
+      APP_EMAIL_FROM: yourMail
 networks:
   app-network:
     driver: bridge

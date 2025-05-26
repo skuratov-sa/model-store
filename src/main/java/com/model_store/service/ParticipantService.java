@@ -1,12 +1,15 @@
 package com.model_store.service;
 
-import com.model_store.model.CreateOrUpdateParticipantRequest;
+import com.model_store.model.UpdateParticipantRequest;
+import com.model_store.model.CreateParticipantRequest;
 import com.model_store.model.FindParticipantRequest;
+import com.model_store.model.base.Participant;
 import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.model.dto.FindParticipantByLoginDto;
 import com.model_store.model.dto.FindParticipantsDto;
 import com.model_store.model.dto.FullParticipantDto;
 import com.model_store.model.dto.UserInfoDto;
+import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -14,10 +17,15 @@ public interface ParticipantService {
     Mono<FullParticipantDto> findActualById(Long id);
 
     Mono<FindParticipantByLoginDto> findByLogin(String login);
+    Mono<FindParticipantByLoginDto> findByMail(String mail);
+    Mono<String> findFullNameById(Long participantId);
 
     Flux<FindParticipantsDto> findByParams(FindParticipantRequest searchParams);
 
-    Mono<Long> createParticipant(CreateOrUpdateParticipantRequest request);
+    @Transactional
+    Mono<Participant> activateUser(Long userId);
+
+    Mono<Long> createParticipant(CreateParticipantRequest request);
 
     /**
      * Сохраняем адреса соц сети картинки (Если они есть)
@@ -27,7 +35,7 @@ public interface ParticipantService {
      * @param id      - идетификатор пользователя
      * @param request - обновленные параметры
      */
-    Mono<Void> updateParticipant(Long id, CreateOrUpdateParticipantRequest request);
+    Mono<Long> updateParticipant(Long id, UpdateParticipantRequest request);
 
     Mono<Void> deleteParticipant(Long id);
 
@@ -40,4 +48,6 @@ public interface ParticipantService {
     Mono<UserInfoDto> findShortInfo(Long id);
 
     Mono<Void> updateParticipantStatus(Long participantId, ParticipantStatus status);
+
+    Mono<Long> updateParticipantPassword(Long participantId, String password, String newPassword);
 }

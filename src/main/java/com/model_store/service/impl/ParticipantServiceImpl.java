@@ -2,37 +2,33 @@ package com.model_store.service.impl;
 
 import com.amazonaws.services.kms.model.NotFoundException;
 import com.model_store.exeption.ParticipantNotFoundException;
-import com.model_store.mapper.AccountMapper;
-import com.model_store.mapper.AddressMapper;
 import com.model_store.mapper.ParticipantMapper;
-import com.model_store.mapper.TransferMapper;
-import com.model_store.model.CreateOrUpdateParticipantRequest;
+import com.model_store.model.UpdateParticipantRequest;
+import com.model_store.model.CreateParticipantRequest;
 import com.model_store.model.FindParticipantRequest;
 import com.model_store.model.base.Participant;
-import com.model_store.model.base.ParticipantAddress;
+import com.model_store.model.base.SellerRating;
 import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
 import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.model.constant.TransferMoneyType;
-import com.model_store.model.dto.AccountDto;
-import com.model_store.model.dto.AddressDto;
 import com.model_store.model.dto.FindParticipantByLoginDto;
 import com.model_store.model.dto.FindParticipantsDto;
 import com.model_store.model.dto.FullParticipantDto;
-import com.model_store.model.dto.SocialNetworkDto;
-import com.model_store.model.dto.TransferDto;
 import com.model_store.model.dto.UserInfoDto;
 import com.model_store.repository.AccountRepository;
 import com.model_store.repository.AddressRepository;
 import com.model_store.repository.OrderRepository;
-import com.model_store.repository.ParticipantAddressRepository;
 import com.model_store.repository.ParticipantRepository;
-import com.model_store.repository.SocialNetworkRepository;
+import com.model_store.repository.SellerRatingRepository;
 import com.model_store.repository.TransferRepository;
+import com.model_store.service.EmailService;
 import com.model_store.service.ImageService;
 import com.model_store.service.ParticipantService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +39,7 @@ import java.util.List;
 
 import static com.model_store.model.constant.ParticipantStatus.ACTIVE;
 import static com.model_store.model.constant.ParticipantStatus.DELETED;
+import static com.model_store.model.constant.ParticipantStatus.WAITING_VERIFY;
 import static com.model_store.service.util.UtilService.getExpensive;
 import static java.util.Objects.isNull;
 
@@ -52,17 +49,13 @@ import static java.util.Objects.isNull;
 public class ParticipantServiceImpl implements ParticipantService {
     private final ImageService imageService;
     private final ParticipantMapper participantMapper;
-    private final AccountMapper accountMapper;
-    private final TransferMapper transferMapper;
-    private final AddressMapper addressMapper;
-
-    private final ParticipantAddressRepository participantAddressRepository;
-    private final SocialNetworkRepository socialNetworkRepository;
     private final ParticipantRepository participantRepository;
     private final AddressRepository addressRepository;
     private final AccountRepository accountRepository;
     private final TransferRepository transferRepository;
     private final OrderRepository orderRepository;
+    private final EmailService emailService;
+    private final SellerRatingRepository sellerRatingRepository;
 
     private final PasswordEncoder passwordEncoder;
 
@@ -81,19 +74,37 @@ public class ParticipantServiceImpl implements ParticipantService {
                         addressRepository.findByParticipantId(id).collectList().defaultIfEmpty(List.of()),
                         accountRepository.findByParticipantId(id).collectList().defaultIfEmpty(List.of()),
                         transferRepository.findByParticipantId(id).collectList().defaultIfEmpty(List.of()),
-                        imageService.findActualImages(id, ImageTag.PARTICIPANT).collectList().defaultIfEmpty(List.of())
-                )
+                        imageService.findActualImages(id, ImageTag.PARTICIPANT).collectList().defaultIfEmpty(List.of()),
+                        sellerRatingRepository.findBySellerId(id).defaultIfEmpty(new SellerRating())
+                        )
                 .map(tuple5 ->
-                        participantMapper.toFullParticipantDto(tuple5.getT1(), tuple5.getT2(), tuple5.getT3(), tuple5.getT4(), tuple5.getT5())
+                        participantMapper.toFullParticipantDto(tuple5.getT1(), tuple5.getT2(), tuple5.getT3(), tuple5.getT4(), tuple5.getT5(), tuple5.getT6())
                 );
     }
 
     @Override
     public Mono<FindParticipantByLoginDto> findByLogin(String login) {
-        return participantRepository.findByLogin(login)
-                .flatMap(participant -> imageService.findMainImage(participant.getId(), ImageTag.PARTICIPANT)
-                        .map(imageId -> participantMapper.toFindParticipantByLoginDto(participant, imageId))
+        Mono<Participant> participantMono = participantRepository.findByLogin(login);
+        Mono<Long> imageMono = participantMono.flatMap(participant -> imageService.findMainImage(participant.getId(), ImageTag.PARTICIPANT));
+        return Mono.zip(participantMono, imageMono.defaultIfEmpty(0L))
+                .map(tuple2 ->
+                        participantMapper.toFindParticipantByLoginDto(tuple2.getT1(), tuple2.getT2())
                 );
+    }
+
+    @Override
+    public Mono<FindParticipantByLoginDto> findByMail(String mail) {
+        Mono<Participant> participantMono = participantRepository.findByMail(mail);
+        Mono<Long> imageMono = participantMono.flatMap(participant -> imageService.findMainImage(participant.getId(), ImageTag.PARTICIPANT));
+        return Mono.zip(participantMono, imageMono.defaultIfEmpty(0L))
+                .map(tuple2 ->
+                        participantMapper.toFindParticipantByLoginDto(tuple2.getT1(), tuple2.getT2())
+                );
+    }
+
+    @Override
+    public Mono<String> findFullNameById(Long participantId) {
+        return participantRepository.findFullNameById(participantId);
     }
 
     public Flux<FindParticipantsDto> findByParams(FindParticipantRequest searchParams) {
@@ -126,35 +137,35 @@ public class ParticipantServiceImpl implements ParticipantService {
                 });
     }
 
-
     @Transactional
-    public Mono<Long> createParticipant(CreateOrUpdateParticipantRequest request) {
-        Participant participant = participantMapper.toParticipant(request, ACTIVE);
+    public Mono<Long> createParticipant(CreateParticipantRequest request) {
+        Participant participant = participantMapper.toParticipant(request, ParticipantStatus.WAITING_VERIFY);
 
-        return participantRepository.findByLogin(request.getLogin())
-                .flatMap(existingParticipant -> Mono.error(new RuntimeException("Participant already exists")))
+        return participantRepository.findByMail(request.getMail())
+                .filter(p -> p.getStatus() != WAITING_VERIFY)
+                .flatMap(existing -> Mono.error(new RuntimeException("Пользователь с таким email уже зарегистрирован")))
                 .switchIfEmpty(Mono.defer(() -> {
                     participant.setPassword(passwordEncoder.encode(request.getPassword()));
                     return participantRepository.save(participant).map(Participant::getId);
-                }))
-                .flatMap(participantId -> {
-                    Mono<Void> savedAddressesMono = saveAddresses(request.getAddress(), (Long) participantId);
-                    Mono<Void> savedSocialNetworksMono = saveSocialNetworks(request.getSocialNetworks(), (Long) participantId);
-                    Mono<Void> savedAccountsMono = saveAccounts(request.getAccounts(), (Long) participantId);
-                    Mono<Void> savedTransfersMono = saveTransfers(request.getTransfers(), (Long) participantId);
-                    return Mono.when(savedAddressesMono, savedSocialNetworksMono, savedAccountsMono, savedTransfersMono)
-                            .thenReturn((Long) participantId);
+                })).flatMap(participantId -> emailService.sendVerificationCode((Long) participantId, participant.getMail())
+                        .thenReturn((Long) participantId)
+                );
+    }
+
+    @Transactional
+    public Mono<Participant> activateUser(Long userId) {
+        return participantRepository.findById(userId)
+                .flatMap(user -> {
+                    if (user.getStatus() == ParticipantStatus.WAITING_VERIFY) {
+                        user.setStatus(ParticipantStatus.ACTIVE);
+                        return participantRepository.save(user);
+                    }
+                    return Mono.error(new RuntimeException("User already activated"));
                 });
     }
 
-    /**
-     * Сохраняем адреса соц сети картинки (Если они есть)
-     *
-     * @param id      - идетификатор пользователя
-     * @param request - обновленные параметры
-     */
     @Transactional
-    public Mono<Void> updateParticipant(Long id, CreateOrUpdateParticipantRequest request) {
+    public Mono<Long> updateParticipant(Long id, UpdateParticipantRequest request) {
         return participantRepository.findById(id)
                 .filter(participant -> ACTIVE.equals(participant.getStatus()))
                 .switchIfEmpty(Mono.error(new ParticipantNotFoundException(id)))
@@ -162,20 +173,14 @@ public class ParticipantServiceImpl implements ParticipantService {
                     Participant updatedParticipant = participantMapper.toParticipant(request, ACTIVE);
                     updatedParticipant.setId(existingParticipant.getId());
                     updatedParticipant.setRole(existingParticipant.getRole());
+                    updatedParticipant.setMail(existingParticipant.getMail());
+                    updatedParticipant.setPassword(existingParticipant.getPassword());
                     updatedParticipant.setCreatedAt(existingParticipant.getCreatedAt());
-
-                    Mono<Void> savedAccountsMono = saveAccounts(request.getAccounts(), updatedParticipant.getId());
-                    Mono<Void> savedTransfersMono = saveTransfers(request.getTransfers(), updatedParticipant.getId());
-                    Mono<Void> savedAddressesMono = saveAddresses(request.getAddress(), updatedParticipant.getId());
-                    Mono<Void> savedSocialNetworksMono = saveSocialNetworks(request.getSocialNetworks(), updatedParticipant.getId());
-                    Mono<Void> updateImagesStatus = updateImagesStatus(request.getImageIds(), existingParticipant.getId());
-
-                    return Mono.when(savedAddressesMono, savedSocialNetworksMono, updateImagesStatus, savedAccountsMono, savedTransfersMono)
-                            .then(Mono.defer(() -> participantRepository.save(updatedParticipant)))
-                            .doOnError(throwable -> log.error("Пользователь {} не сохранен причина: {}", updatedParticipant.getId(), throwable.getMessage()))
-                            .doOnSuccess(participantId -> log.info("Пользователь {} успешно сохоанен", participantId))
-                            .then();
-                });
+                    updatedParticipant.setSellerStatus(existingParticipant.getSellerStatus());
+                    return participantRepository.save(updatedParticipant).map(Participant::getId);
+                })
+                .doOnSuccess(participantId -> log.info("Пользователь {} успешно сохранен", participantId))
+                .doOnError(throwable -> log.error("Пользователь {} не сохранен причина: {}", id, throwable.getMessage()));
     }
 
     public Mono<Void> deleteParticipant(Long id) {
@@ -199,61 +204,23 @@ public class ParticipantServiceImpl implements ParticipantService {
                 }).then();
     }
 
-
-    private Mono<Void> saveAddresses(List<AddressDto> addresses, Long participantId) {
-        if (addresses == null || addresses.isEmpty()) {
-            return Mono.empty();
-        }
-
-        return participantAddressRepository.findByParticipantId(participantId)
-                .flatMap(participantAddress ->
-                        participantAddressRepository.deleteById(participantAddress.getId())
-                                .thenMany(addressRepository.deleteById(participantAddress.getAddressId()))
-                ).thenMany(Flux.fromIterable(addresses) // Обрабатываем новые адреса
-                        .map(addressMapper::toAddress) // Преобразуем DTO в Address
-                        .flatMap(addressRepository::save) // Сохраняем новые адреса
-                        .flatMap(savedAddress -> participantAddressRepository.save( // Создаём новые связи
-                                ParticipantAddress.builder()
-                                        .addressId(savedAddress.getId())
-                                        .participantId(participantId)
-                                        .build()
-                        ))
-                )
-                .doOnError(throwable -> log.error("Ошибка при сохранении адресов: {}", throwable.getMessage()))
-                .then();
+    @Override
+    public Mono<Long> updateParticipantPassword(Long participantId, String oldPassword, String newPassword) {
+        return participantRepository.findById(participantId)
+                .switchIfEmpty(Mono.error(new ParticipantNotFoundException(participantId)))
+                .flatMap(participant -> changePassword(participantId, oldPassword, newPassword, participant));
     }
 
-    private Mono<Void> saveSocialNetworks(List<SocialNetworkDto> socialNetworksDto, Long participantId) {
-        if (socialNetworksDto == null || socialNetworksDto.isEmpty()) {
-            return Mono.empty();
+    @NotNull
+    private Mono<Long> changePassword(Long participantId, String oldPassword, String newPassword, Participant participant) {
+        if (passwordEncoder.matches(oldPassword, participant.getPassword())) {
+            participant.setPassword(passwordEncoder.encode(newPassword));
+            return participantRepository.save(participant).map(Participant::getId);
+        } else {
+            return Mono.error(new BadCredentialsException(participantId.toString()));
         }
-        return socialNetworkRepository.findByParticipantId(participantId).collectList()
-                .map(socialNetworks -> participantMapper.toSocialNetwork(socialNetworksDto, socialNetworks, participantId))
-                .flatMapMany(socialNetworkRepository::saveAll)
-                .then();
     }
 
-
-    private Mono<Void> saveAccounts(List<AccountDto> accountDtos, Long participantId) {
-        if (accountDtos == null || accountDtos.isEmpty()) {
-            return Mono.empty();
-        }
-        return accountRepository.findByParticipantId(participantId).collectList()
-                .map(accounts -> accountMapper.toAccount(accountDtos, accounts, participantId))
-                .flatMapMany(accountRepository::saveAll)
-                .then();
-    }
-
-    private Mono<Void> saveTransfers(List<TransferDto> transferDtos, Long participantId) {
-        if (transferDtos == null || transferDtos.isEmpty()) {
-            return Mono.empty();
-        }
-
-        return transferRepository.findByParticipantId(participantId).collectList()
-                .map(accounts -> transferMapper.toTransfer(transferDtos, accounts, participantId))
-                .flatMapMany(transferRepository::saveAll)
-                .then();
-    }
 
     private Mono<Void> updateImagesStatus(List<Long> imageIds, Long id) {
         if (isNull(imageIds) || imageIds.isEmpty()) {

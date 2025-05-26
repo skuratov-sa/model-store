@@ -12,6 +12,7 @@ import io.jsonwebtoken.Jwts;
 import io.micrometer.common.lang.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
@@ -21,9 +22,11 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.temporal.TemporalAmount;
 import java.util.Base64;
 import java.util.Date;
 
@@ -35,7 +38,7 @@ public class JwtServiceImpl implements JwtService {
     private final PublicKey publicKey;
 
     @Autowired
-    public JwtServiceImpl(ReactiveUserDetailsService userDetailsService, ApplicationProperties applicationProperties) throws Exception {
+    public JwtServiceImpl(@Lazy ReactiveUserDetailsService userDetailsService, ApplicationProperties applicationProperties) throws Exception {
         this.userDetailsService = userDetailsService;
 
         this.privateKey = loadPrivateKey(applicationProperties.getPrivateKeyPath());
@@ -43,9 +46,23 @@ public class JwtServiceImpl implements JwtService {
     }
 
     @Override
-    public String generateAccessToken(@NonNull CustomUserDetails userDetails) {
+    public String generateVerificationAccessToken(@NonNull Long participantId) {
         final LocalDateTime now = LocalDateTime.now();
-        final Instant accessExpirationInstant = now.plusMinutes(30).atZone(ZoneId.systemDefault()).toInstant();
+        final Instant accessExpirationInstant = now.plus(Duration.ofDays(1)).atZone(ZoneId.systemDefault()).toInstant();
+        final Date accessExpiration = Date.from(accessExpirationInstant);
+
+        return Jwts.builder()
+                .setExpiration(accessExpiration)
+                .claim("type", "verify")  // Добавляем тип токена
+                .claim("id", participantId)
+                .signWith(privateKey)
+                .compact();
+    }
+
+    @Override
+    public String generateAccessToken(@NonNull CustomUserDetails userDetails, @NonNull TemporalAmount lifetime) {
+        final LocalDateTime now = LocalDateTime.now();
+        final Instant accessExpirationInstant = now.plus(lifetime).atZone(ZoneId.systemDefault()).toInstant();
         final Date accessExpiration = Date.from(accessExpirationInstant);
 
         return Jwts.builder()
@@ -105,7 +122,7 @@ public class JwtServiceImpl implements JwtService {
 
             // Если refresh токен валиден, генерируем новый access токен
             return userDetailsService.findByUsername(username)
-                    .map(userDetails -> generateAccessToken((CustomUserDetails) userDetails))
+                    .map(userDetails -> generateAccessToken((CustomUserDetails) userDetails, Duration.ofMinutes(30)))
                     .switchIfEmpty(Mono.error(new RuntimeException("User not found")));
 
         } catch (JwtException | IllegalArgumentException e) {

@@ -1,5 +1,6 @@
 package com.model_store.model.dto;
 
+import com.model_store.model.constant.SellerStatus;
 import com.model_store.model.constant.TransferMoneyType;
 import lombok.Builder;
 import lombok.Data;
@@ -26,10 +27,6 @@ public class FindParticipantsDto {
      */
     private String city;
     /**
-     * Рейтинг среди других (0.00 - 5.00)
-     */
-    private Float rating;
-    /**
      * Фото профиля
      */
     private Long imageId;
@@ -53,6 +50,14 @@ public class FindParticipantsDto {
      * Крайний срок ожидания оплаты
      */
     private Integer deadlinePayment;
+    /**
+     * Статус продавца
+     */
+    private SellerStatus sellerStatus;
+    /**
+     * Рейтинг среди других (0.00 - 5.00)
+     */
+    private Float averageRating;
     /**
      * Способы оплаты
      */

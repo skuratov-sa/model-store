@@ -1,10 +1,12 @@
 package com.model_store.model;
 
+import com.model_store.model.base.Participant;
 import com.model_store.model.constant.ParticipantStatus;
 import lombok.Builder;
 import lombok.Data;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
@@ -56,5 +58,18 @@ public class CustomUserDetails implements UserDetails {
     @Override
     public boolean isEnabled() {
         return true;
+    }
+
+    public static CustomUserDetails fromUser(Participant participant, Long imageId) {
+        return CustomUserDetails.builder()
+                .id(participant.getId())
+                .login(participant.getLogin())
+                .email(participant.getMail())
+                .fullName(participant.getFullName())
+                .role(participant.getRole().name())
+                .password(participant.getPassword())
+                .imageId(imageId)
+                .status(participant.getStatus())
+                .build();
     }
 }

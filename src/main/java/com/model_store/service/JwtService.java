@@ -5,12 +5,15 @@ import io.jsonwebtoken.Claims;
 import io.micrometer.common.lang.NonNull;
 import reactor.core.publisher.Mono;
 
+import java.time.temporal.TemporalAmount;
+
 public interface JwtService {
+    String generateVerificationAccessToken(@NonNull Long participantId);
 
     /**
      * Генерация Access токена
      */
-    String generateAccessToken(@NonNull CustomUserDetails userDetails);
+    String generateAccessToken(@NonNull CustomUserDetails userDetails, @NonNull TemporalAmount lifetime);
 
     /**
      * Генерация Refresh токена
