@@ -22,7 +22,7 @@ public class CategoryController {
 
     @Operation(summary = "Создать категорию")
     @PostMapping("/admin/actions/categories")
-    public Mono<Long> createCategory(@RequestParam String name, @RequestParam Long parentId) {
+    public Mono<Long> createCategory(@RequestParam String name, @RequestParam(required = false) Long parentId) {
         return service.createCategory(name, parentId);
     }
 

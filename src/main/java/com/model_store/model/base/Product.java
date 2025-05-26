@@ -2,6 +2,7 @@ package com.model_store.model.base;
 
 
 import com.model_store.model.constant.Currency;
+import com.model_store.model.constant.ProductAvailabilityType;
 import com.model_store.model.constant.ProductStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -22,12 +23,15 @@ public class Product {
     private String name;
     private String description;
     private Float price;
+    private Float prepaymentAmount;
     private Integer count;
     private Currency currency;
     private String originality;
     private Long participantId;
     private Long categoryId;
     private ProductStatus status;
+    private ProductAvailabilityType availability;
+    private String externalUrl;
 
 //    @JsonFormat(pattern = "dd.MM.yyyy HH:mm:ss", timezone = "Europe/Moscow")
 //    private Instant createdAt;

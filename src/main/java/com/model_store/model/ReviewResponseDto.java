@@ -10,5 +10,6 @@ public class ReviewResponseDto {
     private int rating;
     private String comment;
     private String reviewerName;
+    private Long imageId;
     private Instant createdAt;
 }

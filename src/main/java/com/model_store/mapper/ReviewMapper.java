@@ -11,7 +11,7 @@ import org.mapstruct.Mapping;
 public interface ReviewMapper {
 
     @Mapping(target = "comment", source = "dto.comment")
-    Review toReview(ReviewRequestDto dto, Order order);
+    Review toReview(ReviewRequestDto dto, Order order, Long reviewerId);
 
-    ReviewResponseDto toReviewResponseDto(Review review, String reviewerName);
+    ReviewResponseDto toReviewResponseDto(Review review, String reviewerName, Long imageId);
 }

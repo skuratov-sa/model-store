@@ -4,7 +4,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
@@ -19,11 +18,13 @@ public class Review {
     @Id
     private Long id;
 
-    private Long orderProductId;
+    private Long orderId;
 
     private Long reviewerId;
 
     private Long sellerId;
+
+    private Long productId;
 
     private Integer rating;
 

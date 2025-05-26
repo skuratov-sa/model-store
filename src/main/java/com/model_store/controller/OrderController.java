@@ -1,5 +1,6 @@
 package com.model_store.controller;
 
+import com.model_store.model.dto.CloseOrderRequest;
 import com.model_store.model.dto.CreateOrderRequest;
 import com.model_store.model.dto.FindOrderResponse;
 import com.model_store.model.dto.GetRequiredODataOrderDto;
@@ -27,6 +28,20 @@ public class OrderController {
     private final OrderService orderService;
     private final JwtService jwtService;
 
+    @Operation(summary = "Получить список заказов для продавца")
+    @GetMapping("/seller")
+    public Flux<FindOrderResponse> getOrdersBySeller(@RequestHeader("Authorization") String authorizationHeader) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return orderService.getOrdersBySeller(participantId);
+    }
+
+    @Operation(summary = "Получить список заказов для покупателя")
+    @GetMapping("/customer")
+    public Flux<FindOrderResponse> getOrdersByCustomer(@RequestHeader("Authorization") String authorizationHeader) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return orderService.getOrdersByCustomer(participantId);
+    }
+
     @Operation(summary = "Получить данные для создания заказа")
     @GetMapping
     public Mono<GetRequiredODataOrderDto> getRequiredDataForCreateOrder(@RequestHeader("Authorization") String authorizationHeader, Long productId) {
@@ -34,58 +49,81 @@ public class OrderController {
         return orderService.getRequiredDataForCreateOrder(participantId, productId);
     }
 
-    @Operation(summary = "Создать новый заказ")
-    @PostMapping()
+    @Operation(summary = "1.Создать новый заказ")
+    @PostMapping("/BOOKED")
     public Mono<Long> createOrder(@RequestHeader("Authorization") String authorizationHeader, @RequestBody CreateOrderRequest request) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
         return orderService.createOrder(request, participantId);
     }
 
-    @Operation(summary = "Продавец подтверждает заказ")
-    @PostMapping("/{orderId}/confirm")
-    public Mono<Long> confirmOrder(@PathVariable Long orderId, @RequestParam Long accountId, @RequestParam(required = false) String comment) {
-        return orderService.agreementOrder(orderId, accountId, comment);
+    @Operation(summary = "2.Продавец подтверждает заказ/предзаказ")
+    @PostMapping("/{orderId}/AWAITING_PREPAYMENT")
+    public Mono<Long> confirmOrder(@RequestHeader("Authorization") String authorizationHeader,
+                                   @PathVariable Long orderId, @RequestParam Long accountId, @RequestParam(required = false) String comment) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return orderService.agreementOrder(orderId, accountId, comment, participantId);
     }
 
-    @Operation(summary = "Покупатель подтверждает оплату")
-    @PostMapping("/{orderId}/payment")
-    public Mono<Long> confirmPayment(@PathVariable Long orderId, @RequestParam(required = false) Long imageId, @RequestParam(required = false) String comment) {
-        return orderService.paymentOrder(orderId, imageId, comment);
+    @Operation(summary = "3.1.Покупатель подтверждает предоплату")
+    @PostMapping("/{orderId}/AWAITING_PREPAYMENT_APPROVAL")
+    public Mono<Long> prepaymentOrder(@RequestHeader("Authorization") String authorizationHeader,
+                                      @PathVariable Long orderId, @RequestParam(required = false) Long imageId, @RequestParam(required = false) String comment) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return orderService.prepaymentOrder(orderId, imageId, comment, participantId);
     }
 
-    @Operation(summary = "Продавец отправляет товар")
-    @PostMapping("/{orderId}/ship")
-    public Mono<Long> shipOrder(@PathVariable Long orderId, @RequestParam String deliveryUrl, @RequestParam(required = false) String comment) {
-        return orderService.transferOrder(orderId, deliveryUrl, comment);
+    @Operation(summary = "3.2.Продавец подтверждает предзаказ")
+    @PostMapping("/{orderId}/AWAITING_PAYMENT")
+    public Mono<Long> sellerConfirmsPreorder(@RequestHeader("Authorization") String authorizationHeader,
+                                             @PathVariable Long orderId, @RequestParam(required = false) String comment) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return orderService.sellerConfirmsPreorder(orderId, comment, participantId);
     }
 
-    @Operation(summary = "Покупатель подтверждает получение")
-    @PostMapping("/{orderId}/deliver")
-    public Mono<Long> deliverOrder(@PathVariable Long orderId, @RequestParam(required = false) String comment) {
-        return orderService.deliveredOrder(orderId, comment);
+    @Operation(summary = "3.3.Покупатель подтверждает оплату")
+    @PostMapping("/{orderId}/ASSEMBLING")
+    public Mono<Long> confirmPayment(@RequestHeader("Authorization") String authorizationHeader,
+                                     @PathVariable Long orderId, @RequestParam(required = false) Long imageId, @RequestParam(required = false) String comment) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return orderService.paymentOrder(orderId, imageId, comment, participantId);
     }
 
-    @Operation(summary = "Создание спора по заказу")
-    @PostMapping("/orders/{orderId}/dispute")
-    public Mono<Long> openDisputeForOrder(@PathVariable Long orderId, @RequestParam List<Long> imageIds, @RequestParam(required = false) String comment) {
-        return orderService.openDisputeForOrder(orderId, imageIds, comment);
+    @Operation(summary = "4.Продавец отправляет товар")
+    @PostMapping("/{orderId}/ON_THE_WAY")
+    public Mono<Long> shipOrder(@RequestHeader("Authorization") String authorizationHeader,
+                                @PathVariable Long orderId, @RequestParam String deliveryUrl, @RequestParam(required = false) String comment) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return orderService.transferOrder(orderId, deliveryUrl, comment, participantId);
     }
 
-    @Operation(summary = "Закрытие спора по заказу")
-    @PostMapping("/orders/{orderId}/dispute/close")
-    public Mono<Long> closeDisputeForOrder(@PathVariable Long orderId, @RequestParam(required = false) List<Long> imageIds, @RequestParam(required = false) String comment) {
-        return orderService.closeDisputeForOrder(orderId, imageIds, comment);
+    @Operation(summary = "5.Покупатель подтверждает получение")
+    @PostMapping("/{orderId}/COMPLETED")
+    public Mono<Long> deliverOrder(@RequestHeader("Authorization") String authorizationHeader,
+                                   @PathVariable Long orderId, @RequestParam(required = false) String comment) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return orderService.deliveredOrder(orderId, comment, participantId);
     }
 
-    @Operation(summary = "Получить список заказов для продавца")
-    @GetMapping("/seller/{sellerId}")
-    public Flux<FindOrderResponse> getOrdersBySeller(@PathVariable Long sellerId) {
-        return orderService.getOrdersBySeller(sellerId);
+    @Operation(summary = "6.Создание спора по заказу")
+    @PostMapping("/orders/{orderId}/DISPUTED")
+    public Mono<Long> openDisputeForOrder(@RequestHeader("Authorization") String authorizationHeader,
+                                          @PathVariable Long orderId, @RequestParam List<Long> imageIds, @RequestParam(required = false) String comment) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return orderService.openDisputeForOrder(orderId, imageIds, comment, participantId);
     }
 
-    @Operation(summary = "Получить список заказов для покупателя")
-    @GetMapping("/customer/{customerId}")
-    public Flux<FindOrderResponse> getOrdersByCustomer(@PathVariable Long customerId) {
-        return orderService.getOrdersByCustomer(customerId);
+    @Operation(summary = "7. Закрытие спора по заказу")
+    @PostMapping("/orders/{orderId}/dispute/COMPLETED")
+    public Mono<Long> closeDisputeForOrder(@RequestHeader("Authorization") String authorizationHeader,
+            @PathVariable Long orderId, @RequestParam(required = false) List<Long> imageIds, @RequestParam(required = false) String comment) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return orderService.closeDisputeForOrder(orderId, imageIds, comment, participantId);
+    }
+
+    @Operation(summary = "Отменить заказ")
+    @PostMapping("/{orderId}/FAILED")
+    public Mono<Long> closeOrder(@RequestHeader("Authorization") String authorizationHeader, @RequestBody CloseOrderRequest request) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return orderService.closureOrder(request, participantId);
     }
 }

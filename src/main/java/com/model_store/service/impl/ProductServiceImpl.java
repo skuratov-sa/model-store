@@ -4,16 +4,20 @@ import com.amazonaws.services.kms.model.NotFoundException;
 import com.model_store.mapper.ProductMapper;
 import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.FindProductRequest;
+import com.model_store.model.ReviewResponseDto;
 import com.model_store.model.base.Product;
 import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
+import com.model_store.model.constant.ParticipantRole;
+import com.model_store.model.constant.ProductAvailabilityType;
 import com.model_store.model.constant.ProductStatus;
 import com.model_store.model.dto.GetProductResponse;
 import com.model_store.model.dto.ProductDto;
-import com.model_store.model.page.PagedResult;
 import com.model_store.repository.ProductRepository;
 import com.model_store.service.CategoryService;
 import com.model_store.service.ProductService;
+import com.model_store.service.ReviewService;
+import com.model_store.service.SocialNetworksService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +26,7 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 import java.util.Objects;
 
+import static com.model_store.model.constant.ProductStatus.ACTIVE;
 import static java.util.Objects.isNull;
 
 @Service
@@ -31,14 +36,19 @@ public class ProductServiceImpl implements ProductService {
     private final CategoryService categoryService;
     private final ProductMapper productMapper;
     private final ImageServiceImpl imageService;
+    private final ReviewService reviewService;
+    private final SocialNetworksService socialNetworksService;
 
     @Transactional
     public Mono<GetProductResponse> getProductById(Long productId) {
-        return Mono.zip(productRepository.findActualProduct(productId),
-                imageService.findActualImages(productId, ImageTag.PRODUCT).collectList().defaultIfEmpty(List.of())
-        ).flatMap(tuple2 ->
-                categoryService.findById(tuple2.getT1().getCategoryId())
-                        .map(category -> productMapper.toGetProductResponse(tuple2.getT1(), category, tuple2.getT2())
+        Mono<Product> productFindMono = productRepository.findActualProduct(productId);
+        Mono<List<Long>> imageFindMono = imageService.findActualImages(productId, ImageTag.PRODUCT).collectList().defaultIfEmpty(List.of());
+        Mono<List<ReviewResponseDto>> findReviewsMono = reviewService.findByProductId(productId).collectList().defaultIfEmpty(List.of());
+
+        return Mono.zip(productFindMono, imageFindMono, findReviewsMono).flatMap(tuple3 ->
+                categoryService.findById(tuple3.getT1().getCategoryId())
+                        .map(category ->
+                                productMapper.toGetProductResponse(tuple3.getT1(), category, tuple3.getT2(), tuple3.getT3())
                         )
         );
     }
@@ -59,19 +69,19 @@ public class ProductServiceImpl implements ProductService {
                 );
     }
 
-    public Mono<PagedResult<ProductDto>> findByParams(FindProductRequest searchParams) {
+    public Mono<List<ProductDto>> findByParams(FindProductRequest searchParams) {
         // 1. Получаем список продуктов
-        Mono<List<ProductDto>> products = productRepository.findByParams(searchParams, null)
+        return productRepository.findByParams(searchParams, null)
                 .concatMap(product -> categoryService.findById(product.getCategoryId())
                         .zipWith(imageService.findMainImage(product.getId(), ImageTag.PRODUCT).defaultIfEmpty(-1L))
                         .map(tuple -> productMapper.toProductDto(product, tuple.getT1(), tuple.getT2() == -1L ? null : tuple.getT2()))
                 ).collectList();
 
         // 2. Получаем общее количество
-        Mono<Integer> totalCount = productRepository.findCountBySearchParams(searchParams, null).defaultIfEmpty(0);
+//        Mono<Integer> totalCount = productRepository.findCountBySearchParams(searchParams, null).defaultIfEmpty(0);
 
-        return products.zipWith(totalCount)
-                .map(tuple -> new PagedResult<>(tuple.getT1(), tuple.getT2(), searchParams.getPageable()));
+//        return products.zipWith(totalCount)
+//                .map(tuple -> new PagedResult<>(tuple.getT1(), tuple.getT2(), searchParams.getPageable()));
     }
 
     @Override
@@ -80,13 +90,26 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Transactional
-    public Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId) {
-        Product product = productMapper.toProduct(request, participantId);
+    public Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId, ParticipantRole role) {
+        if (role == ParticipantRole.ADMIN) return createProduct(request, participantId);
+
+        return socialNetworksService.findByParticipantId(participantId)
+                .switchIfEmpty(Mono.error(new IllegalAccessError("Необходимо добавить социальные сети прежде чем создать товар"))).collectList()
+                .flatMap(socialNetworks -> createProduct(request, participantId));
+    }
+
+    private Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId) {
+        Product product = productMapper.toProduct(request, participantId, ACTIVE);
+
+        if (request.getAvailability() != ProductAvailabilityType.PURCHASABLE) product.setCount(null);
+
         return productRepository.save(product)
-                .flatMap(p -> updateImagesStatus(request.getImageIds(), p.getId())
-                        .then(Mono.just(p.getId()))
+                .flatMap(savedProduct ->
+                        updateImagesStatus(request.getImageIds(), savedProduct.getId())
+                                .thenReturn(savedProduct.getId())
                 );
     }
+
 
     @Transactional
     public Mono<Void> updateProduct(Long id, CreateOrUpdateProductRequest request, Long participantId) {

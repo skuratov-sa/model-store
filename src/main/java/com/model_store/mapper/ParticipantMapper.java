@@ -6,6 +6,7 @@ import com.model_store.model.base.Account;
 import com.model_store.model.base.Address;
 import com.model_store.model.base.Participant;
 import com.model_store.model.base.SellerRating;
+import com.model_store.model.base.SocialNetwork;
 import com.model_store.model.base.Transfer;
 import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.model.dto.AddressDto;
@@ -30,7 +31,9 @@ public interface ParticipantMapper {
 
     FindParticipantsDto toFindParticipantDto(Participant participant, Long imageId);
 
-    FullParticipantDto toFullParticipantDto(Participant participant, List<Address> addresses, List<Account> accounts, List<Transfer> transfers, List<Long> imageIds, SellerRating sellerRating);
+    FullParticipantDto toFullParticipantDto(Participant participant, List<Address> addresses, List<Account> accounts,
+                                            List<Transfer> transfers, List<Long> imageIds, SellerRating sellerRating, List<SocialNetwork> socialNetworks
+    );
 
     UserInfoDto toUserInfoDto(Participant participant, Long imageId);
 

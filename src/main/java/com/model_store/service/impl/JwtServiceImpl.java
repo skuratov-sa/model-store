@@ -3,6 +3,7 @@ package com.model_store.service.impl;
 import com.model_store.configuration.property.ApplicationProperties;
 import com.model_store.exception.InvalidTokenException;
 import com.model_store.model.CustomUserDetails;
+import com.model_store.model.constant.ParticipantRole;
 import com.model_store.service.JwtService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
@@ -134,6 +135,12 @@ public class JwtServiceImpl implements JwtService {
     public Long getIdByAccessToken(@NonNull String token) {
         Claims claims = parseAccessToken(token);
         return Long.valueOf(claims.get("id").toString());
+    }
+
+    @Override
+    public ParticipantRole getRoleByAccessToken(String accessToken) {
+        Claims claims = parseAccessToken(accessToken);
+        return ParticipantRole.valueOf(claims.get("role").toString());
     }
 
 

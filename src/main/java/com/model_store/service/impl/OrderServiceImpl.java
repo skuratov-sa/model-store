@@ -1,6 +1,5 @@
 package com.model_store.service.impl;
 
-import com.amazonaws.services.kms.model.NotFoundException;
 import com.model_store.mapper.OrderMapper;
 import com.model_store.model.base.Address;
 import com.model_store.model.base.Order;
@@ -9,6 +8,7 @@ import com.model_store.model.base.Transfer;
 import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
 import com.model_store.model.constant.OrderStatus;
+import com.model_store.model.dto.CloseOrderRequest;
 import com.model_store.model.dto.CreateOrderRequest;
 import com.model_store.model.dto.FindOrderResponse;
 import com.model_store.model.dto.GetRequiredODataOrderDto;
@@ -27,13 +27,18 @@ import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
+import static com.model_store.model.constant.OrderStatus.AWAITING_PAYMENT;
+import static com.model_store.model.constant.OrderStatus.AWAITING_PREPAYMENT;
+import static com.model_store.model.constant.OrderStatus.AWAITING_PREPAYMENT_APPROVAL;
+import static com.model_store.model.constant.OrderStatus.BOOKED;
+import static com.model_store.model.constant.ProductAvailabilityType.EXTERNAL_ONLY;
+import static com.model_store.model.constant.ProductAvailabilityType.PURCHASABLE;
 import static com.model_store.service.util.UtilService.getImageId;
 import static java.util.Collections.emptyList;
-import static java.util.Collections.singletonList;
 import static java.util.Objects.isNull;
 
 @Service
@@ -51,7 +56,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public Mono<GetRequiredODataOrderDto> getRequiredDataForCreateOrder(Long participantId, Long productId) {
         Mono<Product> productMono = productService.findById(productId);
-        Mono<List<Address>> addressMono = productMono.flatMapMany(e -> addressService.findByParticipantId(e.getParticipantId())).collectList().defaultIfEmpty(emptyList());
+        Mono<List<Address>> addressMono = addressService.findByParticipantId(participantId).collectList().defaultIfEmpty(emptyList());
         Mono<List<Transfer>> transferMono = productMono.flatMapMany(e -> transferService.findByParticipantId(e.getParticipantId())).collectList().defaultIfEmpty(emptyList());
 
         return Mono.zip(addressMono, transferMono)
@@ -64,18 +69,94 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public Mono<Long> createOrder(CreateOrderRequest request, Long participantId) {
-        return productService.findById(request.getProductId())
-                .filter(product -> product.getCount() - request.getCount() >= 0)
-                .switchIfEmpty(Mono.error(new RuntimeException("Данный товар закончился")))
-                .flatMap(product -> createOrderAndUpdateProduct(product, request, participantId));
-    }
-
-    @Override
     public Mono<Long> updateStatusOrder(UpdateOrderRequest request) {
         return orderRepository.findById(request.getOrderId())
                 .doOnNext(order -> order.setStatus(request.getOrderStatus()))
                 .flatMap(order -> orderRepository.save(order).map(Order::getId));
+    }
+
+    @Override
+    @Transactional
+    public Mono<Long> createOrder(CreateOrderRequest request, Long participantId) {
+        return productService.findById(request.getProductId())
+                .filter(product -> validateCreateOrder(product, request.getCount(), participantId))
+                .flatMap(product -> createOrderAndUpdateProduct(product, request, participantId));
+    }
+
+    @Transactional
+    protected Mono<Long> createOrderAndUpdateProduct(Product product, CreateOrderRequest request, Long participantId) {
+        var prepayment = Optional.ofNullable(product.getPrepaymentAmount()).orElse(0F);
+
+        Order order = orderMapper.toOrder(request);
+        order.setStatus(BOOKED);
+        order.setSellerId(product.getParticipantId());
+        order.setCustomerId(participantId);
+        order.setTotalPrice((product.getPrice() - prepayment) * request.getCount());
+        Mono<Order> saveOrder = Mono.defer(() -> orderRepository.save(order));
+
+        if (product.getAvailability().equals(PURCHASABLE)) {
+            product.setCount(product.getCount() - request.getCount());
+            return productService.save(product)
+                    .then(saveOrder.map(Order::getId));
+        }
+
+        order.setPrepaymentAmount(prepayment * request.getCount());
+        return saveOrder.map(Order::getId);
+    }
+
+    @Override
+    @Transactional
+    public Mono<Long> agreementOrder(Long orderId, Long accountId, String comment, Long participantId) {
+        return orderRepository.findById(orderId)
+                .filter(order -> order.getStatus().equals(BOOKED) && order.getSellerId().equals(participantId))
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями"))) // Если заказ не найден
+                .doOnNext(order -> order.setAccountId(accountId))
+                .doOnNext(order -> order.setComment(comment))
+                .doOnNext(order -> order.setStatus(!isNull(order.getPrepaymentAmount()) && order.getPrepaymentAmount() > 0 ? AWAITING_PREPAYMENT : AWAITING_PAYMENT))
+                .flatMap(order -> orderRepository.save(order).map(Order::getId));
+    }
+
+    @Override
+    public Mono<Long> prepaymentOrder(Long orderId, Long imageId, String comment, Long participantId) {
+        return orderRepository.findById(orderId)
+                .filter(order -> !isNull(order.getPrepaymentAmount()) && order.getPrepaymentAmount() != 0)
+                .filter(order -> order.getStatus().equals(AWAITING_PREPAYMENT) && participantId.equals(order.getCustomerId()))
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями"))) // Если заказ не найден
+                .flatMap(order ->
+                        imageService.updateImagesStatus(List.of(imageId), order.getId(), ImageStatus.ACTIVE, ImageTag.ORDER)
+                                .thenReturn(order)
+                ).flatMap(order -> {
+                    order.setStatus(AWAITING_PREPAYMENT_APPROVAL);
+                    order.setComment(comment);
+                    order.setImagePaymentProofId(imageId);
+                    return orderRepository.save(order).then(Mono.just(order.getId()));
+                });
+    }
+
+    @Override
+    public Mono<Long> sellerConfirmsPreorder(Long orderId, String comment, Long participantId) {
+        return orderRepository.findById(orderId)
+                .filter(order -> order.getStatus().equals(AWAITING_PREPAYMENT_APPROVAL) && order.getSellerId().equals(participantId))
+                .doOnNext(order -> order.setComment(comment))
+                .doOnNext(order -> order.setStatus(AWAITING_PAYMENT))
+                .flatMap(order -> orderRepository.save(order).map(Order::getId));
+    }
+
+    @Override
+    public Mono<Long> paymentOrder(Long orderId, Long imageId, String comment, Long participantId) {
+        return orderRepository.findById(orderId)
+                .filter(order -> order.getStatus().equals(AWAITING_PAYMENT) && order.getCustomerId().equals(participantId))
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями"))) // Если заказ не найден
+                .flatMap(order ->
+                        imageService.updateImagesStatus(List.of(imageId), order.getId(), ImageStatus.ACTIVE, ImageTag.ORDER)
+                                .thenReturn(order)
+                ).flatMap(order -> {
+                    order.setStatus(OrderStatus.ASSEMBLING);
+                    order.setComment(comment);
+                    order.setImagePaymentProofId(imageId);
+                    return orderRepository.save(order)
+                            .then(Mono.just(order.getId()));
+                });
     }
 
     @Override
@@ -98,40 +179,11 @@ public class OrderServiceImpl implements OrderService {
                 .flatMap(this::updateFindOrderByTransfer);
     }
 
-
     @Override
-    public Mono<Long> agreementOrder(Long orderId, Long accountId, String comment) {
+    public Mono<Long> transferOrder(Long orderId, String deliveryUrl, String comment, Long participantId) {
         return orderRepository.findById(orderId)
-                .filter(order -> order.getStatus().equals(OrderStatus.BOOKED))
-                .switchIfEmpty(Mono.error(new NotFoundException("Order not found: " + orderId))) // Если заказ не найден
-                .doOnNext(order -> order.setAccountId(accountId))
-                .doOnNext(order -> order.setComment(comment))
-                .doOnNext(order -> order.setStatus(OrderStatus.AWAITING_PAYMENT))
-                .flatMap(order -> orderRepository.save(order).map(Order::getId));
-    }
-
-    @Override
-    public Mono<Long> paymentOrder(Long orderId, Long imageId, String comment) {
-        return orderRepository.findById(orderId)
-                .filter(order -> order.getStatus().equals(OrderStatus.AWAITING_PAYMENT))
-                .switchIfEmpty(Mono.error(new NotFoundException("Order not found: " + orderId))) // Если заказ не найден
-                .flatMap(order ->
-                        imageService.updateImagesStatus(List.of(imageId), order.getId(), ImageStatus.ACTIVE, ImageTag.ORDER)
-                                .thenReturn(order)
-                ).flatMap(order -> {
-                    order.setStatus(OrderStatus.ASSEMBLING);
-                    order.setComment(comment);
-                    order.setImagePaymentProofId(imageId);
-                    return orderRepository.save(order)
-                            .then(Mono.just(order.getId()));
-                });
-    }
-
-    @Override
-    public Mono<Long> transferOrder(Long orderId, String deliveryUrl, String comment) {
-        return orderRepository.findById(orderId)
-                .filter(order -> order.getStatus().equals(OrderStatus.ASSEMBLING))
-                .switchIfEmpty(Mono.error(new NotFoundException("Order not found: " + orderId))) // Если заказ не найден
+                .filter(order -> order.getStatus().equals(OrderStatus.ASSEMBLING) && order.getSellerId().equals(participantId))
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями"))) // Если заказ не найден
                 .doOnNext(order -> order.setDeliveryUrl(deliveryUrl))
                 .doOnNext(order -> order.setComment(comment))
                 .doOnNext(order -> order.setStatus(OrderStatus.ON_THE_WAY))
@@ -139,20 +191,20 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public Mono<Long> deliveredOrder(Long orderId, String comment) {
+    public Mono<Long> deliveredOrder(Long orderId, String comment, Long participantId) {
         return orderRepository.findById(orderId)
-                .filter(order -> order.getStatus().equals(OrderStatus.ON_THE_WAY))
-                .switchIfEmpty(Mono.error(new NotFoundException("Order not found: " + orderId))) // Если заказ не найден
+                .filter(order -> order.getStatus().equals(OrderStatus.ON_THE_WAY) && order.getCustomerId().equals(participantId))
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями"))) // Если заказ не найден
                 .doOnNext(order -> order.setComment(comment))
-                .doOnNext(order -> order.setStatus(OrderStatus.RECEIVED))
+                .doOnNext(order -> order.setStatus(OrderStatus.COMPLETED))
                 .flatMap(order -> orderRepository.save(order).map(Order::getId));
     }
 
     @Override
-    public Mono<Long> openDisputeForOrder(Long orderId, List<Long> imageIds, String comment) {
+    public Mono<Long> openDisputeForOrder(Long orderId, List<Long> imageIds, String comment, Long participantId) {
         return orderRepository.findById(orderId)
-                .filter(order -> order.getStatus().equals(OrderStatus.ON_THE_WAY))
-                .switchIfEmpty(Mono.error(new IllegalArgumentException("Order not found: " + orderId))) // Если заказ не найден
+                .filter(order -> order.getStatus().equals(OrderStatus.ON_THE_WAY) && order.getCustomerId().equals(participantId))
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями"))) // Если заказ не найден
                 .flatMap(order ->
                         imageService.updateImagesStatus(imageIds, order.getId(), ImageStatus.ACTIVE, ImageTag.ORDER)
                                 .thenReturn(order)
@@ -165,10 +217,10 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public Mono<Long> closeDisputeForOrder(Long orderId, List<Long> imageIds, String comment) {
+    public Mono<Long> closeDisputeForOrder(Long orderId, List<Long> imageIds, String comment, Long participantId) {
         return orderRepository.findById(orderId)
-                .filter(order -> order.getStatus().equals(OrderStatus.DISPUTED))
-                .switchIfEmpty(Mono.error(new IllegalArgumentException("Order not found: " + orderId)))
+                .filter(order -> order.getStatus().equals(OrderStatus.DISPUTED) && order.getCustomerId().equals(participantId))
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями")))
                 .flatMap(order ->
                         imageService.updateImagesStatus(imageIds, order.getId(), ImageStatus.ACTIVE, ImageTag.ORDER)
                                 .thenReturn(order)
@@ -180,6 +232,18 @@ public class OrderServiceImpl implements OrderService {
                             .then(Mono.just(order.getId()));
                 });
     }
+
+    @Override
+    public Mono<Long> closureOrder(CloseOrderRequest request, Long participantId) {
+        return orderRepository.findById(request.getOrderId())
+                .filter(order -> List.of(order.getSellerId(), order.getCustomerId()).contains(participantId))
+                .filter(order -> List.of(BOOKED, AWAITING_PAYMENT).contains(order.getStatus()))
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями"))) // Если заказ не найден
+                .doOnNext(order -> order.setComment(request.getComment()))
+                .doOnNext(order -> order.setStatus(OrderStatus.FAILED))
+                .flatMap(order -> orderRepository.save(order).map(Order::getId));
+    }
+
 
     @Override
     public Mono<Integer> findCompletedCountBySellerId(Long sellerId) {
@@ -196,17 +260,6 @@ public class OrderServiceImpl implements OrderService {
         return orderRepository.findCompletedCountByCustomerId(customerId);
     }
 
-    @Transactional
-    protected Mono<Long> createOrderAndUpdateProduct(Product product, CreateOrderRequest request, Long participantId) {
-        Order order = orderMapper.toOrder(request);
-        order.setStatus(OrderStatus.BOOKED);
-        order.setSellerId(participantId);
-        order.setCustomerId(product.getParticipantId());
-        order.setTotalPrice(product.getPrice() * request.getCount());
-        product.setCount(product.getCount() - request.getCount());
-        return productService.save(product)
-                .then(orderRepository.save(order).map(Order::getId));
-    }
 
     private Flux<FindOrderResponse> updateFindOrderByOrderSeller(Long sellerId) {
         return orderRepository.findBySellerId(sellerId)
@@ -271,4 +324,23 @@ public class OrderServiceImpl implements OrderService {
                 .doOnNext(orderResponse::setImages)
                 .then(Mono.just(orderResponse));
     }
+
+
+    private boolean validateCreateOrder(Product product, Integer count, Long participantId) {
+        var sum = Optional.ofNullable(product.getCount()).orElse(0) - count;
+        var availability = product.getAvailability();
+
+        if (Objects.equals(product.getParticipantId(), participantId)) {
+            throw new IllegalArgumentException("Нельзя заказать свой товар");
+        }
+        if (EXTERNAL_ONLY.equals(availability)) {
+            throw new IllegalArgumentException("Нельзя заказать товар из смежного магазина");
+        }
+        if (PURCHASABLE.equals(availability) && sum < 0) {
+            throw new IllegalArgumentException("Товар закончился");
+        }
+
+        return true;
+    }
+
 }

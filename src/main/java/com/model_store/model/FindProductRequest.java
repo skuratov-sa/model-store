@@ -8,7 +8,7 @@ import lombok.Data;
 
 @Data
 public class FindProductRequest {
-    private String productName;
+    private String name;
     private Long categoryId;
     private String originality;
     private Long participantId;

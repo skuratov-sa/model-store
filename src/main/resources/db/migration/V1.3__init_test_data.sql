@@ -1,128 +1,131 @@
 -- Скрипт заполнения данных для таблиц
 -- Научная фантастика
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Научная фантастика', NULL); -- Базовая категория
+INSERT INTO category (name, parent_id) VALUES ('Test', NULL); -- Базовая категория
+INSERT INTO category (name, parent_id) VALUES ('Test', NULL); -- Базовая категория
+INSERT INTO category (name, parent_id) VALUES ('Test', NULL); -- Базовая категория
+INSERT INTO category (name, parent_id) VALUES ('Test', NULL); -- Базовая категория
+INSERT INTO category (name, parent_id) VALUES ('Test', NULL); -- Базовая категория
 
--- Космические корабли
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Космические корабли', (SELECT id FROM category WHERE name = 'Научная фантастика')); -- Категория 1 уровня
 
--- Боевые роботы
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Боевые роботы', (SELECT id FROM category WHERE name = 'Научная фантастика')); -- Категория 1 уровня
+-- -- Космические корабли
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Космические корабли', (SELECT id FROM category WHERE name = 'Научная фантастика')); -- Категория 1 уровня
+--
+-- -- Боевые роботы
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Боевые роботы', (SELECT id FROM category WHERE name = 'Научная фантастика')); -- Категория 1 уровня
+--
+-- -- Энергетическое оружие
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Энергетическое оружие', (SELECT id FROM category WHERE name = 'Научная фантастика')); -- Категория 1 уровня
+--
+-- -- Вставляем подкатегории для Космических кораблей
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Межгалактические звездолеты', (SELECT id FROM category WHERE name = 'Космические корабли')),
+--     ('Звездные крейсеры', (SELECT id FROM category WHERE name = 'Космические корабли')),
+--     ('Корветы дальнего следования', (SELECT id FROM category WHERE name = 'Космические корабли'));
+--
+-- -- Вставляем подкатегории для Боевых роботов
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Скрытные боевые мехи', (SELECT id FROM category WHERE name = 'Боевые роботы')),
+--     ('Боевые дроны', (SELECT id FROM category WHERE name = 'Боевые роботы')),
+--     ('Штурмовые роботы', (SELECT id FROM category WHERE name = 'Боевые роботы'));
+--
+-- -- Вставляем подкатегории для Энергетического оружия
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Плазменные винтовки', (SELECT id FROM category WHERE name = 'Энергетическое оружие')),
+--     ('Лазерные пистолеты', (SELECT id FROM category WHERE name = 'Энергетическое оружие')),
+--     ('Бластерные пушки', (SELECT id FROM category WHERE name = 'Энергетическое оружие'));
+--
+-- -- Вставляем базовые категории для Фэнтези
+-- -- Фэнтези
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Фэнтези', NULL); -- Базовая категория
+--
+-- -- Драконы
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Драконы', (SELECT id FROM category WHERE name = 'Фэнтези')); -- Категория 1 уровня
+--
+-- -- Рыцари
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Рыцари', (SELECT id FROM category WHERE name = 'Фэнтези')); -- Категория 1 уровня
+--
+-- -- Маги
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Маги', (SELECT id FROM category WHERE name = 'Фэнтези')); -- Категория 1 уровня
+--
+-- -- Вставляем подкатегории для Драконов
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Огнедышащие драконы', (SELECT id FROM category WHERE name = 'Драконы')),
+--     ('Ледяные драконы', (SELECT id FROM category WHERE name = 'Драконы')),
+--     ('Драконы-стражи', (SELECT id FROM category WHERE name = 'Драконы'));
+--
+-- -- Вставляем подкатегории для Рыцарей
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Рыцари драконов', (SELECT id FROM category WHERE name = 'Рыцари')),
+--     ('Тёмные рыцари', (SELECT id FROM category WHERE name = 'Рыцари')),
+--     ('Священные рыцари', (SELECT id FROM category WHERE name = 'Рыцари'));
+--
+-- -- Вставляем подкатегории для Магов
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Некроманты', (SELECT id FROM category WHERE name = 'Маги')),
+--     ('Маги-целители', (SELECT id FROM category WHERE name = 'Маги')),
+--     ('Волшебники воды', (SELECT id FROM category WHERE name = 'Маги'));
 
--- Энергетическое оружие
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Энергетическое оружие', (SELECT id FROM category WHERE name = 'Научная фантастика')); -- Категория 1 уровня
-
--- Вставляем подкатегории для Космических кораблей
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Межгалактические звездолеты', (SELECT id FROM category WHERE name = 'Космические корабли')),
-    ('Звездные крейсеры', (SELECT id FROM category WHERE name = 'Космические корабли')),
-    ('Корветы дальнего следования', (SELECT id FROM category WHERE name = 'Космические корабли'));
-
--- Вставляем подкатегории для Боевых роботов
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Скрытные боевые мехи', (SELECT id FROM category WHERE name = 'Боевые роботы')),
-    ('Боевые дроны', (SELECT id FROM category WHERE name = 'Боевые роботы')),
-    ('Штурмовые роботы', (SELECT id FROM category WHERE name = 'Боевые роботы'));
-
--- Вставляем подкатегории для Энергетического оружия
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Плазменные винтовки', (SELECT id FROM category WHERE name = 'Энергетическое оружие')),
-    ('Лазерные пистолеты', (SELECT id FROM category WHERE name = 'Энергетическое оружие')),
-    ('Бластерные пушки', (SELECT id FROM category WHERE name = 'Энергетическое оружие'));
-
--- Вставляем базовые категории для Фэнтези
--- Фэнтези
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Фэнтези', NULL); -- Базовая категория
-
--- Драконы
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Драконы', (SELECT id FROM category WHERE name = 'Фэнтези')); -- Категория 1 уровня
-
--- Рыцари
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Рыцари', (SELECT id FROM category WHERE name = 'Фэнтези')); -- Категория 1 уровня
-
--- Маги
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Маги', (SELECT id FROM category WHERE name = 'Фэнтези')); -- Категория 1 уровня
-
--- Вставляем подкатегории для Драконов
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Огнедышащие драконы', (SELECT id FROM category WHERE name = 'Драконы')),
-    ('Ледяные драконы', (SELECT id FROM category WHERE name = 'Драконы')),
-    ('Драконы-стражи', (SELECT id FROM category WHERE name = 'Драконы'));
-
--- Вставляем подкатегории для Рыцарей
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Рыцари драконов', (SELECT id FROM category WHERE name = 'Рыцари')),
-    ('Тёмные рыцари', (SELECT id FROM category WHERE name = 'Рыцари')),
-    ('Священные рыцари', (SELECT id FROM category WHERE name = 'Рыцари'));
-
--- Вставляем подкатегории для Магов
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Некроманты', (SELECT id FROM category WHERE name = 'Маги')),
-    ('Маги-целители', (SELECT id FROM category WHERE name = 'Маги')),
-    ('Волшебники воды', (SELECT id FROM category WHERE name = 'Маги'));
-
--- Вставляем базовые категории для Военной техники
--- Военная техника
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Военная техника', NULL); -- Базовая категория
-
--- Танки
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Танки', (SELECT id FROM category WHERE name = 'Военная техника')); -- Категория 1 уровня
-
--- Самолеты
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Самолеты', (SELECT id FROM category WHERE name = 'Военная техника')); -- Категория 1 уровня
-
--- Вертолеты
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Вертолеты', (SELECT id FROM category WHERE name = 'Военная техника')); -- Категория 1 уровня
-
--- Вставляем подкатегории для Танков
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Основные боевые танки', (SELECT id FROM category WHERE name = 'Танки')),
-    ('Легкие разведывательные танки', (SELECT id FROM category WHERE name = 'Танки')),
-    ('Штурмовые танки', (SELECT id FROM category WHERE name = 'Танки'));
-
--- Вставляем подкатегории для Самолетов
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Стелс-самолеты', (SELECT id FROM category WHERE name = 'Самолеты')),
-    ('Многоцелевые истребители', (SELECT id FROM category WHERE name = 'Самолеты')),
-    ('Сверхзвуковые бомбардировщики', (SELECT id FROM category WHERE name = 'Самолеты'));
-
--- Вставляем подкатегории для Вертолетов
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Ударные вертолеты', (SELECT id FROM category WHERE name = 'Вертолеты')),
-    ('Транспортные вертолеты', (SELECT id FROM category WHERE name = 'Вертолеты')),
-    ('Разведывательные вертолеты', (SELECT id FROM category WHERE name = 'Вертолеты'));
+-- -- Вставляем базовые категории для Военной техники
+-- -- Военная техника
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Военная техника', NULL); -- Базовая категория
+--
+-- -- Танки
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Танки', (SELECT id FROM category WHERE name = 'Военная техника')); -- Категория 1 уровня
+--
+-- -- Самолеты
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Самолеты', (SELECT id FROM category WHERE name = 'Военная техника')); -- Категория 1 уровня
+--
+-- -- Вертолеты
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Вертолеты', (SELECT id FROM category WHERE name = 'Военная техника')); -- Категория 1 уровня
+--
+-- -- Вставляем подкатегории для Танков
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Основные боевые танки', (SELECT id FROM category WHERE name = 'Танки')),
+--     ('Легкие разведывательные танки', (SELECT id FROM category WHERE name = 'Танки')),
+--     ('Штурмовые танки', (SELECT id FROM category WHERE name = 'Танки'));
+--
+-- -- Вставляем подкатегории для Самолетов
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Стелс-самолеты', (SELECT id FROM category WHERE name = 'Самолеты')),
+--     ('Многоцелевые истребители', (SELECT id FROM category WHERE name = 'Самолеты')),
+--     ('Сверхзвуковые бомбардировщики', (SELECT id FROM category WHERE name = 'Самолеты'));
+--
+-- -- Вставляем подкатегории для Вертолетов
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Ударные вертолеты', (SELECT id FROM category WHERE name = 'Вертолеты')),
+--     ('Транспортные вертолеты', (SELECT id FROM category WHERE name = 'Вертолеты')),
+--     ('Разведывательные вертолеты', (SELECT id FROM category WHERE name = 'Вертолеты'));
 
 
 -- ADDRESS
@@ -388,21 +391,6 @@ DO $$
                          );
             END LOOP;
 END $$;
-
-INSERT INTO participant (login, password, role, mail, full_name, phone_number, status, deadline_sending, deadline_payment, created_at)
-VALUES (
-             'admin', -- login
-             '$2a$10$1rzAkwoon3cS0dXtPakBM.FMJHjBw.r6gFnLfHpdpjm8WuplsAdk6', -- зашифрованный пароль
-             'ADMIN', -- роль
-             'admin@example.com', -- email
-             'Станиславский', -- полное имя
-             '+79991234567', -- номер телефона
-             'ACTIVE', -- статус
-             1, -- deadline_sending
-             1, -- deadline_payment
-             current_timestamp -- дата создания
-         );
-
 
 INSERT INTO participant_address (participant_id, address_id) VALUES
                                                                  (1, 1), (1, 2), (2, 3), (2, 4), (3, 5), (3, 6),
@@ -1268,3 +1256,35 @@ FROM
 WHERE
     participant.id <= 100
 ORDER BY participant.id;
+
+
+-- Добавим отзывы
+DO $$
+BEGIN
+    FOR i IN 1..50 LOOP
+            INSERT INTO review (
+                order_id,
+                product_id,
+                reviewer_id,
+                seller_id,
+                rating,
+                comment,
+                created_at
+            ) VALUES (
+                         (1 + (i % 10)),               -- order_id от 1 до 10
+                         1,                            -- product_id
+                         50 + (i % 5),                -- reviewer_id от 101 до 105
+                         10,                          -- seller_id
+                         FLOOR(1 + RANDOM() * 5)::SMALLINT, -- рейтинг от 1 до 5
+                         CASE FLOOR(1 + RANDOM() * 5)::INT
+                             WHEN 1 THEN 'Отличный товар!'
+                             WHEN 2 THEN 'Хорошее качество, рекомендую.'
+                             WHEN 3 THEN 'Средне, ожидал(а) большего.'
+                             WHEN 4 THEN 'Плохое качество, не советую.'
+                             ELSE 'Превзошёл ожидания!'
+                             END,
+                         now() - (INTERVAL '1 day' * (50 - i)) -- дата создания
+                     );
+        END LOOP;
+END $$;
+

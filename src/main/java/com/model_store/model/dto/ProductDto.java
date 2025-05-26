@@ -1,7 +1,7 @@
 package com.model_store.model.dto;
 
-import com.model_store.model.base.Product;
 import com.model_store.model.constant.Currency;
+import com.model_store.model.constant.ProductAvailabilityType;
 import lombok.Builder;
 import lombok.Data;
 
@@ -15,4 +15,6 @@ public class ProductDto {
     private Currency currency;
     private CategoryDto category;
     private Long imageId;
+    private Long sellerId;
+    private ProductAvailabilityType availability;
 }

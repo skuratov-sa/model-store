@@ -21,18 +21,23 @@ public interface ParticipantRepository extends ReactiveCrudRepository<Participan
     Mono<String> findFullNameById(@Param("id") Long id);
 
     @Query(value = """
-            SELECT DISTINCT p.*
+               SELECT DISTINCT p.*
             FROM participant p
-             LEFT JOIN participant_address pa ON p.id = pa.participant_id
-             LEFT JOIN address a ON pa.address_id = a.id
-            WHERE (:country IS NULL OR a.country = :country)
-            ORDER BY p.created_at
+            WHERE
+                p.status = 'ACTIVE' AND
+                (
+                    (:name IS NULL OR p.login ILIKE '%' || :name || '%') OR
+                    (:name IS NULL OR p.mail ILIKE '%' || :name || '%') OR
+                    (:name IS NULL OR p.full_name ILIKE '%' || :name || '%')
+                ) AND
+                (:id IS NULL OR p.id = :id)
+            ORDER BY p.created_at DESC;
             """)
-    Flux<Participant> findBySearchParams(String country);
+    Flux<Participant> findBySearchParams(Long id, String name);
 
 
     default Flux<Participant> findByParams(FindParticipantRequest searchParams) {
-        return findBySearchParams(searchParams.getCountry());
+        return findBySearchParams(searchParams.getId(), searchParams.getName());
     }
 
     @Query("SELECT * FROM participant WHERE status = 'ACTIVE' AND id = :participantId")

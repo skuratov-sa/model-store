@@ -2,6 +2,7 @@ package com.model_store.model.dto;
 
 import com.model_store.model.base.Account;
 import com.model_store.model.base.Address;
+import com.model_store.model.base.SocialNetwork;
 import com.model_store.model.base.Transfer;
 import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.model.constant.SellerStatus;
@@ -27,4 +28,5 @@ public class FullParticipantDto {
     private List<Address> addresses;
     private List<Account> accounts;
     private List<Transfer> transfers;
+    private List<SocialNetwork> socialNetworks;
 }

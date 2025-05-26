@@ -3,12 +3,13 @@ package com.model_store.service;
 import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.Product;
+import com.model_store.model.constant.ParticipantRole;
 import com.model_store.model.constant.ProductStatus;
 import com.model_store.model.dto.GetProductResponse;
 import com.model_store.model.dto.ProductDto;
-import com.model_store.model.page.PagedResult;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
 
 public interface ProductService {
 
@@ -18,9 +19,9 @@ public interface ProductService {
 
     Mono<ProductDto> shortInfoById(Long productId);
 
-    Mono<PagedResult<ProductDto>> findByParams(FindProductRequest searchParams);
+    Mono<List<ProductDto>> findByParams(FindProductRequest searchParams);
 
-    Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId);
+    Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId, ParticipantRole role);
 
     Mono<Void> updateProduct(Long id, CreateOrUpdateProductRequest request, Long participantId);
 

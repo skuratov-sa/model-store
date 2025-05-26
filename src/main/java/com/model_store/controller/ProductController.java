@@ -5,7 +5,6 @@ import com.model_store.model.FindProductRequest;
 import com.model_store.model.constant.ProductStatus;
 import com.model_store.model.dto.GetProductResponse;
 import com.model_store.model.dto.ProductDto;
-import com.model_store.model.page.PagedResult;
 import com.model_store.service.JwtService;
 import com.model_store.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -22,6 +21,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
+
 @RestController
 @RequiredArgsConstructor
 public class ProductController {
@@ -30,7 +31,7 @@ public class ProductController {
 
     @Operation(summary = "Поиск списка товаров")
     @PostMapping(path = "/products/find")
-    public Mono<PagedResult<ProductDto>> findProducts(@RequestBody FindProductRequest searchParams) {
+    public Mono<List<ProductDto>> findProducts(@RequestBody FindProductRequest searchParams) {
         return productService.findByParams(searchParams);
     }
 
@@ -43,10 +44,11 @@ public class ProductController {
     }
 
     @Operation(summary = "Создать товар")
-    @PostMapping(path = "/product")
+    @PostMapping(path = "/products/")
     public Mono<Long> createProduct(@RequestHeader("Authorization") String authorizationHeader, @RequestBody CreateOrUpdateProductRequest request) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        return productService.createProduct(request, participantId);
+        var role = jwtService.getRoleByAccessToken(authorizationHeader);
+        return productService.createProduct(request, participantId, role);
     }
 
     @Operation(summary = "Обновить товар по id")
@@ -68,5 +70,4 @@ public class ProductController {
     public Mono<Void> updateProduct(@PathVariable Long id, @RequestParam ProductStatus productStatus) {
         return productService.updateProductStatus(id, productStatus);
     }
-
 }

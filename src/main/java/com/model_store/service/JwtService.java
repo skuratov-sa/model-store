@@ -1,6 +1,7 @@
 package com.model_store.service;
 
 import com.model_store.model.CustomUserDetails;
+import com.model_store.model.constant.ParticipantRole;
 import io.jsonwebtoken.Claims;
 import io.micrometer.common.lang.NonNull;
 import reactor.core.publisher.Mono;
@@ -34,4 +35,10 @@ public interface JwtService {
      * Получить id пользователя по токену
      */
     Long getIdByAccessToken(@NonNull String accessToken);
+
+    /**
+     * Получить роль по токену
+     */
+    ParticipantRole getRoleByAccessToken(@NonNull String accessToken);
+
 }

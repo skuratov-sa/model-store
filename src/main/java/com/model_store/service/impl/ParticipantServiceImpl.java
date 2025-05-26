@@ -3,9 +3,9 @@ package com.model_store.service.impl;
 import com.amazonaws.services.kms.model.NotFoundException;
 import com.model_store.exeption.ParticipantNotFoundException;
 import com.model_store.mapper.ParticipantMapper;
-import com.model_store.model.UpdateParticipantRequest;
 import com.model_store.model.CreateParticipantRequest;
 import com.model_store.model.FindParticipantRequest;
+import com.model_store.model.UpdateParticipantRequest;
 import com.model_store.model.base.Participant;
 import com.model_store.model.base.SellerRating;
 import com.model_store.model.constant.ImageStatus;
@@ -21,6 +21,7 @@ import com.model_store.repository.AddressRepository;
 import com.model_store.repository.OrderRepository;
 import com.model_store.repository.ParticipantRepository;
 import com.model_store.repository.SellerRatingRepository;
+import com.model_store.repository.SocialNetworkRepository;
 import com.model_store.repository.TransferRepository;
 import com.model_store.service.EmailService;
 import com.model_store.service.ImageService;
@@ -58,6 +59,7 @@ public class ParticipantServiceImpl implements ParticipantService {
     private final SellerRatingRepository sellerRatingRepository;
 
     private final PasswordEncoder passwordEncoder;
+    private final SocialNetworkRepository socialNetworkRepository;
 
     @Override
     public Mono<UserInfoDto> findShortInfo(Long id) {
@@ -75,10 +77,13 @@ public class ParticipantServiceImpl implements ParticipantService {
                         accountRepository.findByParticipantId(id).collectList().defaultIfEmpty(List.of()),
                         transferRepository.findByParticipantId(id).collectList().defaultIfEmpty(List.of()),
                         imageService.findActualImages(id, ImageTag.PARTICIPANT).collectList().defaultIfEmpty(List.of()),
-                        sellerRatingRepository.findBySellerId(id).defaultIfEmpty(new SellerRating())
+                        sellerRatingRepository.findBySellerId(id).defaultIfEmpty(new SellerRating()),
+                        socialNetworkRepository.findByParticipantId(id).collectList().defaultIfEmpty(List.of())
+                )
+                .map(tuple7 ->
+                        participantMapper.toFullParticipantDto(
+                                tuple7.getT1(), tuple7.getT2(), tuple7.getT3(), tuple7.getT4(), tuple7.getT5(), tuple7.getT6(), tuple7.getT7()
                         )
-                .map(tuple5 ->
-                        participantMapper.toFullParticipantDto(tuple5.getT1(), tuple5.getT2(), tuple5.getT3(), tuple5.getT4(), tuple5.getT5(), tuple5.getT6())
                 );
     }
 
@@ -116,7 +121,6 @@ public class ParticipantServiceImpl implements ParticipantService {
                             .map(imageId -> {
                                 FindParticipantsDto dto = participantMapper.toFindParticipantDto(participant, imageId == -1L ? null : imageId);
                                 dto.setExperience(getExpensive(participant.getCreatedAt())); // Рассчитываем стаж
-                                dto.setCountry(searchParams.getCountry()); // Устанавливаем страну
                                 return dto;
                             });
 

@@ -21,6 +21,11 @@ public class CategoryResponse {
         this.name = category.getName();
     }
 
+    public CategoryResponse(Long id, String name) {
+        this.id = id;
+        this.name = name;
+    }
+
     public void addCategoryResponse(CategoryResponse categoryResponse) {
         childs.add(categoryResponse);
     }

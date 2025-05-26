@@ -6,6 +6,15 @@ public enum OrderStatus {
      */
     BOOKED,
     /**
+     * Предоплачен
+     */
+    AWAITING_PREPAYMENT,
+    /**
+     * Ожидается согласие продавца на предоплату
+     */
+    AWAITING_PREPAYMENT_APPROVAL,
+
+    /**
      * Ожидает оплаты
      */
     AWAITING_PAYMENT,
@@ -17,10 +26,6 @@ public enum OrderStatus {
      * В пути следования
      */
     ON_THE_WAY,
-    /**
-     * Полученный
-     */
-    RECEIVED,
     /**
      * Ведется спор по заказу
      */

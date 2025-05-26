@@ -4,5 +4,6 @@ import lombok.Data;
 
 @Data
 public class FindParticipantRequest {
-    private String country;
+    private Long id;
+    private String name;
 }

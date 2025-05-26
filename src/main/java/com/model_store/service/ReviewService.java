@@ -9,6 +9,7 @@ public interface ReviewService {
     Mono<Long> addReview(ReviewRequestDto dto, Long participantId);
 
     Flux<ReviewResponseDto> getReviewsForSeller(Long sellerId);
+    Flux<ReviewResponseDto> findByProductId(Long productId);
 
     Mono<Void> deleteReview(Long reviewId, Long participantId);
 }

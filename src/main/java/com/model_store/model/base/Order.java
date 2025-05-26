@@ -62,7 +62,10 @@ public class Order {
      * Цена за товары
      */
     private Float totalPrice;
-
+    /**
+     * Сумма предоплаты
+     */
+    private Float prepaymentAmount;
     /**
      * Ссылка для отслеживания товара
      */

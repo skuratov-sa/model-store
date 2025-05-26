@@ -10,6 +10,10 @@ import reactor.core.publisher.Mono;
 public interface ReviewRepository extends ReactiveCrudRepository<Review, Long> {
 
     Flux<Review> findBySellerIdOrderByCreatedAtDesc(Long sellerId);
-    Mono<Boolean> existsByOrderProductIdAndReviewerId(Long orderProductId, Long reviewerId);
+
+    Flux<Review> findByProductIdOrderByCreatedAtDesc(Long productId);
+
+    Mono<Boolean> existsByOrderIdAndReviewerId(Long orderProductId, Long reviewerId);
+
     Mono<Review> findByReviewerId(Long reviewerId);
 }
