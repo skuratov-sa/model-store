@@ -5,6 +5,7 @@ import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.Participant;
 import com.model_store.model.base.Product;
 import com.model_store.model.base.ProductFavorite;
+import com.model_store.model.dto.FullParticipantDto;
 import com.model_store.model.page.Pageable;
 import com.model_store.model.page.PagedResult;
 import com.model_store.repository.ProductFavoriteRepository;
@@ -47,6 +48,7 @@ class FavoriteServiceImplTest {
     private ProductFavorite productFavorite;
     private FindProductRequest findProductRequest;
     private Participant participant;
+    private FullParticipantDto fullParticipantDto;
 
     @BeforeEach
     void setUp() {
@@ -111,8 +113,8 @@ class FavoriteServiceImplTest {
         Long productId = 1L;
 
         when(productRepository.findActualProduct(productId)).thenReturn(Mono.just(product));
-        when(participantService.findActualById(participantId)).thenReturn(Mono.just(participant));
-        when(productFavoriteRepository.findByParticipantIdAndProductId(participantId, productId)).thenReturn(Mono.empty());
+        when(participantService.findActualById(participantId)).thenReturn(Mono.just(fullParticipantDto));
+        when(productFavoriteRepository.findByParticipantIdAndProductId(participantId, productId)).thenReturn(Flux.empty());
         when(productFavoriteRepository.save(any(ProductFavorite.class))).thenReturn(Mono.just(productFavorite));
 
         StepVerifier.create(favoriteService.addToFavorites(participantId, productId))
@@ -130,8 +132,8 @@ class FavoriteServiceImplTest {
         Long productId = 1L;
 
         when(productRepository.findActualProduct(productId)).thenReturn(Mono.just(product));
-        when(participantService.findActualById(participantId)).thenReturn(Mono.just(participant));
-        when(productFavoriteRepository.findByParticipantIdAndProductId(participantId, productId)).thenReturn(Mono.just(productFavorite));
+        when(participantService.findActualById(participantId)).thenReturn(Mono.just(fullParticipantDto));
+        when(productFavoriteRepository.findByParticipantIdAndProductId(participantId, productId)).thenReturn(Flux.just(productFavorite));
         // No call to save should happen
 
         StepVerifier.create(favoriteService.addToFavorites(participantId, productId))
@@ -149,7 +151,7 @@ class FavoriteServiceImplTest {
         Long productId = 1L;
 
         when(productRepository.findActualProduct(productId)).thenReturn(Mono.empty());
-        when(participantService.findActualById(participantId)).thenReturn(Mono.just(participant)); // Assuming participant exists
+        when(participantService.findActualById(participantId)).thenReturn(Mono.just(fullParticipantDto)); // Assuming participant exists
 
         StepVerifier.create(favoriteService.addToFavorites(participantId, productId))
                 .expectError(NotFoundException.class)

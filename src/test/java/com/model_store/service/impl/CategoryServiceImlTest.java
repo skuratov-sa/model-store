@@ -45,14 +45,8 @@ class CategoryServiceImlTest {
         category.setId(1L);
         category.setName("Test Category");
         category.setParentId(null);
-
-        categoryDto = new CategoryDto();
-        categoryDto.setId(1L);
-        categoryDto.setName("Test Category Dto");
-
-        categoryResponse = new CategoryResponse();
-        categoryResponse.setId(1L);
-        categoryResponse.setName("Test Category Response");
+        categoryDto = CategoryDto.builder().id(1L).name("Test Category").build();
+        categoryResponse = new CategoryResponse(1L, "Test Category");
     }
 
     @Test

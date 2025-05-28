@@ -45,9 +45,8 @@ class AddressServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        addressDto = new AddressDto();
-        addressDto.setCountry("Test Country");
-        addressDto.setCity("Test City");
+        addressDto = AddressDto.builder().city("Test Country").city("Test City").build();
+
 
         address = new Address();
         address.setId(1L);

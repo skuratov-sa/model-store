@@ -62,28 +62,21 @@ class ProductServiceImplTest {
         product1.setParticipantId(10L);
         product1.setCategoryId(100L);
         product1.setStatus(ProductStatus.ACTIVE);
-        product1.setPrice(BigDecimal.valueOf(99.99));
+        product1.setPrice(99.99F);
         product1.setCount(50);
 
-        categoryDto1 = new CategoryDto();
-        categoryDto1.setId(100L);
-        categoryDto1.setName("Electronics");
+        categoryDto1 = CategoryDto.builder().id(100L).name("Electronics").build();
 
         createRequest = new CreateOrUpdateProductRequest();
         createRequest.setName("New Product");
         createRequest.setCategoryId(100L);
-        createRequest.setPrice(BigDecimal.valueOf(199.99));
+        createRequest.setPrice(199.99F);
         createRequest.setCount(20);
         createRequest.setDescription("Description");
         createRequest.setImageIds(List.of(1L, 2L));
 
-        getProductResponse1 = new GetProductResponse(); // Populate as needed
-        getProductResponse1.setId(1L);
-        getProductResponse1.setName("Test Product 1");
-        
-        productDto1 = new ProductDto(); // Populate as needed
-        productDto1.setId(1L);
-        productDto1.setName("Test Product 1");
+        getProductResponse1 = GetProductResponse.builder().id(1L).name("Test Product 1").build(); // Populate as needed
+        productDto1 = ProductDto.builder().id(1L).name("Test Product 1").build(); // Populate as needed
     }
 
     @Test
@@ -291,10 +284,8 @@ class ProductServiceImplTest {
 
         // product1 has category and image
         // product2, category will be found, but no image
-        CategoryDto categoryDto2 = new CategoryDto();
-        categoryDto2.setId(200L);
-        ProductDto productDto2_noImage = new ProductDto(); productDto2_noImage.setId(2L);
-
+        CategoryDto categoryDto2 = CategoryDto.builder().id(200L).build();
+        ProductDto productDto2_noImage = ProductDto.builder().id(2L).build();
 
         when(productRepository.findByParams(request, null)).thenReturn(Flux.just(product1, product2));
         
@@ -477,7 +468,7 @@ class ProductServiceImplTest {
     @Test
     void updateProductStatus_shouldUpdateStatus_whenProductExists() {
         Long productId = 1L;
-        ProductStatus newStatus = ProductStatus.ARCHIVED;
+        ProductStatus newStatus = ProductStatus.ACTIVE;
 
         when(productRepository.findActualProduct(productId)).thenReturn(Mono.just(product1));
         when(productRepository.save(any(Product.class))).thenAnswer(invocation -> {
@@ -496,7 +487,7 @@ class ProductServiceImplTest {
     @Test
     void updateProductStatus_shouldFail_whenProductNotFound() {
         Long productId = 2L; // Non-existent
-        ProductStatus newStatus = ProductStatus.ARCHIVED;
+        ProductStatus newStatus = ProductStatus.ACTIVE;
         when(productRepository.findActualProduct(productId)).thenReturn(Mono.empty());
 
         StepVerifier.create(productService.updateProductStatus(productId, newStatus))

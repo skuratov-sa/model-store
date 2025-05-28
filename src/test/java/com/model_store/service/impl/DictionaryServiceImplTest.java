@@ -29,22 +29,13 @@ class DictionaryServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        dictionary1 = new Dictionary();
-        dictionary1.setId(1L);
-        dictionary1.setType(DictionaryType.COUNTRY);
-        dictionary1.setCode("US");
-        dictionary1.setValue("United States");
-
-        dictionary2 = new Dictionary();
-        dictionary2.setId(2L);
-        dictionary2.setType(DictionaryType.COUNTRY);
-        dictionary2.setCode("CA");
-        dictionary2.setValue("Canada");
+        dictionary1 = Dictionary.builder().type(DictionaryType.CURRENCY).value("USD").build();
+        dictionary2 = Dictionary.builder().type(DictionaryType.SOCIAL_NETWORK).value("VK").build();
     }
 
     @Test
     void findAllByType_shouldReturnFluxOfDictionaries_whenTypeExists() {
-        DictionaryType type = DictionaryType.COUNTRY;
+        DictionaryType type = DictionaryType.CURRENCY;
         when(dictionaryRepository.findAllByType(type)).thenReturn(Flux.just(dictionary1, dictionary2));
 
         StepVerifier.create(dictionaryService.findAllByType(type))
@@ -57,7 +48,7 @@ class DictionaryServiceImplTest {
 
     @Test
     void findAllByType_shouldReturnEmptyFlux_whenTypeDoesNotExistOrNoDictionariesForType() {
-        DictionaryType type = DictionaryType.CITY; // Assuming this type might not have entries
+        DictionaryType type = DictionaryType.SOCIAL_NETWORK; // Assuming this type might not have entries
         when(dictionaryRepository.findAllByType(type)).thenReturn(Flux.empty());
 
         StepVerifier.create(dictionaryService.findAllByType(type))

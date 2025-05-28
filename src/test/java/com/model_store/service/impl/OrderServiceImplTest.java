@@ -3,8 +3,10 @@ package com.model_store.service.impl;
 import com.model_store.mapper.OrderMapper;
 import com.model_store.model.base.Address;
 import com.model_store.model.base.Order;
+import com.model_store.model.base.OrderStatusHistory;
 import com.model_store.model.base.Product;
 import com.model_store.model.base.Transfer;
+import com.model_store.model.constant.Currency;
 import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
 import com.model_store.model.constant.OrderStatus;
@@ -25,6 +27,7 @@ import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
@@ -64,7 +67,7 @@ class OrderServiceImplTest {
         product.setId(1L);
         product.setParticipantId(10L); // Seller ID
         product.setCount(10);
-        product.setPrice(BigDecimal.valueOf(100));
+        product.setPrice(100F);
         product.setName("Test Product");
 
         order = new Order();
@@ -73,24 +76,22 @@ class OrderServiceImplTest {
         order.setSellerId(10L);
         order.setCustomerId(20L); // Customer ID
         order.setCount(2);
-        order.setTotalPrice(BigDecimal.valueOf(200));
+        order.setTotalPrice(100F);
         order.setStatus(OrderStatus.BOOKED);
         order.setAddressId(1L);
         order.setTransferId(1L);
 
-        createOrderRequest = new CreateOrderRequest();
+        createOrderRequest = CreateOrderRequest.builder().build();
         createOrderRequest.setProductId(1L);
         createOrderRequest.setCount(2);
         createOrderRequest.setAddressId(1L);
         createOrderRequest.setTransferId(1L);
-        
+
         address = new Address();
         address.setId(1L);
-        address.setFullAddress("123 Test St");
 
         transfer = new Transfer();
         transfer.setId(1L);
-        transfer.setName("Test Transfer");
     }
 
     @Test
@@ -116,7 +117,7 @@ class OrderServiceImplTest {
         verify(addressService).findByParticipantId(product.getParticipantId());
         verify(transferService).findByParticipantId(product.getParticipantId());
     }
-    
+
     @Test
     void getRequiredDataForCreateOrder_shouldReturnEmptyLists_whenNoAddressesOrTransfers() {
         Long participantId = 20L;
@@ -130,7 +131,7 @@ class OrderServiceImplTest {
                 .addresses(Collections.emptyList())
                 .sellerTransfers(Collections.emptyList())
                 .build();
-        
+
         StepVerifier.create(orderService.getRequiredDataForCreateOrder(participantId, productId))
                 .expectNext(expectedDto)
                 .verifyComplete();
@@ -145,7 +146,7 @@ class OrderServiceImplTest {
         when(productService.findById(productId)).thenReturn(Mono.empty());
         // Because productMono is empty, flatMapMany for address and transfer won't be called with a product.
         // The defaultIfEmpty for collectList will trigger.
-        
+
         GetRequiredODataOrderDto expectedDto = GetRequiredODataOrderDto.builder()
                 .addresses(Collections.emptyList())
                 .sellerTransfers(Collections.emptyList())
@@ -167,7 +168,7 @@ class OrderServiceImplTest {
         originalProduct.setId(1L);
         originalProduct.setParticipantId(10L); // Seller ID
         originalProduct.setCount(10);
-        originalProduct.setPrice(BigDecimal.valueOf(100));
+        originalProduct.setPrice(100F);
 
         Order expectedOrder = new Order();
         expectedOrder.setId(5L); // Assume this ID is generated
@@ -178,7 +179,7 @@ class OrderServiceImplTest {
         expectedOrder.setStatus(OrderStatus.BOOKED);
         expectedOrder.setSellerId(customerParticipantId); // This should be the customer in the request
         expectedOrder.setCustomerId(originalProduct.getParticipantId()); // This should be the seller of the product
-        expectedOrder.setTotalPrice(originalProduct.getPrice().multiply(BigDecimal.valueOf(createOrderRequest.getCount())));
+        expectedOrder.setTotalPrice(originalProduct.getPrice() * createOrderRequest.getCount());
 
 
         when(productService.findById(createOrderRequest.getProductId())).thenReturn(Mono.just(originalProduct));
@@ -235,7 +236,7 @@ class OrderServiceImplTest {
 
     @Test
     void updateStatusOrder_shouldUpdateOrderStatus_whenOrderExists() {
-        UpdateOrderRequest updateRequest = new UpdateOrderRequest();
+        UpdateOrderRequest updateRequest = UpdateOrderRequest.builder().build();
         updateRequest.setOrderId(1L);
         updateRequest.setOrderStatus(OrderStatus.ASSEMBLING);
 
@@ -266,7 +267,7 @@ class OrderServiceImplTest {
 
     @Test
     void updateStatusOrder_shouldFail_whenOrderDoesNotExist() {
-        UpdateOrderRequest updateRequest = new UpdateOrderRequest();
+        UpdateOrderRequest updateRequest = UpdateOrderRequest.builder().build();
         updateRequest.setOrderId(2L); // Non-existent order
         updateRequest.setOrderStatus(OrderStatus.ASSEMBLING);
 
@@ -282,15 +283,15 @@ class OrderServiceImplTest {
     @Test
     void getOrdersBySeller_shouldReturnEnrichedOrders() {
         Long sellerId = 10L;
-        FindOrderResponse findOrderResponse = new FindOrderResponse();
+        FindOrderResponse findOrderResponse = FindOrderResponse.builder().build();
         findOrderResponse.setOrderId(order.getId());
-        findOrderResponse.setUserInfo(new UserShortDto(order.getCustomerId(), null, null)); // Customer info
-        findOrderResponse.setProduct(new ProductShortDto(order.getProductId(), null, null, order.getCount(), null, null, null));
-        findOrderResponse.setTransfer(new OrderTransferDto(order.getTransferId(), order.getAddressId(), null, null, null));
+        findOrderResponse.setUserInfo(new UserInfoDto(order.getCustomerId(), 1, "login","89999999","mail")); // Customer info
+        findOrderResponse.setProduct(new ProductDto(order.getProductId(), "name",  11, 100F, Currency.RUB, null, 1L, 1L));
+        findOrderResponse.setTransfer(new OrderTransferDto(order.getTransferId(), order.getAddressId(), null, null, null, Currency.RUB));
 
 
-        UserShortDto enrichedUser = new UserShortDto(order.getCustomerId(), "Customer Name", "customer.jpg");
-        ProductShortDto enrichedProduct = new ProductShortDto(order.getProductId(), "Product Name", "product.jpg", order.getCount(), BigDecimal.ONE, null, null);
+        UserInfoDto enrichedUser = new UserInfoDto(order.getCustomerId(), 1L,"login", "899999999", "mail", "Customer Name", "customer.jpg");
+        ProductDto enrichedProduct = new ProductDto(order.getProductId(), "Product Name", "product.jpg", order.getCount(), BigDecimal.ONE, null, null);
         OrderTransferDto enrichedTransfer = new OrderTransferDto(order.getTransferId(), order.getAddressId(), "Transfer Name", "Full Address", "transfer.jpg");
         OrderStatusHistoryDto historyDto = new OrderStatusHistoryDto(OrderStatus.BOOKED, null, null);
 
@@ -449,7 +450,7 @@ class OrderServiceImplTest {
         verify(imageService).updateImagesStatus(List.of(imageId), orderId, ImageStatus.ACTIVE, ImageTag.ORDER);
         verify(orderRepository).save(any(Order.class));
     }
-    
+
     @Test
     void transferOrder_shouldUpdateStatusAndDetails_whenOrderIsAssembling() {
         Long orderId = 1L;
@@ -480,7 +481,7 @@ class OrderServiceImplTest {
         Long orderId = 1L;
         String comment = "Delivered comment";
         order.setStatus(OrderStatus.ON_THE_WAY);
-        
+
         when(orderRepository.findById(orderId)).thenReturn(Mono.just(order));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
             Order o = invocation.getArgument(0);
@@ -513,7 +514,7 @@ class OrderServiceImplTest {
             }
             return Mono.error(new AssertionError("Save conditions not met for openDisputeForOrder"));
         });
-        
+
         StepVerifier.create(orderService.openDisputeForOrder(orderId, imageIds, comment))
                 .expectNext(order.getId())
                 .verifyComplete();

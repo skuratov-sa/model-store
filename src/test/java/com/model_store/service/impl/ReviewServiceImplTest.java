@@ -18,6 +18,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -53,12 +54,12 @@ class ReviewServiceImplTest {
 
         review1 = new Review();
         review1.setId(100L);
-        review1.setOrderId(1L);
+        review1.setOrderProductId(1L);
         review1.setReviewerId(20L); // Participant who wrote the review
         review1.setSellerId(10L);
-        review1.setRating((short) 5);
+        review1.setRating(5);
         review1.setComment("Great product!");
-        review1.setCreatedAt(LocalDateTime.now());
+        review1.setCreatedAt(Instant.now());
 
         reviewRequestDto = new ReviewRequestDto();
         reviewRequestDto.setOrderId(1L);
@@ -77,7 +78,7 @@ class ReviewServiceImplTest {
     void addReview_shouldSaveReview_whenOrderExistsAndNoExistingReview() {
         Long participantId = 20L; // Reviewer
         
-        when(reviewRepository.findByReviewerId(participantId)).thenReturn(Flux.empty()); // No existing review by this participant
+        when(reviewRepository.findByReviewerId(participantId)).thenReturn(Mono.empty()); // No existing review by this participant
         when(orderService.findById(reviewRequestDto.getOrderId())).thenReturn(Mono.just(order1));
         when(reviewMapper.toReview(reviewRequestDto, order1)).thenReturn(review1);
         when(reviewRepository.save(review1)).thenReturn(Mono.just(review1));
@@ -96,7 +97,7 @@ class ReviewServiceImplTest {
     void addReview_shouldFail_whenReviewAlreadyExistsForParticipant() {
         Long participantId = 20L;
         // Existing review for the same order by the same participant
-        when(reviewRepository.findByReviewerId(participantId)).thenReturn(Flux.just(review1)); 
+        when(reviewRepository.findByReviewerId(participantId)).thenReturn(Mono.just(review1));
 
         StepVerifier.create(reviewService.addReview(reviewRequestDto, participantId))
                 .expectErrorMatches(throwable -> throwable instanceof IllegalStateException &&
@@ -111,7 +112,7 @@ class ReviewServiceImplTest {
     @Test
     void addReview_shouldFail_whenOrderNotFound() {
         Long participantId = 20L;
-        when(reviewRepository.findByReviewerId(participantId)).thenReturn(Flux.empty());
+        when(reviewRepository.findByReviewerId(participantId)).thenReturn(Mono.empty());
         when(orderService.findById(reviewRequestDto.getOrderId())).thenReturn(Mono.empty()); // Order not found
 
         StepVerifier.create(reviewService.addReview(reviewRequestDto, participantId))
@@ -176,7 +177,7 @@ class ReviewServiceImplTest {
         Long reviewId = 100L;
         Long participantId = 20L; // review1 was written by participant 20L
 
-        when(reviewRepository.findByReviewerId(participantId)).thenReturn(Flux.just(review1));
+        when(reviewRepository.findByReviewerId(participantId)).thenReturn(Mono.just(review1));
         when(reviewRepository.deleteById(reviewId)).thenReturn(Mono.empty());
 
         StepVerifier.create(reviewService.deleteReview(reviewId, participantId))
@@ -192,7 +193,7 @@ class ReviewServiceImplTest {
         Long participantId = 20L;
 
         // Participant has review1, but we are trying to delete review 101L
-        when(reviewRepository.findByReviewerId(participantId)).thenReturn(Flux.just(review1));
+        when(reviewRepository.findByReviewerId(participantId)).thenReturn(Mono.just(review1));
 
         StepVerifier.create(reviewService.deleteReview(reviewId, participantId))
                 .verifyComplete(); // Completes because filter results in empty
@@ -206,7 +207,7 @@ class ReviewServiceImplTest {
         Long reviewId = 100L;
         Long participantId = 21L; // Participant with no reviews
 
-        when(reviewRepository.findByReviewerId(participantId)).thenReturn(Flux.empty());
+        when(reviewRepository.findByReviewerId(participantId)).thenReturn(Mono.empty());
 
         StepVerifier.create(reviewService.deleteReview(reviewId, participantId))
                 .verifyComplete(); // Completes because filter results in empty
@@ -220,7 +221,7 @@ class ReviewServiceImplTest {
         Long reviewId = 100L;
         Long participantId = 20L;
 
-        when(reviewRepository.findByReviewerId(participantId)).thenReturn(Flux.just(review1));
+        when(reviewRepository.findByReviewerId(participantId)).thenReturn(Mono.just(review1));
         when(reviewRepository.deleteById(reviewId)).thenReturn(Mono.error(new RuntimeException("DB delete error")));
 
         StepVerifier.create(reviewService.deleteReview(reviewId, participantId))

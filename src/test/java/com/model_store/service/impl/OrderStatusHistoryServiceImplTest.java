@@ -12,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 import static org.mockito.Mockito.verify;
@@ -35,14 +36,14 @@ class OrderStatusHistoryServiceImplTest {
         historyEntry1.setId(1L);
         historyEntry1.setOrderId(10L);
         historyEntry1.setStatus(OrderStatus.BOOKED);
-        historyEntry1.setChangedAt(LocalDateTime.now().minusDays(1));
+        historyEntry1.setChangedAt(Instant.from(LocalDateTime.now().minusDays(1)));
         historyEntry1.setComment("Order booked");
 
         historyEntry2 = new OrderStatusHistory();
         historyEntry2.setId(2L);
         historyEntry2.setOrderId(10L);
         historyEntry2.setStatus(OrderStatus.AWAITING_PAYMENT);
-        historyEntry2.setChangedAt(LocalDateTime.now());
+        historyEntry2.setChangedAt(Instant.now());
         historyEntry2.setComment("Awaiting payment");
     }
 

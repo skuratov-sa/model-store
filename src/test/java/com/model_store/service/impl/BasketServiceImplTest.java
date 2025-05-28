@@ -8,6 +8,7 @@ import com.model_store.model.base.Participant;
 import com.model_store.model.base.Product;
 import com.model_store.model.base.ProductBasket;
 import com.model_store.model.constant.ImageTag;
+import com.model_store.model.dto.FullParticipantDto;
 import com.model_store.model.dto.ProductDto;
 import com.model_store.model.page.Pageable;
 import com.model_store.model.page.PagedResult;
@@ -63,6 +64,7 @@ class BasketServiceImplTest {
     private ProductBasket productBasket;
     private FindProductRequest findProductRequest;
     private Participant participant;
+    private FullParticipantDto fullParticipantDto;
 
     @BeforeEach
     void setUp() {
@@ -70,9 +72,7 @@ class BasketServiceImplTest {
         product.setId(1L);
         product.setName("Test Product");
 
-        productDto = new ProductDto();
-        productDto.setId(1L);
-        productDto.setName("Test Product Dto");
+        productDto = ProductDto.builder().id(1L).name("Test Product Dto").build();
 
         productBasket = new ProductBasket();
         productBasket.setParticipantId(1L);
@@ -89,8 +89,8 @@ class BasketServiceImplTest {
     void findBasketProductsByParams_shouldReturnPagedProducts() {
         when(productBasketRepository.findByParticipantId(1L)).thenReturn(Flux.just(productBasket));
         when(productRepository.findByParams(eq(findProductRequest), any(Long[].class))).thenReturn(Flux.just(product));
-        when(imageService.findMainImage(1L, ImageTag.PRODUCT)).thenReturn(Mono.just("imageId"));
-        when(productMapper.toProductDto(product, "imageId")).thenReturn(productDto);
+        when(imageService.findMainImage(1L, ImageTag.PRODUCT)).thenReturn(Mono.just(2L));
+        when(productMapper.toProductDto(product, 2L)).thenReturn(productDto);
 
         PagedResult<ProductDto> expectedResult = new PagedResult<>(List.of(productDto), 1, findProductRequest.getPageable());
 
@@ -101,7 +101,7 @@ class BasketServiceImplTest {
         verify(productBasketRepository).findByParticipantId(1L);
         verify(productRepository).findByParams(eq(findProductRequest), any(Long[].class));
         verify(imageService).findMainImage(1L, ImageTag.PRODUCT);
-        verify(productMapper).toProductDto(product, "imageId");
+        verify(productMapper).toProductDto(product, 2L);
     }
 
     @Test
@@ -124,8 +124,8 @@ class BasketServiceImplTest {
     @Test
     void addToBasket_shouldAddProductToBasket_whenProductAndParticipantExistAndProductNotInBasket() {
         when(productService.findActualProduct(1L)).thenReturn(Mono.just(product));
-        when(participantService.findActualById(1L)).thenReturn(Mono.just(participant));
-        when(productBasketRepository.findByParticipantIdAndProductId(1L, 1L)).thenReturn(Mono.empty());
+        when(participantService.findActualById(1L)).thenReturn(Mono.just(fullParticipantDto));
+        when(productBasketRepository.findByParticipantIdAndProductId(1L, 1L)).thenReturn(Flux.empty());
         when(productBasketRepository.save(any(ProductBasket.class))).thenReturn(Mono.just(productBasket));
 
         StepVerifier.create(basketService.addToBasket(1L, 1L))
@@ -140,7 +140,7 @@ class BasketServiceImplTest {
     @Test
     void addToBasket_shouldFail_whenProductDoesNotExist() {
         when(productService.findActualProduct(1L)).thenReturn(Mono.empty());
-        when(participantService.findActualById(1L)).thenReturn(Mono.just(participant)); // Assuming participant exists
+        when(participantService.findActualById(1L)).thenReturn(Mono.just(fullParticipantDto)); // Assuming participant exists
 
         StepVerifier.create(basketService.addToBasket(1L, 1L))
                 .expectError(EntityNotFoundException.class)
@@ -166,8 +166,8 @@ class BasketServiceImplTest {
     @Test
     void addToBasket_shouldFail_whenProductAlreadyInBasket() {
         when(productService.findActualProduct(1L)).thenReturn(Mono.just(product));
-        when(participantService.findActualById(1L)).thenReturn(Mono.just(participant));
-        when(productBasketRepository.findByParticipantIdAndProductId(1L, 1L)).thenReturn(Mono.just(productBasket));
+        when(participantService.findActualById(1L)).thenReturn(Mono.just(fullParticipantDto));
+        when(productBasketRepository.findByParticipantIdAndProductId(1L, 1L)).thenReturn(Flux.just(productBasket));
 
         StepVerifier.create(basketService.addToBasket(1L, 1L))
                 .expectError(EntityAlreadyExistException.class)

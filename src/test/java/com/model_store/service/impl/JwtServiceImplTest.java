@@ -3,6 +3,7 @@ package com.model_store.service.impl;
 import com.model_store.configuration.property.ApplicationProperties;
 import com.model_store.exception.InvalidTokenException;
 import com.model_store.model.CustomUserDetails;
+import com.model_store.model.constant.ParticipantStatus;
 import io.jsonwebtoken.Claims;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +28,7 @@ import java.util.Date;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -63,8 +65,8 @@ class JwtServiceImplTest {
 
         Collection<GrantedAuthority> authorities = Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"));
         userDetails = new CustomUserDetails(
-                1L, "testuser", "password", "test@example.com",
-                "Test User", "imageId123", authorities
+                1L, "testuser", "password", "USER", "test@example.com",
+                "Test User", ParticipantStatus.ACTIVE, 1L
         );
     }
 

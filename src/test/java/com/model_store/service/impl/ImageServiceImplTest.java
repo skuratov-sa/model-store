@@ -29,6 +29,7 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -86,9 +87,11 @@ class ImageServiceImplTest {
     @Test
     void findImagesByIds_shouldReturnImageResponses_forActiveImages() {
         List<Long> imageIds = List.of(1L);
-        ImageResponse imageResponse = new ImageResponse("image1.jpg", "content".getBytes());
+        ImageResponse imageResponse =  ImageResponse.builder().fileName("image1.jpg")
+                .imageData( "content".getBytes())
+                .build();
 
-        when(imageRepository.findById(1L)).thenReturn(Mono.just(image1)); // image1 is ACTIVE
+                when(imageRepository.findById(1L)).thenReturn(Mono.just(image1)); // image1 is ACTIVE
         when(s3Service.getFile(ImageTag.PRODUCT, "image1.jpg")).thenReturn(Mono.just(imageResponse));
 
         StepVerifier.create(imageService.findImagesByIds(imageIds))
@@ -181,7 +184,7 @@ class ImageServiceImplTest {
     void updateImagesStatus_shouldUpdateStatus_whenImageFoundAndMatchesCriteria() {
         List<Long> imageIds = List.of(1L);
         Long entityId = 10L;
-        ImageStatus newStatus = ImageStatus.DELETED;
+        ImageStatus newStatus = ImageStatus.DELETE;
         ImageTag tag = ImageTag.PRODUCT;
 
         Image updatedImage = new Image();
@@ -212,7 +215,7 @@ class ImageServiceImplTest {
     void updateImagesStatus_shouldNotUpdate_whenImageTagDoesNotMatch() {
         List<Long> imageIds = List.of(1L);
         Long entityId = 10L;
-        ImageStatus newStatus = ImageStatus.DELETED;
+        ImageStatus newStatus = ImageStatus.DELETE;
         ImageTag differentTag = ImageTag.PARTICIPANT; // Different tag
 
         when(imageRepository.findById(1L)).thenReturn(Mono.just(image1)); // image1 has tag PRODUCT
@@ -229,7 +232,7 @@ class ImageServiceImplTest {
     void updateImagesStatus_shouldNotUpdate_whenImageEntityIdDoesNotMatch() {
         List<Long> imageIds = List.of(1L);
         Long differentEntityId = 20L; // Different entityId
-        ImageStatus newStatus = ImageStatus.DELETED;
+        ImageStatus newStatus = ImageStatus.DELETE;
         ImageTag tag = ImageTag.PRODUCT;
 
         when(imageRepository.findById(1L)).thenReturn(Mono.just(image1)); // image1 has entityId 10L
@@ -278,7 +281,7 @@ class ImageServiceImplTest {
     void updateImagesStatus_shouldFail_whenImageNotFoundInRepository() {
         List<Long> imageIds = List.of(3L); // Non-existent image
         Long entityId = 10L;
-        ImageStatus newStatus = ImageStatus.DELETED;
+        ImageStatus newStatus = ImageStatus.DELETE;
         ImageTag tag = ImageTag.PRODUCT;
 
         when(imageRepository.findById(3L)).thenReturn(Mono.empty());
@@ -465,7 +468,7 @@ class ImageServiceImplTest {
 
         image1.setTag(ImageTag.PARTICIPANT); // Ensure correct tag for this test case
 
-        when(imageRepository.findByIdAndTag(1L, tag)).thenReturn(Mono.just(image1));
+        when(imageRepository.findByIdAndTag(1L, tag)).thenReturn(Flux.just(image1));
         // isUserAccessible for PARTICIPANT will check if image.entityId matches participantId
         when(imageRepository.saveAll(anyList())).thenAnswer(invocation -> {
             List<Image> imagesToSave = invocation.getArgument(0);
@@ -492,7 +495,7 @@ class ImageServiceImplTest {
         image1.setTag(ImageTag.PARTICIPANT);
         image1.setEntityId(10L); // Image belongs to participant 10L
 
-        when(imageRepository.findByIdAndTag(1L, tag)).thenReturn(Mono.just(image1));
+        when(imageRepository.findByIdAndTag(1L, tag)).thenReturn(Flux.just(image1));
         // isUserAccessible will return false
 
         StepVerifier.create(imageService.deleteImages(imageIds, tag, otherParticipantId))
@@ -517,7 +520,7 @@ class ImageServiceImplTest {
         image1.setEntityId(product.getId());
 
 
-        when(imageRepository.findByIdAndTag(1L, tag)).thenReturn(Mono.just(image1));
+        when(imageRepository.findByIdAndTag(1L, tag)).thenReturn(Flux.just(image1));
         when(productRepository.findActualProduct(product.getId())).thenReturn(Mono.just(product));
         when(imageRepository.saveAll(anyList())).thenAnswer(invocation -> Flux.fromIterable(invocation.getArgument(0)));
 
@@ -543,7 +546,7 @@ class ImageServiceImplTest {
         image1.setTag(ImageTag.PRODUCT); 
         image1.setEntityId(product.getId());
 
-        when(imageRepository.findByIdAndTag(1L, tag)).thenReturn(Mono.just(image1));
+        when(imageRepository.findByIdAndTag(1L, tag)).thenReturn(Flux.just(image1));
         when(productRepository.findActualProduct(product.getId())).thenReturn(Mono.just(product));
         // isUserAccessible will return false
 
@@ -562,7 +565,7 @@ class ImageServiceImplTest {
         ImageTag tag = ImageTag.PRODUCT;
         Long participantId = 1L;
 
-        when(imageRepository.findByIdAndTag(99L, tag)).thenReturn(Mono.empty());
+        when(imageRepository.findByIdAndTag(99L, tag)).thenReturn(Flux.empty());
 
         StepVerifier.create(imageService.deleteImages(imageIds, tag, participantId))
                 .expectError(com.model_store.exception.EntityNotFoundException.class)
@@ -586,7 +589,7 @@ class ImageServiceImplTest {
         image1.setTag(ImageTag.ORDER);
         image1.setEntityId(order.getId());
 
-        when(imageRepository.findByIdAndTag(1L, tag)).thenReturn(Mono.just(image1));
+        when(imageRepository.findByIdAndTag(1L, tag)).thenReturn(Flux.just(image1));
         when(orderRepository.findById(order.getId())).thenReturn(Mono.just(order));
         when(imageRepository.saveAll(anyList())).thenAnswer(invocation -> Flux.fromIterable(invocation.getArgument(0)));
 
@@ -612,7 +615,7 @@ class ImageServiceImplTest {
         image1.setTag(ImageTag.ORDER);
         image1.setEntityId(order.getId());
 
-        when(imageRepository.findByIdAndTag(1L, tag)).thenReturn(Mono.just(image1));
+        when(imageRepository.findByIdAndTag(1L, tag)).thenReturn(Flux.just(image1));
         when(orderRepository.findById(order.getId())).thenReturn(Mono.just(order));
         when(imageRepository.saveAll(anyList())).thenAnswer(invocation -> Flux.fromIterable(invocation.getArgument(0)));
 
@@ -638,7 +641,7 @@ class ImageServiceImplTest {
         image1.setTag(ImageTag.ORDER);
         image1.setEntityId(order.getId());
 
-        when(imageRepository.findByIdAndTag(1L, tag)).thenReturn(Mono.just(image1));
+        when(imageRepository.findByIdAndTag(1L, tag)).thenReturn(Flux.just(image1));
         when(orderRepository.findById(order.getId())).thenReturn(Mono.just(order));
         // isUserAccessible will be false
 

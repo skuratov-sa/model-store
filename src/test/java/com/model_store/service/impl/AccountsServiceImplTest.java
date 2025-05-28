@@ -38,9 +38,7 @@ class AccountsServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        accountDto = new AccountDto();
-        accountDto.setEntityValue("test_value");
-        // accountDto.setSomeOtherField("test_field"); // Assuming AccountDto has other fields
+        accountDto =  AccountDto.builder().entityValue("test_value").build();
 
         account = new Account();
         account.setId(1L);
