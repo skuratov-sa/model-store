@@ -58,7 +58,51 @@ VALUES
     ('трансфер.jpg', 'SYSTEM', 'ACTIVE', NULL, current_timestamp),
     ('самовывоз.png', 'SYSTEM', 'ACTIVE', NULL, current_timestamp);
 
--- TODO Добавить категории от Анрэ
--- INSERT INTO category (name, parent_id) VALUES ()
+-- Верхний уровень
+INSERT INTO category (name, parent_id) VALUES
+                                           ('Prize Figures', NULL),
+                                           ('Nendroids', NULL),
+                                           ('Best Sellers', NULL),
+                                           ('Statues', NULL),
+                                           ('Complete models', NULL),
+                                           ('NSFW (18+)', NULL),
+                                           ('Preorder', NULL),
+                                           ('Companies', NULL),
+                                           ('Figma', NULL),
+                                           ('Bunny suites', NULL),
+                                           ('Franchises', NULL),
+                                           ('3d print', NULL),
+                                           ('Handmade', NULL),
+                                           ('Other', NULL);
+
+-- Получаем id для вложенных вставок
+-- Предположим, мы делаем вручную и знаем ID каждой категории верхнего уровня
+-- В реальности можно воспользоваться SELECT и сохранить в переменные, или использовать RETURNING id
+
+-- Пример: допустим id для Companies = 8, Franchises = 11
+
+-- Companies
+INSERT INTO category (name, parent_id) VALUES
+                                           ('Sega', 8),
+                                           ('Taito', 8),
+                                           ('FuRyu', 8),
+                                           ('Pop up Parade', 8),
+                                           ('Max Factory', 8),
+                                           ('Good Smile company', 8),
+                                           ('Myethos', 8),
+                                           ('Bandai', 8),
+                                           ('Freeing', 8),
+                                           ('Othres', 8);
+
+-- Franchises
+INSERT INTO category (name, parent_id) VALUES
+                                           ('Rezero', 11),
+                                           ('Vocaloides', 11),
+                                           ('Titan Attack', 11),
+                                           ('Jojo', 11),
+                                           ('My hero Academy', 11),
+                                           ('Chainsaw man', 11),
+                                           ('Genshin Impact', 11);
+
 
 

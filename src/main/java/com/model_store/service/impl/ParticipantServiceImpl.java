@@ -116,7 +116,6 @@ public class ParticipantServiceImpl implements ParticipantService {
                             .map(imageId -> {
                                 FindParticipantsDto dto = participantMapper.toFindParticipantDto(participant, imageId == -1L ? null : imageId);
                                 dto.setExperience(getExpensive(participant.getCreatedAt())); // Рассчитываем стаж
-                                dto.setCountry(searchParams.getCountry()); // Устанавливаем страну
                                 return dto;
                             });
 

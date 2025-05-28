@@ -1,86 +1,89 @@
 -- Скрипт заполнения данных для таблиц
 -- Научная фантастика
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Научная фантастика', NULL); -- Базовая категория
+INSERT INTO category (name, parent_id) VALUES ('Test', NULL); -- Базовая категория
+INSERT INTO category (name, parent_id) VALUES ('Test', NULL); -- Базовая категория
+INSERT INTO category (name, parent_id) VALUES ('Test', NULL); -- Базовая категория
+INSERT INTO category (name, parent_id) VALUES ('Test', NULL); -- Базовая категория
+INSERT INTO category (name, parent_id) VALUES ('Test', NULL); -- Базовая категория
 
--- Космические корабли
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Космические корабли', (SELECT id FROM category WHERE name = 'Научная фантастика')); -- Категория 1 уровня
 
--- Боевые роботы
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Боевые роботы', (SELECT id FROM category WHERE name = 'Научная фантастика')); -- Категория 1 уровня
-
--- Энергетическое оружие
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Энергетическое оружие', (SELECT id FROM category WHERE name = 'Научная фантастика')); -- Категория 1 уровня
-
--- Вставляем подкатегории для Космических кораблей
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Межгалактические звездолеты', (SELECT id FROM category WHERE name = 'Космические корабли')),
-    ('Звездные крейсеры', (SELECT id FROM category WHERE name = 'Космические корабли')),
-    ('Корветы дальнего следования', (SELECT id FROM category WHERE name = 'Космические корабли'));
-
--- Вставляем подкатегории для Боевых роботов
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Скрытные боевые мехи', (SELECT id FROM category WHERE name = 'Боевые роботы')),
-    ('Боевые дроны', (SELECT id FROM category WHERE name = 'Боевые роботы')),
-    ('Штурмовые роботы', (SELECT id FROM category WHERE name = 'Боевые роботы'));
-
--- Вставляем подкатегории для Энергетического оружия
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Плазменные винтовки', (SELECT id FROM category WHERE name = 'Энергетическое оружие')),
-    ('Лазерные пистолеты', (SELECT id FROM category WHERE name = 'Энергетическое оружие')),
-    ('Бластерные пушки', (SELECT id FROM category WHERE name = 'Энергетическое оружие'));
-
--- Вставляем базовые категории для Фэнтези
--- Фэнтези
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Фэнтези', NULL); -- Базовая категория
-
--- Драконы
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Драконы', (SELECT id FROM category WHERE name = 'Фэнтези')); -- Категория 1 уровня
-
--- Рыцари
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Рыцари', (SELECT id FROM category WHERE name = 'Фэнтези')); -- Категория 1 уровня
-
--- Маги
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Маги', (SELECT id FROM category WHERE name = 'Фэнтези')); -- Категория 1 уровня
-
--- Вставляем подкатегории для Драконов
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Огнедышащие драконы', (SELECT id FROM category WHERE name = 'Драконы')),
-    ('Ледяные драконы', (SELECT id FROM category WHERE name = 'Драконы')),
-    ('Драконы-стражи', (SELECT id FROM category WHERE name = 'Драконы'));
-
--- Вставляем подкатегории для Рыцарей
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Рыцари драконов', (SELECT id FROM category WHERE name = 'Рыцари')),
-    ('Тёмные рыцари', (SELECT id FROM category WHERE name = 'Рыцари')),
-    ('Священные рыцари', (SELECT id FROM category WHERE name = 'Рыцари'));
-
--- Вставляем подкатегории для Магов
-INSERT INTO category (name, parent_id)
-VALUES
-    ('Некроманты', (SELECT id FROM category WHERE name = 'Маги')),
-    ('Маги-целители', (SELECT id FROM category WHERE name = 'Маги')),
-    ('Волшебники воды', (SELECT id FROM category WHERE name = 'Маги'));
+-- -- Космические корабли
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Космические корабли', (SELECT id FROM category WHERE name = 'Научная фантастика')); -- Категория 1 уровня
+--
+-- -- Боевые роботы
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Боевые роботы', (SELECT id FROM category WHERE name = 'Научная фантастика')); -- Категория 1 уровня
+--
+-- -- Энергетическое оружие
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Энергетическое оружие', (SELECT id FROM category WHERE name = 'Научная фантастика')); -- Категория 1 уровня
+--
+-- -- Вставляем подкатегории для Космических кораблей
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Межгалактические звездолеты', (SELECT id FROM category WHERE name = 'Космические корабли')),
+--     ('Звездные крейсеры', (SELECT id FROM category WHERE name = 'Космические корабли')),
+--     ('Корветы дальнего следования', (SELECT id FROM category WHERE name = 'Космические корабли'));
+--
+-- -- Вставляем подкатегории для Боевых роботов
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Скрытные боевые мехи', (SELECT id FROM category WHERE name = 'Боевые роботы')),
+--     ('Боевые дроны', (SELECT id FROM category WHERE name = 'Боевые роботы')),
+--     ('Штурмовые роботы', (SELECT id FROM category WHERE name = 'Боевые роботы'));
+--
+-- -- Вставляем подкатегории для Энергетического оружия
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Плазменные винтовки', (SELECT id FROM category WHERE name = 'Энергетическое оружие')),
+--     ('Лазерные пистолеты', (SELECT id FROM category WHERE name = 'Энергетическое оружие')),
+--     ('Бластерные пушки', (SELECT id FROM category WHERE name = 'Энергетическое оружие'));
+--
+-- -- Вставляем базовые категории для Фэнтези
+-- -- Фэнтези
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Фэнтези', NULL); -- Базовая категория
+--
+-- -- Драконы
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Драконы', (SELECT id FROM category WHERE name = 'Фэнтези')); -- Категория 1 уровня
+--
+-- -- Рыцари
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Рыцари', (SELECT id FROM category WHERE name = 'Фэнтези')); -- Категория 1 уровня
+--
+-- -- Маги
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Маги', (SELECT id FROM category WHERE name = 'Фэнтези')); -- Категория 1 уровня
+--
+-- -- Вставляем подкатегории для Драконов
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Огнедышащие драконы', (SELECT id FROM category WHERE name = 'Драконы')),
+--     ('Ледяные драконы', (SELECT id FROM category WHERE name = 'Драконы')),
+--     ('Драконы-стражи', (SELECT id FROM category WHERE name = 'Драконы'));
+--
+-- -- Вставляем подкатегории для Рыцарей
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Рыцари драконов', (SELECT id FROM category WHERE name = 'Рыцари')),
+--     ('Тёмные рыцари', (SELECT id FROM category WHERE name = 'Рыцари')),
+--     ('Священные рыцари', (SELECT id FROM category WHERE name = 'Рыцари'));
+--
+-- -- Вставляем подкатегории для Магов
+-- INSERT INTO category (name, parent_id)
+-- VALUES
+--     ('Некроманты', (SELECT id FROM category WHERE name = 'Маги')),
+--     ('Маги-целители', (SELECT id FROM category WHERE name = 'Маги')),
+--     ('Волшебники воды', (SELECT id FROM category WHERE name = 'Маги'));
 
 -- Вставляем базовые категории для Военной техники
 -- Военная техника

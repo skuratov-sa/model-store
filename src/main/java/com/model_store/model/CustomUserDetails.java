@@ -2,11 +2,11 @@ package com.model_store.model;
 
 import com.model_store.model.base.Participant;
 import com.model_store.model.constant.ParticipantStatus;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
@@ -14,6 +14,7 @@ import java.util.Collections;
 
 @Builder
 @Data
+@AllArgsConstructor
 public class CustomUserDetails implements UserDetails {
     private Long id;
     private String login;

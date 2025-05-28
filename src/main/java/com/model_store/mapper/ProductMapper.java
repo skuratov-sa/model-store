@@ -33,10 +33,12 @@ public interface ProductMapper {
 
     @Mapping(target = "id", source = "product.id")
     @Mapping(target = "name", source = "product.name")
+    @Mapping(target = "sellerId", source = "product.participantId")
     ProductDto toProductDto(Product product, CategoryDto category, Long imageId);
 
     @Mapping(target = "id", source = "product.id")
     @Mapping(target = "name", source = "product.name")
+    @Mapping(target = "sellerId", source = "product.participantId")
     ProductDto toProductDto(Product product, Long imageId);
 
     @Mapping(target = "id", source = "product.id")

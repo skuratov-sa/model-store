@@ -15,4 +15,5 @@ public class ProductDto {
     private Currency currency;
     private CategoryDto category;
     private Long imageId;
+    private Long sellerId;
 }

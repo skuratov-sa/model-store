@@ -21,7 +21,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
             SELECT COUNT(*)
             FROM product p
             WHERE
-                (:productName IS NULL OR p.name LIKE '%' || :productName || '%') AND
+                (:productName IS NULL OR p.name ILIKE '%' || :productName || '%') AND
                 (:categoryId IS NULL OR p.category_id = :categoryId) AND
                 (:originality IS NULL OR p.originality = :originality) AND
                 (:participantId IS NULL OR p.participant_id = :participantId) AND
@@ -46,7 +46,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
             SELECT p.*
             FROM product p
             WHERE
-                (:productName IS NULL OR p.name LIKE '%' || :productName || '%') AND
+                (:productName IS NULL OR p.name ILIKE '%' || :productName || '%') AND
                 (:categoryId IS NULL OR p.category_id = :categoryId) AND
                 (:originality IS NULL OR p.originality = :originality) AND
                 (:participantId IS NULL OR p.participant_id = :participantId) AND
@@ -96,7 +96,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
             SELECT p.*
             FROM product p
             WHERE
-                (:productName IS NULL OR p.name LIKE '%' || :productName || '%') AND
+                (:productName IS NULL OR p.name ILIKE '%' || :productName || '%') AND
                 (:categoryId IS NULL OR p.category_id = :categoryId) AND
                 (:originality IS NULL OR p.originality = :originality) AND
                 (:participantId IS NULL OR p.participant_id = :participantId) AND

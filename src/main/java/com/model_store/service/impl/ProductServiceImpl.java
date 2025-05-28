@@ -14,6 +14,7 @@ import com.model_store.model.page.PagedResult;
 import com.model_store.repository.ProductRepository;
 import com.model_store.service.CategoryService;
 import com.model_store.service.ProductService;
+import com.model_store.service.SocialNetworksService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +32,7 @@ public class ProductServiceImpl implements ProductService {
     private final CategoryService categoryService;
     private final ProductMapper productMapper;
     private final ImageServiceImpl imageService;
+    private final SocialNetworksService socialNetworksService;
 
     @Transactional
     public Mono<GetProductResponse> getProductById(Long productId) {
@@ -81,12 +83,18 @@ public class ProductServiceImpl implements ProductService {
 
     @Transactional
     public Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId) {
-        Product product = productMapper.toProduct(request, participantId);
-        return productRepository.save(product)
-                .flatMap(p -> updateImagesStatus(request.getImageIds(), p.getId())
-                        .then(Mono.just(p.getId()))
-                );
+        return socialNetworksService.findByParticipantId(participantId)
+                .switchIfEmpty(Mono.error(new IllegalAccessError("Необходимо добавить социальные сети прежде чем создать товар"))).collectList()
+                .flatMap(socialNetworks -> {
+                    Product product = productMapper.toProduct(request, participantId);
+                    return productRepository.save(product)
+                            .flatMap(savedProduct ->
+                                    updateImagesStatus(request.getImageIds(), savedProduct.getId())
+                                            .thenReturn(savedProduct.getId())
+                            );
+                });
     }
+
 
     @Transactional
     public Mono<Void> updateProduct(Long id, CreateOrUpdateProductRequest request, Long participantId) {
