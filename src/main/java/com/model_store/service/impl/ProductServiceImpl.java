@@ -21,6 +21,7 @@ import com.model_store.service.SocialNetworksService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
@@ -69,13 +70,13 @@ public class ProductServiceImpl implements ProductService {
                 );
     }
 
-    public Mono<List<ProductDto>> findByParams(FindProductRequest searchParams) {
+    public Flux<ProductDto> findByParams(FindProductRequest searchParams) {
         // 1. Получаем список продуктов
         return productRepository.findByParams(searchParams, null)
                 .concatMap(product -> categoryService.findById(product.getCategoryId())
                         .zipWith(imageService.findMainImage(product.getId(), ImageTag.PRODUCT).defaultIfEmpty(-1L))
                         .map(tuple -> productMapper.toProductDto(product, tuple.getT1(), tuple.getT2() == -1L ? null : tuple.getT2()))
-                ).collectList();
+                );
 
         // 2. Получаем общее количество
 //        Mono<Integer> totalCount = productRepository.findCountBySearchParams(searchParams, null).defaultIfEmpty(0);

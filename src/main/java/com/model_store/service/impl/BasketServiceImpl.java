@@ -5,6 +5,7 @@ import com.model_store.exception.EntityNotFoundException;
 import com.model_store.mapper.ProductMapper;
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.ProductBasket;
+import com.model_store.model.base.ProductFavorite;
 import com.model_store.model.constant.ImageTag;
 import com.model_store.model.dto.ProductDto;
 import com.model_store.model.page.PagedResult;
@@ -16,6 +17,7 @@ import com.model_store.service.ParticipantService;
 import com.model_store.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import static com.model_store.exception.constant.EntityException.BASKET;
@@ -31,19 +33,17 @@ public class BasketServiceImpl implements BasketService {
     private final ImageService imageService;
 
     @Override
-    public Mono<PagedResult<ProductDto>> findBasketProductsByParams(Long participantId, FindProductRequest searchParams) {
+    public Flux<ProductDto> findBasketProductsByParams(Long participantId, FindProductRequest searchParams) {
         return productBasketRepository.findByParticipantId(participantId)
                 .map(ProductBasket::getProductId)
                 .collectList()
-                .flatMap(productIds -> {
-                    var monoProducts = productRepository.findByParams(searchParams, productIds.toArray(Long[]::new))
-                            .flatMap(product ->
-                                    imageService.findMainImage(product.getId(), ImageTag.PRODUCT)
-                                            .map(imageId -> productMapper.toProductDto(product, imageId))
-                            ).collectList();
-
-                    return monoProducts.map(list -> new PagedResult<>(list, productIds.size(), searchParams.getPageable()));
-                });
+                .flatMapMany(ids ->
+                        productRepository.findByParams(searchParams, ids.toArray(Long[]::new))
+                                .concatMap(product ->
+                                        imageService.findMainImage(product.getId(), ImageTag.PRODUCT)
+                                                .map(imageId -> productMapper.toProductDto(product, imageId))
+                                )
+                );
     }
 
     @Override

@@ -19,9 +19,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-
-import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
@@ -31,7 +30,7 @@ public class ProductController {
 
     @Operation(summary = "Поиск списка товаров")
     @PostMapping(path = "/products/find")
-    public Mono<List<ProductDto>> findProducts(@RequestBody FindProductRequest searchParams) {
+    public Flux<ProductDto> findProducts(@RequestBody FindProductRequest searchParams) {
         return productService.findByParams(searchParams);
     }
 

@@ -28,7 +28,7 @@ public class BasketController {
 
     @Operation(summary = "Получить список товаров из корзины")
     @PostMapping("/find")
-    public Mono<PagedResult<ProductDto>> findBasketProductsByParams(@RequestHeader("Authorization") String authorizationHeader, @RequestBody @Valid FindProductRequest request) {
+    public Flux<ProductDto> findBasketProductsByParams(@RequestHeader("Authorization") String authorizationHeader, @RequestBody @Valid FindProductRequest request) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
         return basketService.findBasketProductsByParams(participantId, request);
     }

@@ -1,13 +1,15 @@
 package com.model_store.service.impl;
 
 import com.amazonaws.services.kms.model.NotFoundException;
+import com.model_store.mapper.ProductMapper;
 import com.model_store.model.FindProductRequest;
-import com.model_store.model.base.Product;
 import com.model_store.model.base.ProductFavorite;
-import com.model_store.model.page.PagedResult;
+import com.model_store.model.constant.ImageTag;
+import com.model_store.model.dto.ProductDto;
 import com.model_store.repository.ProductFavoriteRepository;
 import com.model_store.repository.ProductRepository;
 import com.model_store.service.FavoriteService;
+import com.model_store.service.ImageService;
 import com.model_store.service.ParticipantService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,20 +22,21 @@ public class FavoriteServiceImpl implements FavoriteService {
     private final ProductFavoriteRepository productFavoriteRepository;
     private final ProductRepository productRepository;
     private final ParticipantService participantService;
+    private final ImageService imageService;
+    private final ProductMapper productMapper;
 
     @Override
-    public Flux<PagedResult<Product>> findFavoriteByParams(Long participantId, FindProductRequest searchParams) {
+    public Flux<ProductDto> findFavoriteByParams(Long participantId, FindProductRequest searchParams) {
         return productFavoriteRepository.findByParticipantId(participantId)
                 .map(ProductFavorite::getProductId)
                 .collectList()
-                .flatMapMany(productIds -> {
-                    var monoProducts = productRepository.findByParams(searchParams, productIds.toArray(Long[]::new)).collectList();
-                    var monoTotalCount = productRepository.findCountBySearchParams(searchParams, null).defaultIfEmpty(0);
-
-                    return monoProducts.zipWith(monoTotalCount)
-                            .map(tuple -> new PagedResult<>(tuple.getT1(), tuple.getT2(), searchParams.getPageable()));
-
-                });
+                .flatMapMany(ids ->
+                        productRepository.findByParams(searchParams, ids.toArray(Long[]::new))
+                                .concatMap(product ->
+                                        imageService.findMainImage(product.getId(), ImageTag.PRODUCT)
+                                                .map(imageId -> productMapper.toProductDto(product, imageId))
+                                )
+                );
     }
 
     @Override

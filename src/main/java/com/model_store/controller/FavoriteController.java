@@ -2,7 +2,7 @@ package com.model_store.controller;
 
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.Product;
-import com.model_store.model.page.PagedResult;
+import com.model_store.model.dto.ProductDto;
 import com.model_store.service.FavoriteService;
 import com.model_store.service.JwtService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -26,7 +26,7 @@ public class FavoriteController {
 
     @Operation(summary = "Получения списка избранных товаров пользователя")
     @PostMapping("/find")
-    public Flux<PagedResult<Product>> findFavorites(@RequestHeader("Authorization") String authorizationHeader, @RequestBody FindProductRequest searchParams) {
+    public Flux<ProductDto> findFavorites(@RequestHeader("Authorization") String authorizationHeader, @RequestBody FindProductRequest searchParams) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
         return favoriteService.findFavoriteByParams(participantId, searchParams);
     }

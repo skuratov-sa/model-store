@@ -1,6 +1,8 @@
 package com.model_store.model.base;
 
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.model_store.model.constant.Currency;
 import com.model_store.model.constant.ProductAvailabilityType;
 import com.model_store.model.constant.ProductStatus;
@@ -10,6 +12,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
+
+import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Data
 @Builder
@@ -33,6 +38,6 @@ public class Product {
     private ProductAvailabilityType availability;
     private String externalUrl;
 
-//    @JsonFormat(pattern = "dd.MM.yyyy HH:mm:ss", timezone = "Europe/Moscow")
-//    private Instant createdAt;
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private Instant createdAt;
 }
