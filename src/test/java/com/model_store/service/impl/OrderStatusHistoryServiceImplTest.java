@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
+@Deprecated
 @ExtendWith(MockitoExtension.class)
 class OrderStatusHistoryServiceImplTest {
 

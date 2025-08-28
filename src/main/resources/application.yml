@@ -19,8 +19,8 @@ spring:
   mail:
     host: smtp.mail.ru                      # Хост SMTP-сервера (например: smtp.gmail.com, smtp.mail.ru)
     port: 587                               # Порт SMTP (587 для STARTTLS, 465 для SSL, 25 — редко)
-    username: skuratov-750@mail.ru          # Имя пользователя для SMTP (обычно — ваш email)
-    password: fN6vEjvAeAjd19tgP5yn          # Пароль от почты или отдельный SMTP-пароль (например, app-password у Gmail)
+    username: figurzilla@mail.ru          # Имя пользователя для SMTP (обычно — ваш email)
+    password: password          # Пароль от почты или отдельный SMTP-пароль (например, app-password у Gmail)
     properties:
       mail:
         smtp:
@@ -59,6 +59,7 @@ springdoc:
 app:
   max-participant-images: 1
   max-product-images: 4
+  product-expiration-days: 30
   private-key-path: test/private.pk8
   public-key-path: test/public.key
   email-from: ${spring.mail.username}
@@ -69,3 +70,6 @@ logging:
     org.springframework.web: DEBUG
     org.springdoc: DEBUG
     org.flywaydb.core: DEBUG
+    org.springframework.jdbc.core: DEBUG
+    org.springframework.r2dbc.core: DEBUG
+    org.hibernate.SQL: DEBUG

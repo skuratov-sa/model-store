@@ -106,11 +106,10 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public Mono<Long> agreementOrder(Long orderId, Long accountId, String comment, Long participantId) {
+    public Mono<Long> agreementOrder(Long orderId, String comment, Long participantId) {
         return orderRepository.findById(orderId)
                 .filter(order -> order.getStatus().equals(BOOKED) && order.getSellerId().equals(participantId))
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями"))) // Если заказ не найден
-                .doOnNext(order -> order.setAccountId(accountId))
                 .doOnNext(order -> order.setComment(comment))
                 .doOnNext(order -> order.setStatus(!isNull(order.getPrepaymentAmount()) && order.getPrepaymentAmount() > 0 ? AWAITING_PREPAYMENT : AWAITING_PAYMENT))
                 .flatMap(order -> orderRepository.save(order).map(Order::getId));

@@ -12,7 +12,7 @@ public class CreateOrUpdateProductRequest {
     private String description;
     private Float price;
     private Float prepaymentAmount;
-    private Long categoryId;
+    private List<Long> categoryIds;
     private Integer count;
     private Currency currency;
     private String originality;

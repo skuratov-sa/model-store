@@ -34,7 +34,7 @@ services:
       MINIO_CONSOLE_ADDRESS: ':9001'
     command: minio server /data
   backend:
-    image: ready555/model_store:v1.9
+    image: ready555/model_store:v1.10
     depends_on:
       - db
       - minio
@@ -47,7 +47,7 @@ services:
 
       SPRING_MAIL_HOST: smtp.mail.ru
       SPRING_MAIL_PORT: 587
-      SPRING_MAIL_USERNAME: yourMail
+      SPRING_MAIL_USERNAME: figurzilla@mail.ru
       SPRING_MAIL_PASSWORD: yourPass
 
       S3_ACCESS-KEY: minio_user
@@ -61,9 +61,10 @@ services:
 
       APP_MAX_PARTICIPANT_IMAGES: 1
       APP_MAX_PRODUCT_IMAGES: 4
+      APP_PRODUCT-EXPIRATION-DAYS: 30
       APP_PRIVATE_KEY_PATH: /backend/keys/private.pk8
       APP_PUBLIC_KEY_PATH: /backend/keys/public.key
-      APP_EMAIL_FROM: yourMail
+      APP_EMAIL_FROM: figurzilla@mail.ru
 networks:
   app-network:
     driver: bridge

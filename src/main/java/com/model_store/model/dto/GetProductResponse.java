@@ -22,7 +22,7 @@ public class GetProductResponse {
     private String originality;
     private Long participantId;
     private ProductStatus status;
-    private CategoryDto category;
+    private List<CategoryDto> categories;
     private ProductAvailabilityType availability;
     private String externalUrl;
     private List<Long> imageIds;

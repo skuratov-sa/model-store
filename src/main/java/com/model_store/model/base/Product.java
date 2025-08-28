@@ -33,8 +33,8 @@ public class Product {
     private Currency currency;
     private String originality;
     private Long participantId;
-    private Long categoryId;
     private ProductStatus status;
+    private Instant expirationDate;
     private ProductAvailabilityType availability;
     private String externalUrl;
 

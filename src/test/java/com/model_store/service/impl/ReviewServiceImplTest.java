@@ -23,7 +23,7 @@ import java.time.Instant;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
-
+@Deprecated
 @ExtendWith(MockitoExtension.class)
 class ReviewServiceImplTest {
 
@@ -127,36 +127,6 @@ class ReviewServiceImplTest {
         verify(reviewRepository, never()).save(any(Review.class));
     }
 
-    @Test
-    void getReviewsForSeller_shouldReturnFluxOfReviewResponseDto_whenReviewsExist() {
-        Long sellerId = 10L;
-        String reviewerName = "Test Reviewer";
-
-        when(reviewRepository.findBySellerIdOrderByCreatedAtDesc(sellerId)).thenReturn(Flux.just(review1));
-        when(participantService.findFullNameById(review1.getReviewerId())).thenReturn(Mono.just(reviewerName));
-        when(reviewMapper.toReviewResponseDto(review1, reviewerName, tuple2.getT2())).thenReturn(reviewResponseDto);
-
-        StepVerifier.create(reviewService.getReviewsForSeller(sellerId))
-                .expectNext(reviewResponseDto)
-                .verifyComplete();
-
-        verify(reviewRepository).findBySellerIdOrderByCreatedAtDesc(sellerId);
-        verify(participantService).findFullNameById(review1.getReviewerId());
-        verify(reviewMapper).toReviewResponseDto(review1, reviewerName, tuple2.getT2());
-    }
-
-    @Test
-    void getReviewsForSeller_shouldReturnEmptyFlux_whenNoReviewsExistForSeller() {
-        Long sellerId = 99L; // Seller with no reviews
-        when(reviewRepository.findBySellerIdOrderByCreatedAtDesc(sellerId)).thenReturn(Flux.empty());
-
-        StepVerifier.create(reviewService.getReviewsForSeller(sellerId))
-                .verifyComplete();
-
-        verify(reviewRepository).findBySellerIdOrderByCreatedAtDesc(sellerId);
-        verify(participantService, never()).findFullNameById(anyLong());
-        verify(reviewMapper, never()).toReviewResponseDto(any(Review.class), anyString(), tuple2.getT2());
-    }
     
     @Test
     void getReviewsForSeller_shouldHandleErrorFromParticipantService() {

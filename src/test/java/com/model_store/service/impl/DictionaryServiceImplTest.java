@@ -14,6 +14,7 @@ import reactor.test.StepVerifier;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+@Deprecated
 
 @ExtendWith(MockitoExtension.class)
 class DictionaryServiceImplTest {

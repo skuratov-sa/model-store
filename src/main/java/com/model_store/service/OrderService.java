@@ -32,7 +32,7 @@ public interface OrderService {
 
     Flux<FindOrderResponse> getOrdersByCustomer(Long customerId);
 
-    Mono<Long> agreementOrder(Long orderId, Long accountId, String comment, Long participantId);
+    Mono<Long> agreementOrder(Long orderId, String comment, Long participantId);
 
     Mono<Long> paymentOrder(Long orderId, Long imageId, String comment, Long participantId);
 

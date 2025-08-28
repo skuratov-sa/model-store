@@ -1,8 +1,10 @@
 package com.model_store.service.impl;
 
 import com.amazonaws.services.kms.model.NotFoundException;
+import com.model_store.configuration.property.ApplicationProperties;
 import com.model_store.mapper.ProductMapper;
 import com.model_store.model.CreateOrUpdateProductRequest;
+import com.model_store.model.FindMyProductRequest;
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.ReviewResponseDto;
 import com.model_store.model.base.Product;
@@ -24,6 +26,8 @@ import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
 
@@ -38,6 +42,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductMapper productMapper;
     private final ImageServiceImpl imageService;
     private final ReviewService reviewService;
+    private final ApplicationProperties properties;
     private final SocialNetworksService socialNetworksService;
 
     @Transactional
@@ -46,12 +51,19 @@ public class ProductServiceImpl implements ProductService {
         Mono<List<Long>> imageFindMono = imageService.findActualImages(productId, ImageTag.PRODUCT).collectList().defaultIfEmpty(List.of());
         Mono<List<ReviewResponseDto>> findReviewsMono = reviewService.findByProductId(productId).collectList().defaultIfEmpty(List.of());
 
-        return Mono.zip(productFindMono, imageFindMono, findReviewsMono).flatMap(tuple3 ->
-                categoryService.findById(tuple3.getT1().getCategoryId())
-                        .map(category ->
-                                productMapper.toGetProductResponse(tuple3.getT1(), category, tuple3.getT2(), tuple3.getT3())
-                        )
-        );
+        return Mono.zip(productFindMono, imageFindMono, findReviewsMono)
+                .flatMap(tuple3 ->
+                        categoryService.findByProductId(tuple3.getT1().getId()).collectList()
+                                .map(categories ->
+                                        productMapper.toGetProductResponse(
+                                                tuple3.getT1(),
+                                                categories,
+                                                tuple3.getT2(),
+                                                tuple3.getT3()
+                                        )
+                                )
+                );
+
     }
 
     @Override
@@ -62,7 +74,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public Mono<ProductDto> shortInfoById(Long productId) {
         return findById(productId)
-                .flatMap(product -> categoryService.findById(product.getCategoryId())
+                .flatMap(product -> categoryService.findByProductId(product.getId()).collectList()
                         .zipWith(imageService.findMainImage(product.getId(), ImageTag.PRODUCT).defaultIfEmpty(-1L))
                         .map(tuple2 ->
                                 productMapper.toProductDto(product, tuple2.getT1(), tuple2.getT2() == -1L ? null : tuple2.getT2())
@@ -70,19 +82,26 @@ public class ProductServiceImpl implements ProductService {
                 );
     }
 
+    @Override
+    public Flux<String> findNamesBySearch(String search) {
+        return productRepository.findNamesBySearch(search);
+    }
+
     public Flux<ProductDto> findByParams(FindProductRequest searchParams) {
-        // 1. Получаем список продуктов
         return productRepository.findByParams(searchParams, null)
-                .concatMap(product -> categoryService.findById(product.getCategoryId())
+                .concatMap(product -> categoryService.findByProductId(product.getId()).collectList()
                         .zipWith(imageService.findMainImage(product.getId(), ImageTag.PRODUCT).defaultIfEmpty(-1L))
                         .map(tuple -> productMapper.toProductDto(product, tuple.getT1(), tuple.getT2() == -1L ? null : tuple.getT2()))
                 );
+    }
 
-        // 2. Получаем общее количество
-//        Mono<Integer> totalCount = productRepository.findCountBySearchParams(searchParams, null).defaultIfEmpty(0);
-
-//        return products.zipWith(totalCount)
-//                .map(tuple -> new PagedResult<>(tuple.getT1(), tuple.getT2(), searchParams.getPageable()));
+    @Override
+    public Flux<ProductDto> findMyByParams(FindMyProductRequest searchParams, Long participantId) {
+        return productRepository.findMyByParams(searchParams, participantId)
+                .concatMap(product -> categoryService.findByProductId(product.getId()).collectList()
+                        .zipWith(imageService.findMainImage(product.getId(), ImageTag.PRODUCT).defaultIfEmpty(-1L))
+                        .map(tuple -> productMapper.toProductDto(product, tuple.getT1(), tuple.getT2() == -1L ? null : tuple.getT2()))
+                );
     }
 
     @Override
@@ -100,17 +119,18 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId) {
-        Product product = productMapper.toProduct(request, participantId, ACTIVE);
+        Product product = productMapper.toProduct(request, participantId, ACTIVE, getExpirationDate());
 
         if (request.getAvailability() != ProductAvailabilityType.PURCHASABLE) product.setCount(null);
 
         return productRepository.save(product)
                 .flatMap(savedProduct ->
-                        updateImagesStatus(request.getImageIds(), savedProduct.getId())
-                                .thenReturn(savedProduct.getId())
+                        Mono.when(
+                                updateImagesStatus(request.getImageIds(), savedProduct.getId()),
+                                addLinkProductAndCategories(request.getCategoryIds(), savedProduct.getId())
+                        ).thenReturn(savedProduct.getId())
                 );
     }
-
 
     @Transactional
     public Mono<Void> updateProduct(Long id, CreateOrUpdateProductRequest request, Long participantId) {
@@ -149,10 +169,33 @@ public class ProductServiceImpl implements ProductService {
         return productRepository.save(product).map(Product::getId);
     }
 
+    @Override
+    public Mono<Void> extendExpirationDate(Long id, Long participantId) {
+        return productRepository.findActualProduct(id)
+                .filter(product -> Objects.equals(product.getParticipantId(), participantId))
+                .switchIfEmpty(Mono.error(new NotFoundException("Product not found")))
+                .flatMap(product -> {
+                    product.setExpirationDate(getExpirationDate());
+                    return productRepository.save(product);
+                }).then();
+
+    }
+
     private Mono<Void> updateImagesStatus(List<Long> imageIds, Long productId) {
         if (isNull(imageIds) || imageIds.isEmpty()) {
             return Mono.empty();
         }
         return imageService.updateImagesStatus(imageIds, productId, ImageStatus.ACTIVE, ImageTag.PRODUCT);
+    }
+
+    private Mono<Void> addLinkProductAndCategories(List<Long> categoryIds, Long productId) {
+        if (isNull(productId) || categoryIds.isEmpty()) {
+            return Mono.empty();
+        }
+        return categoryService.addLinkProductAndCategories(categoryIds, productId);
+    }
+
+    private Instant getExpirationDate() {
+        return Instant.now().plus(properties.getProductExpirationDays(), ChronoUnit.DAYS);
     }
 }

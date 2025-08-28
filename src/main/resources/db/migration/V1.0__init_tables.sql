@@ -153,7 +153,6 @@ comment on column category.id is 'Идентификатор категории'
 comment on column category.name is 'Название категории';
 comment on column category.parent_id is 'Идентификатор родительской категории';
 
-
 CREATE TABLE address
 (
     id               bigserial PRIMARY KEY,
@@ -277,7 +276,7 @@ CREATE TABLE product
     status            product_status                       NOT NULL DEFAULT 'ACTIVE',
     availability      product_availability                 NOT NULL DEFAULT 'PURCHASABLE',
     external_url      varchar(1000)                        NULL,
-    category_id       bigint                               NOT NULL REFERENCES category (id),
+    expiration_date   TIMESTAMPTZ                          NOT NULL DEFAULT (NOW() + INTERVAL '30 days'),
     created_at        TIMESTAMP WITH TIME ZONE             NOT NULL DEFAULT current_utc_timestamp()
 );
 comment on table product is 'Товары по которым осуществляются сделки';
@@ -293,7 +292,6 @@ comment on column product.participant_id is 'Идентификатор поль
 comment on column product.status is 'Статус (ACTIVE, BLOCKED, DELETED)';
 comment on column product.availability is 'Тип покупки (PURCHASABLE, PREORDER, EXTERNAL_ONLY)';
 comment on column product.external_url is 'URL товара из внешнего сайта';
-comment on column product.category_id is 'Категория товара';
 comment on column product.created_at is 'Дата создания товара';
 
 CREATE TABLE product_favorite
@@ -340,7 +338,6 @@ CREATE TABLE "order"
     count                  integer                  NOT NULL,
     status                 order_status             NOT NULL,
     product_id             bigint                   NOT NULL REFERENCES product (id),
-    account_id             bigint REFERENCES account (id),
     address_id             bigint                   NOT NULL REFERENCES address (id),
     transfer_id            bigint                   NOT NULL REFERENCES transfer (id),
     total_price            float                    NOT NULL DEFAULT 0,
@@ -358,7 +355,6 @@ comment on column "order".customer_id is 'Идентификатор покуп�
 comment on column "order".count is 'Количество приобретаемого товара';
 comment on column "order".status is 'Статус исполнения заказа';
 comment on column "order".product_id is 'Идентификатор продукта';
-comment on column "order".account_id is 'Идентификатор счета';
 comment on column "order".address_id is 'Идентификатор адреса доставки';
 comment on column "order".transfer_id is 'Идентификатор способа отправки';
 comment on column "order".total_price is 'Общая цена за товары';
@@ -410,3 +406,19 @@ CREATE TABLE seller_rating
     CONSTRAINT unique_seller_status UNIQUE (seller_id)
 );
 
+
+CREATE TABLE product_category
+(
+    id          BIGSERIAL PRIMARY KEY,
+    product_id  BIGINT NOT NULL REFERENCES "product" (id) ON DELETE CASCADE,
+    category_id BIGINT NOT NULL REFERENCES "category" (id) ON DELETE CASCADE
+);
+
+-- #! postgres
+
+-- Подключаем расширение (один раз на базу)
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- Индекс для ускорения поиска по ILIKE/%, с опечатками
+CREATE INDEX IF NOT EXISTS idx_product_name_trgm
+    ON product USING gin (name gin_trgm_ops);

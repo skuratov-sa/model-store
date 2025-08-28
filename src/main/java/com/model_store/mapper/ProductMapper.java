@@ -11,13 +11,18 @@ import com.model_store.model.dto.ProductDto;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
 @Mapper(componentModel = "spring")
 public interface ProductMapper {
     @Mapping(target = "id", ignore = true)
-    Product toProduct(CreateOrUpdateProductRequest product, Long participantId, ProductStatus status);
+    Product toProduct(CreateOrUpdateProductRequest product,
+                      Long participantId,
+                      ProductStatus status,
+                      Instant expirationDate
+    );
 
     default Product updateProduct(CreateOrUpdateProductRequest productRequest, Product product) {
         var isPurchasable = productRequest.getAvailability().equals(ProductAvailabilityType.PURCHASABLE);
@@ -32,7 +37,6 @@ public interface ProductMapper {
                 .prepaymentAmount(Optional.ofNullable(productRequest.getPrepaymentAmount()).orElse(product.getPrepaymentAmount()))
                 .currency(Optional.ofNullable(productRequest.getCurrency()).orElse(product.getCurrency()))
                 .originality(Optional.ofNullable(productRequest.getOriginality()).orElse(product.getOriginality()))
-                .categoryId(Optional.ofNullable(productRequest.getCategoryId()).orElse(product.getCategoryId()))
                 .availability(Optional.ofNullable(product.getAvailability()).orElse(product.getAvailability()))
                 .externalUrl(Optional.ofNullable(product.getExternalUrl()).orElse(product.getExternalUrl()))
                 .participantId(product.getParticipantId())
@@ -43,7 +47,7 @@ public interface ProductMapper {
     @Mapping(target = "id", source = "product.id")
     @Mapping(target = "name", source = "product.name")
     @Mapping(target = "sellerId", source = "product.participantId")
-    ProductDto toProductDto(Product product, CategoryDto category, Long imageId);
+    ProductDto toProductDto(Product product, List<CategoryDto> categories, Long imageId);
 
     @Mapping(target = "id", source = "product.id")
     @Mapping(target = "name", source = "product.name")
@@ -52,5 +56,5 @@ public interface ProductMapper {
 
     @Mapping(target = "id", source = "product.id")
     @Mapping(target = "name", source = "product.name")
-    GetProductResponse toGetProductResponse(Product product, CategoryDto category, List<Long> imageIds, List<ReviewResponseDto> reviews);
+    GetProductResponse toGetProductResponse(Product product, List<CategoryDto> categories, List<Long> imageIds, List<ReviewResponseDto> reviews);
 }

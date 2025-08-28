@@ -38,8 +38,8 @@ public class AuthController {
     @PostMapping("/login")
     public Mono<ResponseEntity<Map<String, String>>> login(@RequestBody Mono<LoginRequest> request) {
         return request.flatMap(req ->
-                authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(req.getLogin(), req.getPassword()))
-                        .flatMap(auth -> userDetailsService.findByUsername(req.getLogin()))
+                authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(req.getMail(), req.getPassword()))
+                        .flatMap(auth -> userDetailsService.findByUsername(req.getMail()))
                         .map(userDetails -> {
                             CustomUserDetails customUserDetails = (CustomUserDetails) userDetails;
                             Map<String, String> tokens = getTokensResponse(customUserDetails);

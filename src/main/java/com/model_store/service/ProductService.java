@@ -1,6 +1,7 @@
 package com.model_store.service;
 
 import com.model_store.model.CreateOrUpdateProductRequest;
+import com.model_store.model.FindMyProductRequest;
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.Product;
 import com.model_store.model.constant.ParticipantRole;
@@ -18,7 +19,12 @@ public interface ProductService {
 
     Mono<ProductDto> shortInfoById(Long productId);
 
+    Flux<String> findNamesBySearch(String search);
+
     Flux<ProductDto> findByParams(FindProductRequest searchParams);
+
+    Flux<ProductDto> findMyByParams(FindMyProductRequest searchParams, Long participantId);
+
 
     Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId, ParticipantRole role);
 
@@ -31,4 +37,6 @@ public interface ProductService {
     Mono<Void> updateProductStatus(Long id, ProductStatus status);
 
     Mono<Long> save(Product product);
+
+    Mono<Void> extendExpirationDate(Long id, Long participantId);
 }

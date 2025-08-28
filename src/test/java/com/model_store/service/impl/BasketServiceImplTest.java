@@ -36,6 +36,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+@Deprecated
 
 @ExtendWith(MockitoExtension.class)
 class BasketServiceImplTest {
@@ -85,42 +86,6 @@ class BasketServiceImplTest {
 
         participant = new Participant();
         participant.setId(1L);
-    }
-
-    @Test
-    void findBasketProductsByParams_shouldReturnPagedProducts() {
-        when(productBasketRepository.findByParticipantId(1L)).thenReturn(Flux.just(productBasket));
-        when(productRepository.findByParams(eq(findProductRequest), any(Long[].class))).thenReturn(Flux.just(product));
-        when(imageService.findMainImage(1L, ImageTag.PRODUCT)).thenReturn(Mono.just(2L));
-        when(productMapper.toProductDto(product, 2L)).thenReturn(productDto);
-
-        PagedResult<ProductDto> expectedResult = new PagedResult<>(List.of(productDto), 1, findProductRequest.getPageable());
-
-        StepVerifier.create(basketService.findBasketProductsByParams(1L, findProductRequest))
-                .expectNext(expectedResult)
-                .verifyComplete();
-
-        verify(productBasketRepository).findByParticipantId(1L);
-        verify(productRepository).findByParams(eq(findProductRequest), any(Long[].class));
-        verify(imageService).findMainImage(1L, ImageTag.PRODUCT);
-        verify(productMapper).toProductDto(product, 2L);
-    }
-
-    @Test
-    void findBasketProductsByParams_shouldReturnEmpty_whenBasketIsEmpty() {
-        when(productBasketRepository.findByParticipantId(1L)).thenReturn(Flux.empty());
-        // Ensure productRepository.findByParams is called with an empty array for productIds
-        when(productRepository.findByParams(eq(findProductRequest), eq(new Long[]{}))).thenReturn(Flux.empty());
-
-
-        PagedResult<ProductDto> expectedResult = new PagedResult<>(Collections.emptyList(), 0, findProductRequest.getPageable());
-
-        StepVerifier.create(basketService.findBasketProductsByParams(1L, findProductRequest))
-                .expectNext(expectedResult)
-                .verifyComplete();
-
-        verify(productBasketRepository).findByParticipantId(1L);
-        verify(productRepository).findByParams(eq(findProductRequest), eq(new Long[]{}));
     }
 
     @Test

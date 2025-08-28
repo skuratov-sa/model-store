@@ -41,15 +41,24 @@ public class ImageServiceImpl implements ImageService {
     private final ProductRepository productRepository;
     private final OrderRepository orderRepository;
 
+    private final static String defaultImageName = "not_found.jpeg";
+
     @Override
     public Flux<ImageResponse> findImagesByIds(List<Long> imageIds) {
         return findImagesById(imageIds)
-                .flatMap(image -> s3Service.getFile(image.getTag(), image.getFilename()));
+                .flatMap(image -> s3Service.getFile(image.getTag(), image.getFilename()))
+                .onErrorResume(e -> findImageDefault());
     }
 
     @Override
     public Mono<Long> findMainImage(Long entityId, ImageTag tag) {
         return findActualImages(entityId, tag).next();
+    }
+
+
+    @Override
+    public Mono<ImageResponse> findImageDefault() {
+        return s3Service.getFile(ImageTag.SYSTEM, defaultImageName);
     }
 
     @Override

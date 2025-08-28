@@ -35,7 +35,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
+@Deprecated
 @ExtendWith(MockitoExtension.class)
 class ImageServiceImplTest {
 

@@ -59,9 +59,9 @@ public class OrderController {
     @Operation(summary = "2.Продавец подтверждает заказ/предзаказ")
     @PostMapping("/{orderId}/AWAITING_PREPAYMENT")
     public Mono<Long> confirmOrder(@RequestHeader("Authorization") String authorizationHeader,
-                                   @PathVariable Long orderId, @RequestParam Long accountId, @RequestParam(required = false) String comment) {
+                                   @PathVariable Long orderId, @RequestParam(required = false) String comment) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        return orderService.agreementOrder(orderId, accountId, comment, participantId);
+        return orderService.agreementOrder(orderId, comment, participantId);
     }
 
     @Operation(summary = "3.1.Покупатель подтверждает предоплату")

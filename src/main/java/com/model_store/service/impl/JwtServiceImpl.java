@@ -86,7 +86,7 @@ public class JwtServiceImpl implements JwtService {
         final Instant refreshExpirationInstant = now.plusDays(30).atZone(ZoneId.systemDefault()).toInstant();
         final Date refreshExpiration = Date.from(refreshExpirationInstant);
         return Jwts.builder()
-                .setSubject(userDetails.getUsername())
+                .setSubject(userDetails.getEmail())
                 .setExpiration(refreshExpiration)
                 .claim("type", "refresh")  // Добавляем тип токена
                 .signWith(privateKey)

@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
-
+@Deprecated
 @ExtendWith(MockitoExtension.class)
 class OrderServiceImplTest {
 
@@ -387,7 +387,7 @@ class OrderServiceImplTest {
             return Mono.error(new AssertionError("Save conditions not met for agreementOrder"));
         });
 
-        StepVerifier.create(orderService.agreementOrder(orderId, accountId, comment, 1L))
+        StepVerifier.create(orderService.agreementOrder(orderId, comment, 1L))
                 .expectNext(savedOrder.getId())
                 .verifyComplete();
 
@@ -404,7 +404,7 @@ class OrderServiceImplTest {
 
         when(orderRepository.findById(orderId)).thenReturn(Mono.just(order));
 
-        StepVerifier.create(orderService.agreementOrder(orderId, accountId, comment, 1L))
+        StepVerifier.create(orderService.agreementOrder(orderId, comment, 1L))
                 .expectError(com.amazonaws.services.kms.model.NotFoundException.class)
                 .verify();
 

@@ -25,6 +25,7 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+@Deprecated
 
 @ExtendWith(MockitoExtension.class)
 class EmailServiceImplTest {

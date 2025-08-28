@@ -19,9 +19,9 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+@Deprecated
 
 @ExtendWith(MockitoExtension.class)
 class CategoryServiceImlTest {
@@ -100,11 +100,11 @@ class CategoryServiceImlTest {
     }
 
     @Test
-    void findById_shouldReturnCategoryDto_whenCategoryExists() {
+    void findByProductId_shouldReturnCategoryDto_whenCategoryExists() {
         when(categoryRepository.findById(1L)).thenReturn(Mono.just(category));
         when(categoryMapper.toCategoryDto(category)).thenReturn(categoryDto);
 
-        StepVerifier.create(categoryService.findById(1L))
+        StepVerifier.create(categoryService.findByProductId(1L))
                 .expectNext(categoryDto)
                 .verifyComplete();
 
@@ -113,10 +113,10 @@ class CategoryServiceImlTest {
     }
 
     @Test
-    void findById_shouldReturnEmpty_whenCategoryDoesNotExist() {
+    void findByProductId_shouldReturnEmpty_whenCategoryDoesNotExist() {
         when(categoryRepository.findById(1L)).thenReturn(Mono.empty());
 
-        StepVerifier.create(categoryService.findById(1L))
+        StepVerifier.create(categoryService.findByProductId(1L))
                 .verifyComplete(); // Expect empty Mono
 
         verify(categoryRepository).findById(1L);

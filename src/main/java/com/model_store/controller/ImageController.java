@@ -35,6 +35,12 @@ public class ImageController {
         return imageService.findImagesByIds(ids);
     }
 
+    @Operation(summary = "Получить дефолтную картинку")
+    @GetMapping("/default")
+    public Mono<ImageResponse> findDefaultImage() {
+        return imageService.findImageDefault();
+    }
+
     @Operation(summary = "Сохранить картинку")
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Flux<Long> createImage(
