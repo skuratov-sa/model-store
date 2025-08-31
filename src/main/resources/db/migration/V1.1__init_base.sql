@@ -134,9 +134,9 @@ INSERT INTO category (name, parent_id) VALUES
 INSERT INTO participant (login, password, role, mail, full_name, phone_number, status, deadline_sending, deadline_payment, created_at)
 VALUES (
            'admin', -- login
-           '$2a$10$1rzAkwoon3cS0dXtPakBM.FMJHjBw.r6gFnLfHpdpjm8WuplsAdk6', -- зашифрованный пароль
+           '$2a$10$cBH4aAAO9oORDBkMDRTgLOpgTkKuJvJPVvcwUiYSHbmnooKUIh1XS', -- зашифрованный пароль
            'ADMIN', -- роль
-           'admin@example.com', -- email
+           'superAdmin', -- email
            'Станиславский', -- полное имя
            '+79991234567', -- номер телефона
            'ACTIVE', -- статус
