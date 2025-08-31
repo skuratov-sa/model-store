@@ -55,7 +55,7 @@ public class EmailServiceImpl implements EmailService {
         return sendHtmlEmail(email, "Подтверждение почты", HTML_BODY.formatted(code))
                 .then(verificationCodeService.addCode(participantId, code))
                 .onErrorResume(e -> {
-                    log.error("Не удалось отправить email {}: {}", email, e.getMessage());
+                    log.error("Не удалось отправить email {}: {}", email, e.getCause());
                     return Mono.error(new IllegalAccessError("Ошибка отправки кода для подтверждения: " + e));
                 });
     }

@@ -34,7 +34,7 @@ services:
       MINIO_CONSOLE_ADDRESS: ':9001'
     command: minio server /data
   backend:
-    image: ready555/model_store:v1.10
+    image: ready555/model_store:v1.11
     depends_on:
       - db
       - minio
@@ -48,7 +48,10 @@ services:
       SPRING_MAIL_HOST: smtp.mail.ru
       SPRING_MAIL_PORT: 587
       SPRING_MAIL_USERNAME: figurzilla@mail.ru
-      SPRING_MAIL_PASSWORD: yourPass
+      SPRING_MAIL_PASSWORD: pass
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "true"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST: "smtp.mail.ru"
 
       S3_ACCESS-KEY: minio_user
       S3_SECRET-KEY: minio_password
