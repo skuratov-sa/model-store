@@ -23,10 +23,11 @@ configurations {
     }
 }
 
+
 flyway {
-    url = 'jdbc:postgresql://185.155.17.98:5432/model_store'
+    url = 'jdbc:postgresql://localhost:5432/model_store'
     user = 'root'
-    password = 'lB5KVXldMj78'
+    password = 'root'
     locations = ['filesystem:src/main/resources/db/migration']
     baselineVersion = '7.17.7'
     cleanDisabled = false
