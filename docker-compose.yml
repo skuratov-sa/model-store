@@ -34,7 +34,7 @@ services:
       MINIO_CONSOLE_ADDRESS: ':9001'
     command: minio server /data
   backend:
-    image: ready555/model_store:v1.11
+    image: ready555/model_store:v1.12
     depends_on:
       - db
       - minio
