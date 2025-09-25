@@ -21,6 +21,7 @@ import com.model_store.service.ProductService;
 import com.model_store.service.ReviewService;
 import com.model_store.service.SocialNetworksService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
@@ -34,6 +35,7 @@ import java.util.Objects;
 import static com.model_store.model.constant.ProductStatus.ACTIVE;
 import static java.util.Objects.isNull;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProductServiceImpl implements ProductService {
@@ -119,6 +121,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId) {
+        log.info("Create product request: {}, participantId: {}", request, participantId);
         Product product = productMapper.toProduct(request, participantId, ACTIVE, getExpirationDate());
 
         if (request.getAvailability() != ProductAvailabilityType.PURCHASABLE) product.setCount(null);
@@ -134,7 +137,10 @@ public class ProductServiceImpl implements ProductService {
 
     @Transactional
     public Mono<Void> updateProduct(Long id, CreateOrUpdateProductRequest request, Long participantId) {
+        log.info("Update product request: {}, participantId: {}", request, participantId);
+
         return productRepository.findActualProduct(id)
+                .doOnNext(product -> log.debug("Product found : {}", product))
                 .filter(product -> Objects.equals(product.getParticipantId(), participantId))
                 .switchIfEmpty(Mono.error(new NotFoundException("Product not found")))
                 .map(product -> productMapper.updateProduct(request, product))
@@ -144,6 +150,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     public Mono<Void> deleteProduct(Long id, Long participantId) {
+        log.info("Delete product id: {}, participantId: {}", id, participantId);
         return productRepository.findActualProduct(id)
                 .filter(product -> Objects.equals(product.getParticipantId(), participantId))
                 .switchIfEmpty(Mono.error(new NotFoundException("Product not found")))
@@ -156,6 +163,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public Mono<Void> updateProductStatus(Long id, ProductStatus status) {
+        log.info("Update product id: {}, status: {}", id, status);
         return productRepository.findActualProduct(id)
                 .switchIfEmpty(Mono.error(new NotFoundException("Product not found")))
                 .flatMap(product -> {
@@ -171,6 +179,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public Mono<Void> extendExpirationDate(Long id, Long participantId) {
+        log.info("Extend expiration date id: {}, participantId: {}", id, participantId);
         return productRepository.findActualProduct(id)
                 .filter(product -> Objects.equals(product.getParticipantId(), participantId))
                 .switchIfEmpty(Mono.error(new NotFoundException("Product not found")))
@@ -182,6 +191,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private Mono<Void> updateImagesStatus(List<Long> imageIds, Long productId) {
+        log.debug("Update image status in [PRODUCT ACTIVE] : imageIds: {}, productId: {}", imageIds , productId);
         if (isNull(imageIds) || imageIds.isEmpty()) {
             return Mono.empty();
         }
@@ -189,6 +199,8 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private Mono<Void> addLinkProductAndCategories(List<Long> categoryIds, Long productId) {
+        log.debug("Add a product and category link categoryIds: {}, productId: {}", categoryIds , productId);
+
         if (isNull(productId) || categoryIds.isEmpty()) {
             return Mono.empty();
         }
