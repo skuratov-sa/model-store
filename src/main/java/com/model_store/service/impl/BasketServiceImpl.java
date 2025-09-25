@@ -52,7 +52,7 @@ public class BasketServiceImpl implements BasketService {
                 .switchIfEmpty(Mono.error(new EntityNotFoundException(BASKET, productId)))
                 .flatMap(ignore ->
                         productBasketRepository.findByParticipantIdAndProductId(participantId, productId)
-                                .flatMap(e -> Mono.error(new EntityAlreadyExistException(BASKET)))
+                                .flatMap(e -> Mono.error(new EntityAlreadyExistException()))
                                 .switchIfEmpty(productBasketRepository.save(ProductBasket.builder()
                                         .participantId(participantId)
                                         .productId(productId)

@@ -11,11 +11,17 @@ import org.springframework.security.authentication.CredentialsExpiredException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.support.WebExchangeBindException;
+import reactor.core.publisher.Mono;
 
+import java.time.OffsetDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @ControllerAdvice
@@ -28,7 +34,15 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Object> handleGenericException(Exception ex) {
-        return new ResponseEntity<>(ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+        log.error("Unhandled exception", ex);
+        HttpStatus status = (ex instanceof RuntimeException) ? HttpStatus.BAD_REQUEST : HttpStatus.INTERNAL_SERVER_ERROR;
+        Map<String, Object> body = Map.of(
+                "error", ex.getMessage(),
+                "status", status.value(),
+                "timestamp", OffsetDateTime.now().toString()
+        );
+
+        return new ResponseEntity<>(body, status);
     }
 
     @ExceptionHandler(AuthenticationException.class)
@@ -48,6 +62,22 @@ public class GlobalExceptionHandler {
                     new ResponseEntity<>("Ошибка: Срок действия пароля истек", HttpStatus.FORBIDDEN);
             default -> new ResponseEntity<>("Ошибка аутентификации: " + ex.getMessage(), HttpStatus.UNAUTHORIZED);
         };
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Mono<Map<String, Object>> handleValidationErrors(MethodArgumentNotValidException ex) {
+        log.warn("Ошибка при валидации запроса: {}", ex.getMessage());
+
+        Map<String, Object> error = new HashMap<>();
+        error.put("error", "Ошибка валидации");
+        error.put("Описание", ex.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .map(f -> f.getField() + " " + f.getDefaultMessage())
+                .toList());
+
+        return Mono.just(error);
     }
 
     @ExceptionHandler(WebExchangeBindException.class)
