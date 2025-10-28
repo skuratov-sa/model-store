@@ -43,10 +43,6 @@ public class Order {
      */
     private Long productId;
     /**
-     * Идентификатор счета получения
-     */
-    private Long accountId;
-    /**
      * Идентификатор адреса получения
      */
     private Long addressId;

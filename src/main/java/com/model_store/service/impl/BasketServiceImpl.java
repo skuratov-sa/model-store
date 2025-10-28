@@ -12,6 +12,7 @@ import com.model_store.model.page.PagedResult;
 import com.model_store.repository.ProductBasketRepository;
 import com.model_store.repository.ProductRepository;
 import com.model_store.service.BasketService;
+import com.model_store.service.CategoryService;
 import com.model_store.service.ImageService;
 import com.model_store.service.ParticipantService;
 import com.model_store.service.ProductService;
@@ -31,6 +32,7 @@ public class BasketServiceImpl implements BasketService {
     private final ProductBasketRepository productBasketRepository;
     private final ProductMapper productMapper;
     private final ImageService imageService;
+    private final CategoryService categoryService;
 
     @Override
     public Flux<ProductDto> findBasketProductsByParams(Long participantId, FindProductRequest searchParams) {
@@ -39,9 +41,9 @@ public class BasketServiceImpl implements BasketService {
                 .collectList()
                 .flatMapMany(ids ->
                         productRepository.findByParams(searchParams, ids.toArray(Long[]::new))
-                                .concatMap(product ->
-                                        imageService.findMainImage(product.getId(), ImageTag.PRODUCT)
-                                                .map(imageId -> productMapper.toProductDto(product, imageId))
+                                .concatMap(product -> categoryService.findByProductId(product.getId()).collectList()
+                                        .zipWith(imageService.findMainImage(product.getId(), ImageTag.PRODUCT).defaultIfEmpty(-1L))
+                                        .map(tuple -> productMapper.toProductDto(product, tuple.getT1(), tuple.getT2() == -1L ? null : tuple.getT2()))
                                 )
                 );
     }

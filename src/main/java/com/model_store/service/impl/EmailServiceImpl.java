@@ -46,7 +46,7 @@ public class EmailServiceImpl implements EmailService {
                 .then(verificationCodeService.addCode(participantId, code))
                 .onErrorResume(e -> {
                     log.error("Не удалось отправить email {}: {}", email, e.getCause());
-                    return Mono.error(new IllegalAccessError("Ошибка отправки кода для подтверждения: " + e));
+                    return Mono.error(new IllegalArgumentException("Ошибка отправки кода для подтверждения: " + e));
                 });
     }
 

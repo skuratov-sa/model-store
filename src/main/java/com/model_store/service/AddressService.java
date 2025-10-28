@@ -12,6 +12,9 @@ public interface AddressService {
     Mono<List<String>> getAllRegions();
     Mono<Address> findById(Long id);
     Flux<Address> findByParticipantId(Long id);
+
+    Flux<Address> findByParticipantIdOrException(Long participantId);
+
     Mono<Long> addAddresses(Long participantId, @NonNull AddressDto addresses);
     Mono<Void> deleteAddresses(Long participantId, @NonNull Long addressId);
     Flux<Address> getAddress(Long participantId);

@@ -41,6 +41,11 @@ public class AddressServiceImpl implements AddressService {
     }
 
     @Override
+    public Flux<Address> findByParticipantIdOrException(Long participantId) {
+        return addressRepository.findByParticipantId(participantId);
+    }
+
+    @Override
     public Mono<Long> addAddresses(Long participantId, @NonNull AddressDto addresses) {
         return addressRepository.save(addressMapper.toAddress(addresses))
                 .flatMap(savedAddress -> participantAddressRepository.save( // Создаём новые связи

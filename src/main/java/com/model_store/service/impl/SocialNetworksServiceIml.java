@@ -31,7 +31,7 @@ public class SocialNetworksServiceIml implements SocialNetworksService {
     @Override
     public Flux<SocialNetwork> findByParticipantId(Long participantId) {
         return socialNetworkRepository.findByParticipantId(participantId)
-                .switchIfEmpty(Mono.error(new NotFoundException("Social network not found with participantId: " + participantId)));
+                .switchIfEmpty(Mono.error(new NotFoundException("Социальные сети не были найдены")));
     }
 
     @Override

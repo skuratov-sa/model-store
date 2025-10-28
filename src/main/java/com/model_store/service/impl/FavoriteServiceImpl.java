@@ -8,6 +8,7 @@ import com.model_store.model.constant.ImageTag;
 import com.model_store.model.dto.ProductDto;
 import com.model_store.repository.ProductFavoriteRepository;
 import com.model_store.repository.ProductRepository;
+import com.model_store.service.CategoryService;
 import com.model_store.service.FavoriteService;
 import com.model_store.service.ImageService;
 import com.model_store.service.ParticipantService;
@@ -24,6 +25,7 @@ public class FavoriteServiceImpl implements FavoriteService {
     private final ParticipantService participantService;
     private final ImageService imageService;
     private final ProductMapper productMapper;
+    private final CategoryService categoryService;
 
     @Override
     public Flux<ProductDto> findFavoriteByParams(Long participantId, FindProductRequest searchParams) {
@@ -32,9 +34,9 @@ public class FavoriteServiceImpl implements FavoriteService {
                 .collectList()
                 .flatMapMany(ids ->
                         productRepository.findByParams(searchParams, ids.toArray(Long[]::new))
-                                .concatMap(product ->
-                                        imageService.findMainImage(product.getId(), ImageTag.PRODUCT)
-                                                .map(imageId -> productMapper.toProductDto(product, imageId))
+                                .concatMap(product -> categoryService.findByProductId(product.getId()).collectList()
+                                        .zipWith(imageService.findMainImage(product.getId(), ImageTag.PRODUCT).defaultIfEmpty(-1L))
+                                        .map(tuple -> productMapper.toProductDto(product, tuple.getT1(), tuple.getT2() == -1L ? null : tuple.getT2()))
                                 )
                 );
     }

@@ -20,6 +20,9 @@ public interface ParticipantRepository extends ReactiveCrudRepository<Participan
     @Query("SELECT full_name FROM participant WHERE id = :id")
     Mono<String> findFullNameById(@Param("id") Long id);
 
+    @Query("SELECT nextval('participant_id_seq') AS id")
+    Mono<Long> findNextParticipantIdSeq();
+
     @Query(value = """
                SELECT DISTINCT p.*
             FROM participant p

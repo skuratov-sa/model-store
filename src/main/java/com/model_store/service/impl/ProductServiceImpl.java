@@ -16,10 +16,12 @@ import com.model_store.model.constant.ProductStatus;
 import com.model_store.model.dto.GetProductResponse;
 import com.model_store.model.dto.ProductDto;
 import com.model_store.repository.ProductRepository;
+import com.model_store.service.AddressService;
 import com.model_store.service.CategoryService;
 import com.model_store.service.ProductService;
 import com.model_store.service.ReviewService;
 import com.model_store.service.SocialNetworksService;
+import com.model_store.service.TransferService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -46,6 +48,8 @@ public class ProductServiceImpl implements ProductService {
     private final ReviewService reviewService;
     private final ApplicationProperties properties;
     private final SocialNetworksService socialNetworksService;
+    private final TransferService transferService;
+    private final AddressService addressService;
 
     @Transactional
     public Mono<GetProductResponse> getProductById(Long productId) {
@@ -113,11 +117,10 @@ public class ProductServiceImpl implements ProductService {
 
     @Transactional
     public Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId, ParticipantRole role) {
-        if (role == ParticipantRole.ADMIN) return createProduct(request, participantId);
-
-        return socialNetworksService.findByParticipantId(participantId)
-                .switchIfEmpty(Mono.error(new IllegalAccessError("Необходимо добавить социальные сети прежде чем создать товар"))).collectList()
-                .flatMap(socialNetworks -> createProduct(request, participantId));
+        return Mono.zip(
+                transferService.findByParticipantId(participantId).hasElements(),
+                socialNetworksService.findByParticipantId(participantId).hasElements()
+        ).flatMap(tuple -> createProduct(request, participantId));
     }
 
     private Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId) {

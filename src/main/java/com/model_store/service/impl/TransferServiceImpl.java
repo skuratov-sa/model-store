@@ -35,7 +35,7 @@ public class TransferServiceImpl implements TransferService {
     @Override
     public Flux<Transfer> findByParticipantId(Long participantId) {
         return transferRepository.findByParticipantId(participantId)
-                .switchIfEmpty(Mono.error(new RuntimeException("Не удалось найти указанные способы доставки для пользователя")));
+                .switchIfEmpty(Mono.error(new RuntimeException("Не удалось найти способы доставки для пользователя")));
     }
 
     @Override

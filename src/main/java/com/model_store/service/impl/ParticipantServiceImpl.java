@@ -148,10 +148,15 @@ public class ParticipantServiceImpl implements ParticipantService {
         return participantRepository.findByMail(request.getMail())
                 .filter(p -> p.getStatus() != WAITING_VERIFY)
                 .flatMap(existing -> Mono.error(new RuntimeException("Пользователь с таким email уже зарегистрирован")))
-                .switchIfEmpty(Mono.defer(() -> {
-                    participant.setPassword(passwordEncoder.encode(request.getPassword()));
-                    return participantRepository.save(participant).map(Participant::getId);
-                })).flatMap(participantId -> emailService.sendVerificationCode((Long) participantId, participant.getMail())
+                .switchIfEmpty(Mono.defer(() ->
+                        participantRepository.findNextParticipantIdSeq()
+                                .flatMap(id -> {
+                                    participant.setLogin("user" + (++id));
+                                    participant.setPassword(passwordEncoder.encode(request.getPassword()));
+                                    return participantRepository.save(participant) // ← один единственный save
+                                            .map(Participant::getId);
+                                })
+                )).flatMap(participantId -> emailService.sendVerificationCode((Long) participantId, participant.getMail())
                         .thenReturn((Long) participantId)
                 );
     }
@@ -181,7 +186,10 @@ public class ParticipantServiceImpl implements ParticipantService {
                     updatedParticipant.setPassword(existingParticipant.getPassword());
                     updatedParticipant.setCreatedAt(existingParticipant.getCreatedAt());
                     updatedParticipant.setSellerStatus(existingParticipant.getSellerStatus());
-                    return participantRepository.save(updatedParticipant).map(Participant::getId);
+
+                    return updateImagesStatus(request.getImageIds(), id)
+                            .then(participantRepository.save(updatedParticipant))
+                            .map(Participant::getId);
                 })
                 .doOnSuccess(participantId -> log.info("Пользователь {} успешно сохранен", participantId))
                 .doOnError(throwable -> log.error("Пользователь {} не сохранен причина: {}", id, throwable.getMessage()));
@@ -226,10 +234,10 @@ public class ParticipantServiceImpl implements ParticipantService {
     }
 
 
-    private Mono<Void> updateImagesStatus(List<Long> imageIds, Long id) {
+    private Mono<Void> updateImagesStatus(List<Long> imageIds, Long entityId) {
         if (isNull(imageIds) || imageIds.isEmpty()) {
             return Mono.empty();
         }
-        return imageService.updateImagesStatus(imageIds, id, ImageStatus.ACTIVE, ImageTag.PARTICIPANT);
+        return imageService.updateImagesStatus(imageIds, entityId, ImageStatus.ACTIVE, ImageTag.PARTICIPANT);
     }
 }

@@ -94,6 +94,7 @@ public class OrderServiceImpl implements OrderService {
         order.setTotalPrice((product.getPrice() - prepayment) * request.getCount());
         Mono<Order> saveOrder = Mono.defer(() -> orderRepository.save(order));
 
+
         if (product.getAvailability().equals(PURCHASABLE)) {
             product.setCount(product.getCount() - request.getCount());
             return productService.save(product)
@@ -160,22 +161,22 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Flux<FindOrderResponse> getOrdersBySeller(Long sellerId) {
-        return updateFindOrderByOrderSeller(sellerId)
-                .flatMap(this::updateImages)
-                .flatMap(this::updateFindOrderByHistory)
-                .flatMap(this::updateFindOrderByUser)
-                .flatMap(this::updateFindOrderByProduct)
-                .flatMap(this::updateFindOrderByTransfer);
+        return findOrderByOrderSeller(sellerId)
+                .flatMap(this::findImages)
+                .flatMap(this::findOrderByHistory)
+                .flatMap(this::findOrderByUser)
+                .flatMap(this::findOrderByProduct)
+                .flatMap(this::findOrderByTransfer);
     }
 
     @Override
     public Flux<FindOrderResponse> getOrdersByCustomer(Long customerId) {
         return updateFindOrderByOrderCustomer(customerId)
-                .flatMap(this::updateImages)
-                .flatMap(this::updateFindOrderByHistory)
-                .flatMap(this::updateFindOrderByUser)
-                .flatMap(this::updateFindOrderByProduct)
-                .flatMap(this::updateFindOrderByTransfer);
+                .flatMap(this::findImages)
+                .flatMap(this::findOrderByHistory)
+                .flatMap(this::findOrderByUser)
+                .flatMap(this::findOrderByProduct)
+                .flatMap(this::findOrderByTransfer);
     }
 
     @Override
@@ -260,7 +261,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
 
-    private Flux<FindOrderResponse> updateFindOrderByOrderSeller(Long sellerId) {
+    private Flux<FindOrderResponse> findOrderByOrderSeller(Long sellerId) {
         return orderRepository.findBySellerId(sellerId)
                 .map(orderMapper::toFindOrderResponseBySeller);
     }
@@ -270,7 +271,7 @@ public class OrderServiceImpl implements OrderService {
                 .map(orderMapper::toFindOrderResponseByCustomer);
     }
 
-    private Mono<FindOrderResponse> updateFindOrderByUser(FindOrderResponse response) {
+    private Mono<FindOrderResponse> findOrderByUser(FindOrderResponse response) {
         if (isNull(response.getUserInfo().getId())) {
             return Mono.error(new RuntimeException("Пользователь не найден"));
         }
@@ -280,7 +281,7 @@ public class OrderServiceImpl implements OrderService {
                 .then(Mono.just(response));
     }
 
-    private Mono<FindOrderResponse> updateFindOrderByProduct(FindOrderResponse response) {
+    private Mono<FindOrderResponse> findOrderByProduct(FindOrderResponse response) {
         if (isNull(response.getProduct().getId())) {
             return Mono.error(new RuntimeException("Товар не найден"));
         }
@@ -291,7 +292,7 @@ public class OrderServiceImpl implements OrderService {
                 .then(Mono.just(response));
     }
 
-    private Mono<FindOrderResponse> updateFindOrderByTransfer(FindOrderResponse response) {
+    private Mono<FindOrderResponse> findOrderByTransfer(FindOrderResponse response) {
         Long transferId = response.getTransfer().getTransferId();
         Long addressId = response.getTransfer().getAddressId();
         if (isNull(transferId) || isNull(addressId)) {
@@ -309,7 +310,7 @@ public class OrderServiceImpl implements OrderService {
                 .then(Mono.just(response));
     }
 
-    private Mono<FindOrderResponse> updateFindOrderByHistory(FindOrderResponse response) {
+    private Mono<FindOrderResponse> findOrderByHistory(FindOrderResponse response) {
         return orderHistoryService.findByOrderId(response.getOrderId())
                 .map(orderMapper::toOrderStatusHistoryDto)
                 .collectList()
@@ -317,7 +318,7 @@ public class OrderServiceImpl implements OrderService {
                 .then(Mono.just(response));
     }
 
-    private Mono<FindOrderResponse> updateImages(FindOrderResponse orderResponse) {
+    private Mono<FindOrderResponse> findImages(FindOrderResponse orderResponse) {
         return imageService.findActualImages(orderResponse.getOrderId(), ImageTag.ORDER)
                 .collectList()
                 .doOnNext(orderResponse::setImages)

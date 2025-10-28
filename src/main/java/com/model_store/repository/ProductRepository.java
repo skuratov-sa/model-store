@@ -29,6 +29,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 LEFT JOIN public.product_category pc on p.id = pc.product_id
                 LEFT JOIN category c ON pc.category_id = c.id
             WHERE
+                (:includeCountEmpty IS TRUE OR p.count > 0) AND
                 (:name IS NULL OR p.name ILIKE '%' || :name || '%' OR c.name ILIKE '%' || :name || '%') AND
                 (:productIds IS NULL OR p.id = ANY(:productIds)) AND
                 (:originality IS NULL OR p.originality = :originality) AND
@@ -58,6 +59,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
             LIMIT :limit
             """)
     Flux<Product> findByParams(
+            Boolean includeCountEmpty,
             Long categoryId,
             Long participantId,
             String name,
@@ -99,6 +101,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
         int limit = Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSize).orElse(50); // limit
 
         return findByParams(
+                false,
                 searchParams.getCategoryId(),
                 searchParams.getParticipantId(),
                 searchParams.getName(),
@@ -121,6 +124,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
         int limit = Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSize).orElse(50); // limit
 
         return findByParams(
+                true,
                 searchParams.getCategoryId(),
                 participantId,
                 searchParams.getName(),

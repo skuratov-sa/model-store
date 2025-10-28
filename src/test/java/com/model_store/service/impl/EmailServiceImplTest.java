@@ -93,7 +93,7 @@ class EmailServiceImplTest {
 
 
         StepVerifier.create(emailService.sendVerificationCode(participantId, email))
-                .expectErrorMatches(throwable -> throwable instanceof IllegalAccessError &&
+                .expectErrorMatches(throwable -> throwable instanceof IllegalAccessException &&
                         throwable.getMessage().startsWith("Ошибка отправки кода для подтверждения:"))
                 .verify();
 

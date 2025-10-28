@@ -19,8 +19,8 @@ spring:
   mail:
     host: smtp.mail.ru                      # Хост SMTP-сервера (например: smtp.gmail.com, smtp.mail.ru)
     port: 587                               # Порт SMTP (587 для STARTTLS, 465 для SSL, 25 — редко)
-    username: figurzilla@mail.ru          # Имя пользователя для SMTP (обычно — ваш email)
-    password: password          # Пароль от почты или отдельный SMTP-пароль (например, app-password у Gmail)
+    username: figurzilla@mail.ru            # Имя пользователя для SMTP (обычно — ваш email)
+    password: WoXGfAq8PSqxgj6dkOy6          # Пароль от почты или отдельный SMTP-пароль (например, app-password у Gmail)
     properties:
       mail:
         smtp:
