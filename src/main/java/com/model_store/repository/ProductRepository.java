@@ -134,7 +134,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 Optional.ofNullable(searchParams.getDateRange()).map(DateRange::getStart).orElse(null),
                 Optional.ofNullable(searchParams.getDateRange()).map(DateRange::getEnd).orElse(null),
                 null,
-                new ProductStatus[]{ProductStatus.ACTIVE, ProductStatus.BLOCKED},
+                new ProductStatus[]{ProductStatus.ACTIVE, ProductStatus.BLOCKED, ProductStatus.TIME_EXPIRED},
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastCreatedAt).orElse(null),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastPrice).orElse(null),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastId).orElse(0L),
