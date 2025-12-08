@@ -9,9 +9,17 @@ spring:
   codec:
     max-in-memory-size: 100MB
   r2dbc:
-    url: r2dbc:postgresql://localhost:5432/model_store
+    url: r2dbc:postgresql://localhost:5432/model_store?tcpKeepAlive=true
     username: root
     password: root
+    pool:
+      enabled: true
+      initial-size: 5
+      max-size: 20
+      max-idle-time: 20m
+      max-life-time: 30m
+      validation-query: "SELECT 1"
+      validation-depth: remote
   flyway:
     locations: classpath:/db/migration  # Путь к миграциям
     baseline-version: 7.17.7

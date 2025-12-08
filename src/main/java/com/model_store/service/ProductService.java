@@ -23,6 +23,8 @@ public interface ProductService {
 
     Flux<ProductDto> findByParams(FindProductRequest searchParams);
 
+    Flux<Long> findExpiredActiveProductIds();
+
     Flux<ProductDto> findMyByParams(FindMyProductRequest searchParams, Long participantId);
 
 

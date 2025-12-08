@@ -101,6 +101,10 @@ public class ProductServiceImpl implements ProductService {
                 );
     }
 
+    public Flux<Long> findExpiredActiveProductIds() {
+        return productRepository.findExpiredActiveProductIds();
+    }
+
     @Override
     public Flux<ProductDto> findMyByParams(FindMyProductRequest searchParams, Long participantId) {
         return productRepository.findMyByParams(searchParams, participantId)

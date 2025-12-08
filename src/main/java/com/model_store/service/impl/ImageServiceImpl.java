@@ -46,7 +46,7 @@ public class ImageServiceImpl implements ImageService {
     @Override
     public Flux<ImageResponse> findImagesByIds(List<Long> imageIds) {
         return findImagesById(imageIds)
-                .flatMap(image -> s3Service.getFile(image.getTag(), image.getFilename()))
+                .flatMap(image -> s3Service.getFile(image.getTag(), image.getFilename()), 10)
                 .onErrorResume(e -> findImageDefault());
     }
 

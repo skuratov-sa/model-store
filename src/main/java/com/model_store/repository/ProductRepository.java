@@ -154,4 +154,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
 
     @Query("SELECT * FROM product WHERE status = 'ACTIVE' AND id = :productId")
     Mono<Product> findFullProductInfo(Long productId);
+
+    @Query("SELECT id FROM product WHERE status = 'ACTIVE' AND expiration_date < CURRENT_TIMESTAMP")
+    Flux<Long> findExpiredActiveProductIds();
 }

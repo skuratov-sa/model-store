@@ -34,21 +34,28 @@ services:
       MINIO_CONSOLE_ADDRESS: ':9001'
     command: minio server /data
   backend:
-    image: ready555/model_store:v1.12
+    image: ready555/model_store:v1.15
     depends_on:
       - db
       - minio
     ports:
       - "8081:8081"
     environment:
-      SPRING_R2DBC_URL: r2dbc:postgresql://db:5432/model_store
+      SPRING_R2DBC_URL: r2dbc:postgresql://db:5432/model_store?tcpKeepAlive=true
       SPRING_R2DBC_USERNAME: root
       SPRING_R2DBC_PASSWORD: root
+      SPRING_R2DBC_POOL_ENABLED: "true"
+      SPRING_R2DBC_POOL_INITIAL_SIZE: "5"
+      SPRING_R2DBC_POOL_MAX_SIZE: "20"
+      SPRING_R2DBC_POOL_MAX_IDLE_TIME: "20m"
+      SPRING_R2DBC_POOL_MAX_LIFE_TIME: "30m"
+      SPRING_R2DBC_POOL_VALIDATION_QUERY: "SELECT 1"
+      SPRING_R2DBC_POOL_VALIDATION_DEPTH: "remote"
 
       SPRING_MAIL_HOST: smtp.mail.ru
       SPRING_MAIL_PORT: 587
       SPRING_MAIL_USERNAME: figurzilla@mail.ru
-      SPRING_MAIL_PASSWORD: pass
+      SPRING_MAIL_PASSWORD: password
       SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "true"
       SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
       SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST: "smtp.mail.ru"

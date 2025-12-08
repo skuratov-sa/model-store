@@ -1,0 +1,1 @@
+ALTER TYPE product_status ADD VALUE 'TIME_EXPIRED';

@@ -6,7 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Mono;
 
 @Slf4j
@@ -16,14 +16,14 @@ public class ImageCleanupScheduler {
 
     private final ImageService imageService;
     private final S3Service s3Service;
+    private final TransactionalOperator transactionalOperator;
 
     // Scheduler запускается каждый день в 00:00
     @Scheduled(cron = "0 0 0 * * *")
-    @Transactional
-    public Mono<Void> cleanUpTemporaryImages() {
+    public void cleanUpTemporaryImages() {
         log.info("Запуск очистки временных файлов из MinIO");
 
-        return imageService.findTemporaryImages()
+        Mono<Void> task = imageService.findTemporaryImages()
                 .flatMap(image -> {
                     // Обработка каждого изображения асинхронно
                     return imageService.deleteById(image.getId()) // Удаляем запись из базы
@@ -37,7 +37,9 @@ public class ImageCleanupScheduler {
                 })
                 .doOnTerminate(() -> log.info("Очистка временных файлов завершена")) // Логируем завершение работы
                 .doOnError(e -> log.error("Ошибка при очистке временных файлов: {}", e.getMessage())) // Логируем ошибку на уровне всей операции
-                .then(); // Завершаем выполнение
+                .then();
+
+        transactionalOperator.transactional(task).subscribe();
     }
 
 }
