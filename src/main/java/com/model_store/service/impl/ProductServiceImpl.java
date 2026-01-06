@@ -8,6 +8,7 @@ import com.model_store.model.FindMyProductRequest;
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.ReviewResponseDto;
 import com.model_store.model.base.Product;
+import com.model_store.model.base.SellerRating;
 import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
 import com.model_store.model.constant.ParticipantRole;
@@ -16,10 +17,11 @@ import com.model_store.model.constant.ProductStatus;
 import com.model_store.model.dto.GetProductResponse;
 import com.model_store.model.dto.ProductDto;
 import com.model_store.repository.ProductRepository;
-import com.model_store.service.AddressService;
 import com.model_store.service.CategoryService;
+import com.model_store.service.ParticipantService;
 import com.model_store.service.ProductService;
 import com.model_store.service.ReviewService;
+import com.model_store.service.SellerRatingService;
 import com.model_store.service.SocialNetworksService;
 import com.model_store.service.TransferService;
 import lombok.RequiredArgsConstructor;
@@ -49,27 +51,33 @@ public class ProductServiceImpl implements ProductService {
     private final ApplicationProperties properties;
     private final SocialNetworksService socialNetworksService;
     private final TransferService transferService;
-    private final AddressService addressService;
+    private final SellerRatingService sellerRatingService;
+    private final ParticipantService participantService;
 
     @Transactional
     public Mono<GetProductResponse> getProductById(Long productId) {
-        Mono<Product> productFindMono = productRepository.findActualProduct(productId);
         Mono<List<Long>> imageFindMono = imageService.findActualImages(productId, ImageTag.PRODUCT).collectList().defaultIfEmpty(List.of());
         Mono<List<ReviewResponseDto>> findReviewsMono = reviewService.findByProductId(productId).collectList().defaultIfEmpty(List.of());
 
-        return Mono.zip(productFindMono, imageFindMono, findReviewsMono)
-                .flatMap(tuple3 ->
-                        categoryService.findByProductId(tuple3.getT1().getId()).collectList()
+        Mono<Product> productFindMono = productRepository.findActualProduct(productId);
+        Mono<Long> participantIdMono = productFindMono.map(Product::getParticipantId);
+        Mono<String> loginMono = participantIdMono.flatMap(participantService::findLoginById).defaultIfEmpty("unknown");
+        Mono<Float> ratingMono = participantIdMono.flatMap(sellerRatingService::findBySellarId).map(SellerRating::getAverageRating).defaultIfEmpty(0f);
+
+        return Mono.zip(productFindMono, imageFindMono, findReviewsMono, loginMono, ratingMono)
+                .flatMap(tuple5 ->
+                        categoryService.findByProductId(tuple5.getT1().getId()).collectList()
                                 .map(categories ->
                                         productMapper.toGetProductResponse(
-                                                tuple3.getT1(),
+                                                tuple5.getT1(),
                                                 categories,
-                                                tuple3.getT2(),
-                                                tuple3.getT3()
+                                                tuple5.getT2(),
+                                                tuple5.getT3(),
+                                                tuple5.getT4(),
+                                                tuple5.getT5()
                                         )
                                 )
                 );
-
     }
 
     @Override
@@ -198,7 +206,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private Mono<Void> updateImagesStatus(List<Long> imageIds, Long productId) {
-        log.debug("Update image status in [PRODUCT ACTIVE] : imageIds: {}, productId: {}", imageIds , productId);
+        log.debug("Update image status in [PRODUCT ACTIVE] : imageIds: {}, productId: {}", imageIds, productId);
         if (isNull(imageIds) || imageIds.isEmpty()) {
             return Mono.empty();
         }
@@ -206,7 +214,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private Mono<Void> addLinkProductAndCategories(List<Long> categoryIds, Long productId) {
-        log.debug("Add a product and category link categoryIds: {}, productId: {}", categoryIds , productId);
+        log.debug("Add a product and category link categoryIds: {}, productId: {}", categoryIds, productId);
 
         if (isNull(productId) || categoryIds.isEmpty()) {
             return Mono.empty();

@@ -1,0 +1,16 @@
+spring:
+  r2dbc:
+    url: r2dbc:postgresql://localhost:5432/testdb
+    username: test
+    password: test
+
+  flyway:
+    enabled: true
+    locations: classpath:/db/migration
+s3:
+  enabled: false
+
+logging:
+  level:
+    org.flywaydb: DEBUG
+    io.r2dbc.postgresql: DEBUG

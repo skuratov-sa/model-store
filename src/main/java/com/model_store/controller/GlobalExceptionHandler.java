@@ -1,6 +1,8 @@
 package com.model_store.controller;
 
 import com.amazonaws.services.kms.model.NotFoundException;
+import com.model_store.exception.ApiAuthException;
+import com.model_store.exception.TooManyRequestsException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.support.DefaultMessageSourceResolvable;
 import org.springframework.http.HttpStatus;
@@ -62,6 +64,29 @@ public class GlobalExceptionHandler {
                     new ResponseEntity<>("Ошибка: Срок действия пароля истек", HttpStatus.FORBIDDEN);
             default -> new ResponseEntity<>("Ошибка аутентификации: " + ex.getMessage(), HttpStatus.UNAUTHORIZED);
         };
+    }
+
+    @ExceptionHandler(ApiAuthException.class)
+    public ResponseEntity<Map<String, Object>> handle(ApiAuthException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("code", ex.getCode());
+        body.put("message", ex.getMessage());
+
+        if ("WAITING_VERIFY".equals(ex.getCode())) {
+            body.put("next", "VERIFY_EMAIL");
+        }
+
+        return ResponseEntity.status(ex.getHttpStatus()).body(body);
+    }
+
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<Map<String, Object>> handle(TooManyRequestsException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("code", ex.getCode());
+        body.put("message", "Слишком много запросов");
+        if (ex.getRetryAfterSec() >= 0) body.put("retryAfterSec", ex.getRetryAfterSec());
+
+        return ResponseEntity.status(429).body(body);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

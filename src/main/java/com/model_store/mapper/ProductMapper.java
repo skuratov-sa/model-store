@@ -56,5 +56,5 @@ public interface ProductMapper {
 
     @Mapping(target = "id", source = "product.id")
     @Mapping(target = "name", source = "product.name")
-    GetProductResponse toGetProductResponse(Product product, List<CategoryDto> categories, List<Long> imageIds, List<ReviewResponseDto> reviews);
+    GetProductResponse toGetProductResponse(Product product, List<CategoryDto> categories, List<Long> imageIds, List<ReviewResponseDto> reviews, String sellerLogin, Float sellerRating);
 }

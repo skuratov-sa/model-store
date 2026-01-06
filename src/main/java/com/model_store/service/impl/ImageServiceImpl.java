@@ -83,6 +83,31 @@ public class ImageServiceImpl implements ImageService {
     }
 
     @Override
+    public Mono<Void> replaceForParticipant(Long imageId, Long entityId, ImageTag tag) {
+        Mono<Void> markOldDeleted =
+                imageRepository.findByEntityIdAndTag(entityId, tag)
+                        .map(img -> {
+                            img.setStatus(ImageStatus.DELETE);
+                            img.setEntityId(entityId);
+                            return img;
+                        })
+                        .flatMap(imageRepository::save)
+                        .then();
+
+        Mono<Void> activateNew =
+                imageRepository.findById(imageId)
+                        .switchIfEmpty(Mono.error(new NotFoundException("Image not found: " + imageId)))
+                        .map(img -> {
+                            img.setStatus(ImageStatus.ACTIVE);
+                            return img;
+                        })
+                        .flatMap(imageRepository::save)
+                        .then();
+
+        return markOldDeleted.then(activateNew);
+    }
+
+    @Override
     public Flux<Long> saveImages(ImageTag tag, Long entityId, List<FilePart> files) {
         return Flux.fromIterable(files)
                 .flatMap(file -> s3Service.uploadFile(file, tag))
@@ -121,7 +146,7 @@ public class ImageServiceImpl implements ImageService {
     @Override
     public Mono<Void> deleteImages(List<Long> imageIds, ImageTag tag, Long participantId) {
         return Flux.fromIterable(imageIds)
-                .flatMap(entityId -> imageRepository.findByIdAndTag(entityId, tag))
+                .flatMap(entityId -> imageRepository.findByEntityIdAndTag(entityId, tag))
                 .switchIfEmpty(Mono.error(new EntityNotFoundException(EntityException.IMAGE)))
                 .collectList()
                 .flatMap(images -> isUserAccessible(tag, images, participantId)
@@ -133,7 +158,8 @@ public class ImageServiceImpl implements ImageService {
     private @NotNull Flux<Image> findImagesById(List<Long> imageIds) {
         return Flux.fromIterable(imageIds)
                 .flatMap(imageRepository::findById)
-                .filter(image -> image.getStatus().equals(ImageStatus.ACTIVE));
+                .filter(image -> image.getStatus().equals(ImageStatus.ACTIVE))
+                .switchIfEmpty(Mono.error(new NotFoundException("Image not found: " + imageIds)));
     }
 
     private Mono<Void> updateImagesStatus(List<Image> images, ImageStatus status) {

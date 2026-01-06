@@ -20,6 +20,7 @@ public interface ImageService {
     Mono<Long> findMainImage(Long entityId, ImageTag tag);
 
     Mono<Void> updateImagesStatus(List<Long> imageIds, Long entityId, ImageStatus status, ImageTag tag);
+    Mono<Void> replaceForParticipant(Long imageId, Long entityId, ImageTag tag);
 
     Mono<Boolean> isActualEntity(Long entityId, ImageTag tag, Long participantId);
 

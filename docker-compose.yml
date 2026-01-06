@@ -52,6 +52,10 @@ services:
       SPRING_R2DBC_POOL_VALIDATION_QUERY: "SELECT 1"
       SPRING_R2DBC_POOL_VALIDATION_DEPTH: "remote"
 
+      SPRING_FLYWAY_URL: jdbc:postgresql://db:5432/model_store
+      SPRING_FLYWAY_USER: root
+      SPRING_FLYWAY_PASSWORD: root
+
       SPRING_MAIL_HOST: smtp.mail.ru
       SPRING_MAIL_PORT: 587
       SPRING_MAIL_USERNAME: figurzilla@mail.ru

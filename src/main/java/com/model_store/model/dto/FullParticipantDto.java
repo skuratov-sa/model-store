@@ -24,7 +24,7 @@ public class FullParticipantDto {
     private SellerStatus sellerStatus;
     private Float averageRating;
     private Integer totalReviews;
-    private List<Long> imageIds;
+    private Long imageId;
     private List<Address> addresses;
     private List<Account> accounts;
     private List<Transfer> transfers;

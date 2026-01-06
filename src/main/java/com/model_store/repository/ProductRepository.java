@@ -29,7 +29,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 LEFT JOIN public.product_category pc on p.id = pc.product_id
                 LEFT JOIN category c ON pc.category_id = c.id
             WHERE
-                (:includeCountEmpty IS TRUE OR p.count > 0) AND
+                (:includeCountEmpty IS TRUE OR p.count is NULL OR p.count > 0) AND
                 (:name IS NULL OR p.name ILIKE '%' || :name || '%' OR c.name ILIKE '%' || :name || '%') AND
                 (:productIds IS NULL OR p.id = ANY(:productIds)) AND
                 (:originality IS NULL OR p.originality = :originality) AND

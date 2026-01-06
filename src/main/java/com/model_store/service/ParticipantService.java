@@ -19,13 +19,14 @@ public interface ParticipantService {
     Mono<FindParticipantByLoginDto> findByLogin(String login);
     Mono<FindParticipantByLoginDto> findByMail(String mail);
     Mono<String> findFullNameById(Long participantId);
+    Mono<String> findLoginById(Long participantId);
 
     Flux<FindParticipantsDto> findByParams(FindParticipantRequest searchParams);
 
     @Transactional
     Mono<Participant> activateUser(Long userId);
 
-    Mono<Long> createParticipant(CreateParticipantRequest request);
+    Mono<Object> createParticipant(CreateParticipantRequest request);
 
     /**
      * Сохраняем адреса соц сети картинки (Если они есть)
@@ -50,4 +51,6 @@ public interface ParticipantService {
     Mono<Void> updateParticipantStatus(Long participantId, ParticipantStatus status);
 
     Mono<Long> updateParticipantPassword(Long participantId, String password, String newPassword);
+
+    Mono<String> resetAndUpdateTemplatePassword(Long participantId);
 }

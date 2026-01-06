@@ -1,4 +1,4 @@
-package com.model_store.exeption;
+package com.model_store.exception;
 
 import java.text.MessageFormat;
 

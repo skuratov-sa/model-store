@@ -11,5 +11,5 @@ public class UpdateParticipantRequest {
     private String phoneNumber;
     private Integer deadlineSending;
     private Integer deadlinePayment;
-    private List<Long> imageIds;
+    private Long imageId;
 }

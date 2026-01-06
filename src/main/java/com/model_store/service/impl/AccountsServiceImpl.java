@@ -1,7 +1,6 @@
 package com.model_store.service.impl;
 
 import com.amazonaws.services.kms.model.NotFoundException;
-import com.model_store.exeption.ParticipantNotFoundException;
 import com.model_store.mapper.AccountMapper;
 import com.model_store.model.base.Account;
 import com.model_store.model.dto.AccountDto;

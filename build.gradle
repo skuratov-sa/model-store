@@ -68,4 +68,17 @@ dependencies {
     testImplementation 'io.projectreactor:reactor-test'
     implementation("net.logstash.logback:logstash-logback-encoder:8.1")
     implementation 'org.springframework.boot:spring-boot-starter-aop'
+
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+
+    // Testcontainers
+    testImplementation 'org.testcontainers:junit-jupiter:1.19.7'
+    testImplementation 'org.testcontainers:postgresql:1.19.7'
+
+    // JUnit 5
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
+
+    // Reactor Test
+    testImplementation 'io.projectreactor:reactor-test'
 }

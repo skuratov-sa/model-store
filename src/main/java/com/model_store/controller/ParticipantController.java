@@ -7,6 +7,7 @@ import com.model_store.model.base.Participant;
 import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.model.dto.FindParticipantsDto;
 import com.model_store.model.dto.FullParticipantDto;
+import com.model_store.service.EmailService;
 import com.model_store.service.JwtService;
 import com.model_store.service.ParticipantService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -26,6 +27,7 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class ParticipantController {
     private final ParticipantService participantService;
+    private final EmailService emailService;
     private final JwtService jwtService;
 
     @Operation(summary = "Личный кабинет пользователя")
@@ -44,7 +46,8 @@ public class ParticipantController {
     @Operation(summary = "Создать пользователя")
     @PostMapping(path = "/participant")
     public Mono<Long> createParticipant(@RequestBody CreateParticipantRequest request) {
-        return participantService.createParticipant(request);
+        return participantService.createParticipant(request)
+                .flatMap(participantId -> emailService.sendVerificationWithoutLimitCode(request.getMail()));
     }
 
     @Operation(summary = "Обновить пользователя по id")
@@ -68,7 +71,6 @@ public class ParticipantController {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
         return participantService.updateParticipantPassword(participantId, oldPassword, newPassword);
     }
-
 
     @Operation(summary = "Изменить статус пользователя")
     @PutMapping("/admin/actions/participants/{participantId}/status")

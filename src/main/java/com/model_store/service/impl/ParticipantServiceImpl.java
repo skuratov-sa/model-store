@@ -1,14 +1,13 @@
 package com.model_store.service.impl;
 
 import com.amazonaws.services.kms.model.NotFoundException;
-import com.model_store.exeption.ParticipantNotFoundException;
+import com.model_store.exception.ParticipantNotFoundException;
 import com.model_store.mapper.ParticipantMapper;
 import com.model_store.model.CreateParticipantRequest;
 import com.model_store.model.FindParticipantRequest;
 import com.model_store.model.UpdateParticipantRequest;
 import com.model_store.model.base.Participant;
 import com.model_store.model.base.SellerRating;
-import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
 import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.model.constant.TransferMoneyType;
@@ -36,11 +35,11 @@ import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.security.SecureRandom;
 import java.util.List;
 
 import static com.model_store.model.constant.ParticipantStatus.ACTIVE;
 import static com.model_store.model.constant.ParticipantStatus.DELETED;
-import static com.model_store.model.constant.ParticipantStatus.WAITING_VERIFY;
 import static com.model_store.service.util.UtilService.getExpensive;
 import static java.util.Objects.isNull;
 
@@ -55,11 +54,13 @@ public class ParticipantServiceImpl implements ParticipantService {
     private final AccountRepository accountRepository;
     private final TransferRepository transferRepository;
     private final OrderRepository orderRepository;
-    private final EmailService emailService;
     private final SellerRatingRepository sellerRatingRepository;
 
     private final PasswordEncoder passwordEncoder;
     private final SocialNetworkRepository socialNetworkRepository;
+
+    private static final String ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+    private static final SecureRandom RNG = new SecureRandom();
 
     @Override
     public Mono<UserInfoDto> findShortInfo(Long id) {
@@ -112,6 +113,11 @@ public class ParticipantServiceImpl implements ParticipantService {
         return participantRepository.findFullNameById(participantId);
     }
 
+    @Override
+    public Mono<String> findLoginById(Long participantId) {
+        return participantRepository.findLoginById(participantId);
+    }
+
     public Flux<FindParticipantsDto> findByParams(FindParticipantRequest searchParams) {
         return participantRepository.findByParams(searchParams)
                 .flatMap(participant -> {
@@ -142,23 +148,23 @@ public class ParticipantServiceImpl implements ParticipantService {
     }
 
     @Transactional
-    public Mono<Long> createParticipant(CreateParticipantRequest request) {
+    public Mono<Object> createParticipant(CreateParticipantRequest request) {
         Participant participant = participantMapper.toParticipant(request, ParticipantStatus.WAITING_VERIFY);
 
         return participantRepository.findByMail(request.getMail())
-                .filter(p -> p.getStatus() != WAITING_VERIFY)
-                .flatMap(existing -> Mono.error(new RuntimeException("Пользователь с таким email уже зарегистрирован")))
+                .flatMap(existing ->
+                        Mono.<Participant>error(
+                                new RuntimeException("Пользователь с таким email уже зарегистрирован")
+                        )
+                )
                 .switchIfEmpty(Mono.defer(() ->
                         participantRepository.findNextParticipantIdSeq()
-                                .flatMap(id -> {
-                                    participant.setLogin("user" + (++id));
+                                .flatMap(seq -> {
+                                    participant.setLogin("user" + (seq + 1));
                                     participant.setPassword(passwordEncoder.encode(request.getPassword()));
-                                    return participantRepository.save(participant) // ← один единственный save
-                                            .map(Participant::getId);
+                                    return participantRepository.save(participant);
                                 })
-                )).flatMap(participantId -> emailService.sendVerificationCode((Long) participantId, participant.getMail())
-                        .thenReturn((Long) participantId)
-                );
+                )).map(Participant::getId);
     }
 
     @Transactional
@@ -187,7 +193,7 @@ public class ParticipantServiceImpl implements ParticipantService {
                     updatedParticipant.setCreatedAt(existingParticipant.getCreatedAt());
                     updatedParticipant.setSellerStatus(existingParticipant.getSellerStatus());
 
-                    return updateImagesStatus(request.getImageIds(), id)
+                    return updateImageStatus(request.getImageId(), id)
                             .then(participantRepository.save(updatedParticipant))
                             .map(Participant::getId);
                 })
@@ -223,6 +229,35 @@ public class ParticipantServiceImpl implements ParticipantService {
                 .flatMap(participant -> changePassword(participantId, oldPassword, newPassword, participant));
     }
 
+    @Override
+    public Mono<String> resetAndUpdateTemplatePassword(Long participantId) {
+        return Mono.defer(() -> {
+            String newPassword = generateTempPassword();
+            String encoded = passwordEncoder.encode(newPassword);
+
+            return participantRepository.findById(participantId)
+                    .switchIfEmpty(Mono.error(new ParticipantNotFoundException(participantId)))
+                    .flatMap(p -> switch (p.getStatus()) {
+                        case BLOCKED -> Mono.error(new IllegalStateException("Аккаунт заблокирован"));
+                        case DELETED -> Mono.error(new IllegalStateException("Аккаунт удален"));
+                        default -> {
+                            p.setPassword(encoded);
+                            yield participantRepository.save(p);
+                        }
+                    })
+                    .flatMap(participantRepository::save)
+                    .thenReturn(newPassword);
+        });
+    }
+
+
+    private String generateTempPassword() {
+        int len = 12;
+        StringBuilder sb = new StringBuilder(len);
+        for (int i = 0; i < len; i++) sb.append(ALPHABET.charAt(RNG.nextInt(ALPHABET.length())));
+        return sb.toString();
+    }
+
     @NotNull
     private Mono<Long> changePassword(Long participantId, String oldPassword, String newPassword, Participant participant) {
         if (passwordEncoder.matches(oldPassword, participant.getPassword())) {
@@ -234,10 +269,8 @@ public class ParticipantServiceImpl implements ParticipantService {
     }
 
 
-    private Mono<Void> updateImagesStatus(List<Long> imageIds, Long entityId) {
-        if (isNull(imageIds) || imageIds.isEmpty()) {
-            return Mono.empty();
-        }
-        return imageService.updateImagesStatus(imageIds, entityId, ImageStatus.ACTIVE, ImageTag.PARTICIPANT);
+    private Mono<Void> updateImageStatus(Long imageId, Long entityId) {
+        if (isNull(imageId)) return Mono.empty();
+        return imageService.replaceForParticipant(imageId, entityId, ImageTag.PARTICIPANT);
     }
 }

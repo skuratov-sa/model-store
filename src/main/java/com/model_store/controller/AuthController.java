@@ -1,9 +1,11 @@
 package com.model_store.controller;
 
 import com.model_store.exception.InvalidTokenException;
+import com.model_store.exception.ApiAuthException;
 import com.model_store.model.CustomUserDetails;
 import com.model_store.model.VerifyCodeRequest;
 import com.model_store.model.dto.LoginRequest;
+import com.model_store.service.EmailService;
 import com.model_store.service.JwtService;
 import com.model_store.service.ParticipantService;
 import com.model_store.service.VerificationCodeService;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
@@ -34,23 +37,38 @@ public class AuthController {
     private final JwtService jwtService;
     private final VerificationCodeService verificationCodeService;
     private final ParticipantService participantService;
+    private final EmailService emailService;
 
     @PostMapping("/login")
     public Mono<ResponseEntity<Map<String, String>>> login(@RequestBody Mono<LoginRequest> request) {
         return request.flatMap(req ->
                 authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(req.getMail(), req.getPassword()))
                         .flatMap(auth -> userDetailsService.findByUsername(req.getMail()))
-                        .map(userDetails -> {
+                        .flatMap(userDetails -> {
                             CustomUserDetails customUserDetails = (CustomUserDetails) userDetails;
-                            Map<String, String> tokens = getTokensResponse(customUserDetails);
-                            return ResponseEntity.ok(tokens);
+                            return switch (customUserDetails.getStatus()) {
+                                case ACTIVE -> Mono.just(ResponseEntity.ok(getTokensResponse(customUserDetails)));
+                                case WAITING_VERIFY -> Mono.error(ApiAuthException.waitingVerify());
+                                case BLOCKED -> Mono.error(ApiAuthException.blocked());
+                                case DELETED -> Mono.error(ApiAuthException.deleted());
+                            };
                         })
         );
     }
 
+    @PostMapping("/verification/resend")
+    public Mono<Long> resend(@RequestParam String email) {
+       return emailService.sendVerificationCode(email);
+    }
+
+    @PostMapping("/password/reset")
+    public Mono<Void> resetPassword(@RequestParam String email) {
+        return emailService.sendPasswordReset(email);
+    }
+
     @PostMapping("/verify-code")
     public Mono<ResponseEntity<Map<String, String>>> verifyCode(@RequestBody VerifyCodeRequest request) {
-        return verificationCodeService.verifyCode(request.userId(), request.code())
+        return verificationCodeService.checkAndConsumeCode(request.userId(), request.code())
                 .then(participantService.activateUser(request.userId()))
                 .map(participant -> {
                     CustomUserDetails userDetails = CustomUserDetails.fromUser(participant, null);

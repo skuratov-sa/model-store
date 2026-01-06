@@ -7,9 +7,9 @@ import reactor.core.publisher.Mono;
 public interface SellerRatingService {
 
 
-    Flux<SellerRating> getAll();
+    Flux<SellerRating> findAll();
 
-    Mono<SellerRating> getById(Long sellerId);
+    Mono<SellerRating> findBySellarId(Long sellerId);
 
     Mono<SellerRating> create(SellerRating rating);
 

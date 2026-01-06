@@ -27,4 +27,7 @@ public class GetProductResponse {
     private String externalUrl;
     private List<Long> imageIds;
     private List<ReviewResponseDto> reviews;
+
+    private String sellerLogin;
+    private Float sellerRating;
 }

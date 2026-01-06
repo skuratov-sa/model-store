@@ -28,30 +28,64 @@ public class EmailServiceImpl implements EmailService {
     private final JavaMailSender mailSender;
     private final ApplicationProperties properties;
     private final VerificationCodeServiceImpl verificationCodeService;
-    private String HTML_BODY;
+    private final ParticipantServiceImpl participantService;
+
+    private String VERIFICATION_CODE_BODY;
+    private String PASSWORD_RESET_BODY;
 
     @PostConstruct
     public void init() throws IOException {
-        // Загрузка HTML шаблона
-        ClassPathResource templateResource = new ClassPathResource("templates/email-template.html");
-        this.HTML_BODY = FileCopyUtils.copyToString(
-                new InputStreamReader(templateResource.getInputStream(), StandardCharsets.UTF_8)
+        this.VERIFICATION_CODE_BODY = FileCopyUtils.copyToString(
+                new InputStreamReader(new ClassPathResource("templates/email-template.html").getInputStream(), StandardCharsets.UTF_8)
+        );
+        this.PASSWORD_RESET_BODY = FileCopyUtils.copyToString(
+                new InputStreamReader(new ClassPathResource("templates/password-reset-template.html").getInputStream(), StandardCharsets.UTF_8)
         );
     }
 
-    public Mono<Void> sendVerificationCode(Long participantId, String email) {
-        String code = generateCode();
-
-        return sendHtmlEmail(email, "Подтверждение почты", HTML_BODY.formatted(code))
-                .then(verificationCodeService.addCode(participantId, code))
-                .onErrorResume(e -> {
-                    log.error("Не удалось отправить email {}: {}", email, e.getCause());
-                    return Mono.error(new IllegalArgumentException("Ошибка отправки кода для подтверждения: " + e));
-                });
+    @Override
+    public Mono<Long> sendVerificationCode(String email) {
+        return participantService.findByMail(email)
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Пользователя с такой почтой не существует")))
+                .flatMap(p ->
+                        verificationCodeService.enforceSendLimits(p.getId())
+                                .then(Mono.defer(() -> {
+                                    String code = generateCode();
+                                    return sendHtmlEmail(email, "Подтверждение почты", VERIFICATION_CODE_BODY.formatted(code))
+                                            .then(verificationCodeService.addCode(p.getId(), code));
+                                })).thenReturn(p.getId())
+                );
     }
 
-    private Mono<Object> sendHtmlEmail(String to, String subject, String htmlText) {
+    @Override
+    public Mono<Long> sendVerificationWithoutLimitCode(String email) {
+        return participantService.findByMail(email)
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Пользователя с такой почтой не существует")))
+                .flatMap(p ->
+                        Mono.defer(() -> {
+                            String code = generateCode();
+                            return sendHtmlEmail(email, "Подтверждение почты", VERIFICATION_CODE_BODY.formatted(code))
+                                    .then(verificationCodeService.addCode(p.getId(), code));
+                        }).thenReturn(p.getId())
+                );
+    }
 
+    @Override
+    public Mono<Void> sendPasswordReset(String email) {
+        return Mono.defer(() ->
+                participantService.findByMail(email)
+                        .switchIfEmpty(Mono.error(new IllegalArgumentException("Пользователя с такой почтой не существует")))
+                        .flatMap(p ->
+                                verificationCodeService.enforceSendLimits(p.getId())
+                                        .then(participantService.resetAndUpdateTemplatePassword(p.getId())))
+                        .flatMap(tempPassword ->
+                                sendHtmlEmail(email, "Ваш новый пароль", PASSWORD_RESET_BODY.formatted(tempPassword))
+                        )
+                        .then()
+        );
+    }
+
+    private Mono<Void> sendHtmlEmail(String to, String subject, String htmlText) {
         return Mono.fromCallable(() -> {
                     MimeMessage message = mailSender.createMimeMessage();
                     MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -59,16 +93,13 @@ public class EmailServiceImpl implements EmailService {
                     helper.setSubject(subject);
                     helper.setFrom(properties.getEmailFrom());
                     helper.setText(htmlText, true);
-                    return message;
+                    mailSender.send(message);
+                    return null; // обязательно
                 })
-                .subscribeOn(Schedulers.boundedElastic()) // Выносим блокирующую операцию
-                .flatMap(message -> Mono.fromCallable(() -> {
-                                    mailSender.send(message);
-                                    return null;
-                                })
-                                .subscribeOn(Schedulers.boundedElastic())
-                                .timeout(Duration.ofSeconds(100)) // Таймаут на отправку
-                ).doOnError(e -> log.error("Failed to send email to {}", to, e));
+                .subscribeOn(Schedulers.boundedElastic())
+                .timeout(Duration.ofSeconds(100))
+                .doOnError(e -> log.error("Ошибка отправки кода для подтверждения {}", to, e))
+                .then();
     }
 }
 

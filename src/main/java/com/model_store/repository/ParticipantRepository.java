@@ -23,6 +23,9 @@ public interface ParticipantRepository extends ReactiveCrudRepository<Participan
     @Query("SELECT nextval('participant_id_seq') AS id")
     Mono<Long> findNextParticipantIdSeq();
 
+    @Query("SELECT login FROM participant WHERE id = :id")
+    Mono<String> findLoginById(Long id);
+
     @Query(value = """
                SELECT DISTINCT p.*
             FROM participant p
@@ -47,5 +50,6 @@ public interface ParticipantRepository extends ReactiveCrudRepository<Participan
     Mono<Participant> findActualParticipant(Long participantId);
 
     Flux<Participant> findBySellerStatus(SellerStatus status);
+
 
 }
