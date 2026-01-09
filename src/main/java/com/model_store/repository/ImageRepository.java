@@ -21,7 +21,7 @@ public interface ImageRepository extends ReactiveCrudRepository<Image, Long> {
     @Query("UPDATE image SET status = :status WHERE entity_id = :entityId AND tag = :tag::image_tag")
     Mono<Void> updateStatusById(Long entityId, ImageTag tag, ImageStatus status);
 
-    @Query("SELECT * FROM image WHERE entity_id = :id AND tag = :tag::image_tag")
+    @Query("SELECT * FROM image WHERE entity_id = :id AND tag = :tag::image_tag AND status = 'ACTIVE'")
     Flux<Image> findByEntityIdAndTag(Long entityId, ImageTag tag);
 
     @Query("""

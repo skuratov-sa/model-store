@@ -95,7 +95,8 @@ public class ImageServiceImpl implements ImageService {
 
         Mono<Void> activateNew =
                 imageRepository.findById(imageId)
-                        .switchIfEmpty(Mono.error(new NotFoundException("Image not found: " + imageId)))
+                        .filter(i -> i.getStatus() == ImageStatus.ACTIVE)
+                        .switchIfEmpty(Mono.error(new NotFoundException("Фотография с id " + imageId + "; Не найдена или не активна")))
                         .map(img -> {
                             img.setStatus(ImageStatus.ACTIVE);
                             img.setEntityId(entityId);

@@ -83,7 +83,7 @@ public class ParticipantServiceImpl implements ParticipantService {
                 )
                 .map(tuple7 ->
                         participantMapper.toFullParticipantDto(
-                                tuple7.getT1(), tuple7.getT2(), tuple7.getT3(), tuple7.getT4(), tuple7.getT5(), tuple7.getT6(), tuple7.getT7()
+                                tuple7.getT1(), tuple7.getT2(), tuple7.getT3(), tuple7.getT4(), tuple7.getT5().getFirst(), tuple7.getT6(), tuple7.getT7()
                         )
                 );
     }

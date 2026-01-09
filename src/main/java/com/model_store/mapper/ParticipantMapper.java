@@ -32,7 +32,7 @@ public interface ParticipantMapper {
     FindParticipantsDto toFindParticipantDto(Participant participant, Long imageId);
 
     FullParticipantDto toFullParticipantDto(Participant participant, List<Address> addresses, List<Account> accounts,
-                                            List<Transfer> transfers, List<Long> imageIds, SellerRating sellerRating, List<SocialNetwork> socialNetworks
+                                            List<Transfer> transfers, Long imageId, SellerRating sellerRating, List<SocialNetwork> socialNetworks
     );
 
     UserInfoDto toUserInfoDto(Participant participant, Long imageId);
