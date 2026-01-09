@@ -88,7 +88,6 @@ public class ImageServiceImpl implements ImageService {
                 imageRepository.findByEntityIdAndTag(entityId, tag)
                         .map(img -> {
                             img.setStatus(ImageStatus.DELETE);
-                            img.setEntityId(entityId);
                             return img;
                         })
                         .flatMap(imageRepository::save)
@@ -99,6 +98,7 @@ public class ImageServiceImpl implements ImageService {
                         .switchIfEmpty(Mono.error(new NotFoundException("Image not found: " + imageId)))
                         .map(img -> {
                             img.setStatus(ImageStatus.ACTIVE);
+                            img.setEntityId(entityId);
                             return img;
                         })
                         .flatMap(imageRepository::save)

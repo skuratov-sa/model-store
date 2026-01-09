@@ -11,5 +11,4 @@ public class TransferDto {
     private ShippingMethodsType sending;
     private Integer price;
     private Currency currency;
-    private Long imageId;
 }
