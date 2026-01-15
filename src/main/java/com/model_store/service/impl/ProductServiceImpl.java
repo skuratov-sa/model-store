@@ -38,6 +38,7 @@ import java.util.Objects;
 
 import static com.model_store.model.constant.ProductStatus.ACTIVE;
 import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 @Slf4j
 @Service
@@ -139,7 +140,13 @@ public class ProductServiceImpl implements ProductService {
         log.info("Create product request: {}, participantId: {}", request, participantId);
         Product product = productMapper.toProduct(request, participantId, ACTIVE, getExpirationDate());
 
-        if (request.getAvailability() != ProductAvailabilityType.PURCHASABLE) product.setCount(null);
+        if (request.getAvailability() == ProductAvailabilityType.EXTERNAL_ONLY) product.setCount(null);
+
+        if (ProductAvailabilityType.PREORDER.equals(product.getAvailability()) && isNull(request.getPrepaymentAmount()) || request.getPrepaymentAmount() <= 0) {
+            throw new IllegalArgumentException("Предоплата указанна неверно");
+        }
+
+        if (nonNull(request.getCount()) && request.getCount() <= 0) throw new IllegalArgumentException("Введено некорректное кол-во товаров");
 
         return productRepository.save(product)
                 .flatMap(savedProduct ->

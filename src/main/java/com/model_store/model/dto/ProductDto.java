@@ -16,6 +16,7 @@ public class ProductDto {
     private String name;
     private Integer count;
     private Float price;
+    private Float prepaymentAmount;
     private Currency currency;
     private List<CategoryDto> categories;
     private Long imageId;

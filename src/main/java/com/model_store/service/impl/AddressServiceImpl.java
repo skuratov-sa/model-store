@@ -12,6 +12,7 @@ import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -46,6 +47,7 @@ public class AddressServiceImpl implements AddressService {
     }
 
     @Override
+    @Transactional
     public Mono<Long> addAddresses(Long participantId, @NonNull AddressDto addresses) {
         return addressRepository.save(addressMapper.toAddress(addresses))
                 .flatMap(savedAddress -> participantAddressRepository.save( // Создаём новые связи
@@ -58,12 +60,14 @@ public class AddressServiceImpl implements AddressService {
     }
 
     @Override
+    @Transactional
     public Mono<Void> deleteAddresses(Long participantId, @NonNull Long addressId) {
         return participantAddressRepository.findByParticipantId(participantId)
                 .filter(address -> address.getAddressId().equals(addressId))
                 .switchIfEmpty(Mono.error(new NotFoundException("Адрес не был найден у данного пользователя")))
-                .flatMap(participantAddress -> participantAddressRepository.deleteById(participantAddress.getId())
-                        .then(addressRepository.deleteById(addressId))
+                .flatMap(participantAddress ->
+                                addressRepository.deleteById(addressId)
+                                        .then(participantAddressRepository.deleteById(participantAddress.getId()))
                 ).then();
     }
 

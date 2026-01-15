@@ -40,6 +40,7 @@ import static com.model_store.model.constant.ProductAvailabilityType.PURCHASABLE
 import static com.model_store.service.util.UtilService.getImageId;
 import static java.util.Collections.emptyList;
 import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 @Service
 @RequiredArgsConstructor
@@ -78,8 +79,13 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public Mono<Long> createOrder(CreateOrderRequest request, Long participantId) {
-        return productService.findById(request.getProductId())
-                .filter(product -> validateCreateOrder(product, request.getCount(), participantId))
+        return validateCreateOrderRequest(request, participantId)
+                .then(productService.findById(request.getProductId()))
+                .switchIfEmpty(Mono.error(new IllegalStateException("Товар не найден")))
+                .flatMap(product ->
+                        validateCreateOrder(product, request.getCount(), participantId)
+                                .thenReturn(product)
+                )
                 .flatMap(product -> createOrderAndUpdateProduct(product, request, participantId));
     }
 
@@ -94,11 +100,9 @@ public class OrderServiceImpl implements OrderService {
         order.setTotalPrice((product.getPrice() - prepayment) * request.getCount());
         Mono<Order> saveOrder = Mono.defer(() -> orderRepository.save(order));
 
-
         if (product.getAvailability().equals(PURCHASABLE)) {
-            product.setCount(product.getCount() - request.getCount());
-            return productService.save(product)
-                    .then(saveOrder.map(Order::getId));
+            if (nonNull(product.getCount())) product.setCount(product.getCount() - request.getCount());
+            return productService.save(product).then(saveOrder.map(Order::getId));
         }
 
         order.setPrepaymentAmount(prepayment * request.getCount());
@@ -326,21 +330,44 @@ public class OrderServiceImpl implements OrderService {
     }
 
 
-    private boolean validateCreateOrder(Product product, Integer count, Long participantId) {
-        var sum = Optional.ofNullable(product.getCount()).orElse(0) - count;
+    private Mono<Void> validateCreateOrder(Product product, Integer count, Long participantId) {
         var availability = product.getAvailability();
+        var productCount = product.getCount();
 
-        if (Objects.equals(product.getParticipantId(), participantId)) {
-            throw new IllegalArgumentException("Нельзя заказать свой товар");
+        if (nonNull(productCount) && productCount - count < 0) {
+            return Mono.error(new IllegalArgumentException("Товар закончился"));
         }
+        if(nonNull(count) && count <= 0) throw new IllegalArgumentException("Количество товаров должно быть больше чем 0");
+
         if (EXTERNAL_ONLY.equals(availability)) {
-            throw new IllegalArgumentException("Нельзя заказать товар из смежного магазина");
+            return Mono.error(new IllegalArgumentException("Нельзя заказать товар из смежного магазина"));
         }
-        if (PURCHASABLE.equals(availability) && sum < 0) {
-            throw new IllegalArgumentException("Товар закончился");
+        if (Objects.equals(product.getParticipantId(), participantId)) {
+            return Mono.error(new IllegalArgumentException("Нельзя заказать свой товар"));
         }
+        return Mono.empty();
+    }
 
-        return true;
+    private Mono<Void> validateCreateOrderRequest(CreateOrderRequest request, Long participantId) {
+        return Mono.when(
+                addressService.findByParticipantId(participantId)
+                        .filter(a -> a.getId().equals(request.getAddressId()))
+                        .switchIfEmpty(Mono.error(new IllegalStateException("Указан неверный адрес доставки")))
+                        .then(),
+
+                productService.findById(request.getProductId())
+                        .switchIfEmpty(Mono.error(new IllegalStateException("Товар не найден")))
+                        .flatMap(p -> {
+                            if (p.getParticipantId().equals(participantId)) {
+                                return Mono.error(new IllegalStateException("Нельзя оформить заказ на собственный товар"));
+                            }
+                            return transferService.findByParticipantId(p.getParticipantId())
+                                    .filter(t -> t.getId().equals(request.getTransferId()))
+                                    .next()
+                                    .switchIfEmpty(Mono.error(new IllegalStateException("Указан неверный способ доставки")))
+                                    .then();
+                        })
+        );
     }
 
 }
