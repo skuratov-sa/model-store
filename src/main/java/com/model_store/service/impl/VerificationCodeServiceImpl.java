@@ -1,6 +1,6 @@
 package com.model_store.service.impl;
 
-import com.model_store.exception.TooManyRequestsException;
+import com.model_store.exception.ApiErrors;
 import com.model_store.service.VerificationCodeService;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
@@ -8,6 +8,9 @@ import reactor.core.publisher.Mono;
 import java.time.Duration;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
+
+import static com.model_store.exception.constant.ErrorCode.VERIFICATION_COOLDOWN;
+import static com.model_store.exception.constant.ErrorCode.VERIFICATION_DAILY_LIMIT;
 
 @Service
 public class VerificationCodeServiceImpl implements VerificationCodeService {
@@ -45,7 +48,9 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         }).then();
     }
 
-    /** Вызывать ПЕРЕД отправкой email: проверяет лимиты и обновляет счетчики атомарно */
+    /**
+     * Вызывать ПЕРЕД отправкой email: проверяет лимиты и обновляет счетчики атомарно
+     */
     @Override
     public Mono<Void> enforceSendLimits(Long userId) {
         return Mono.fromRunnable(() -> {
@@ -64,12 +69,14 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
                 // cooldown
                 if (now - rate.lastSentAtMs < COOLDOWN.toMillis()) {
                     long retryMs = COOLDOWN.toMillis() - (now - rate.lastSentAtMs);
-                    throw new TooManyRequestsException("VERIFICATION_COOLDOWN", (int) (retryMs / 1000));
+                    int retryAfterSec = (int) (retryMs / 1000);
+
+                    throw ApiErrors.tooManyRequests(VERIFICATION_COOLDOWN, String.format("Слишком много запросов. Попробуйте снова через %d сек.", retryAfterSec));
                 }
 
                 // дневной лимит
                 if (rate.sentInWindow >= DAILY_LIMIT) {
-                    throw new TooManyRequestsException("VERIFICATION_DAILY_LIMIT", -1);
+                    throw ApiErrors.tooManyRequests(VERIFICATION_DAILY_LIMIT, "Превышен лимит запросов на день (30)");
                 }
 
                 // фиксируем факт отправки (важно: внутри lock)
@@ -88,11 +95,13 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
     private static final class CodeEntry {
         final String code;
         final long createdAtMs;
+
         CodeEntry(String code, long createdAtMs) {
             this.code = code;
             this.createdAtMs = createdAtMs;
         }
     }
+
     private static final class RateEntry {
         long lastSentAtMs;
         long windowStartMs;

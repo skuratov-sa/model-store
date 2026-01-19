@@ -1,8 +1,8 @@
 package com.model_store.service.impl;
 
 import com.amazonaws.services.kms.model.NotFoundException;
-import com.model_store.exception.EntityNotFoundException;
-import com.model_store.exception.constant.EntityException;
+import com.model_store.exception.ApiErrors;
+import com.model_store.exception.constant.ErrorCode;
 import com.model_store.mapper.ImageMapper;
 import com.model_store.model.base.Image;
 import com.model_store.model.base.Product;
@@ -72,7 +72,9 @@ public class ImageServiceImpl implements ImageService {
         return Flux.fromIterable(imageIds)
                 .flatMap(imageRepository::findById)
                 .filter(image -> (isNull(tag) || image.getTag().equals(tag)) && (isNull(image.getEntityId()) || image.getEntityId().equals(entityId)))
-                .switchIfEmpty(Mono.error(new NotFoundException("Image not found")))
+                .switchIfEmpty(Mono.error(
+                        ApiErrors.notFound(ErrorCode.IMAGE_NOT_FOUND, "Не удалось найти картинку, либо нехватает прав для ее обновления.")
+                ))
                 .flatMap(image -> {
                     image.setStatus(status);
                     if (!isNull(entityId)) {
@@ -148,7 +150,9 @@ public class ImageServiceImpl implements ImageService {
     public Mono<Void> deleteImages(List<Long> imageIds, ImageTag tag, Long participantId) {
         return Flux.fromIterable(imageIds)
                 .flatMap(entityId -> imageRepository.findByEntityIdAndTag(entityId, tag))
-                .switchIfEmpty(Mono.error(new EntityNotFoundException(EntityException.IMAGE)))
+                .switchIfEmpty(Mono.error(
+                        ApiErrors.notFound(ErrorCode.IMAGE_NOT_FOUND, "Не удалось найти изображение")
+                ))
                 .collectList()
                 .flatMap(images -> isUserAccessible(tag, images, participantId)
                         .filter(Boolean::booleanValue)

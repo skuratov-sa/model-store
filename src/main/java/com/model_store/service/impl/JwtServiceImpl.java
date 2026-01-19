@@ -1,7 +1,7 @@
 package com.model_store.service.impl;
 
 import com.model_store.configuration.property.ApplicationProperties;
-import com.model_store.exception.InvalidTokenException;
+import com.model_store.exception.ApiErrors;
 import com.model_store.model.CustomUserDetails;
 import com.model_store.model.constant.ParticipantRole;
 import com.model_store.service.JwtService;
@@ -30,6 +30,8 @@ import java.time.ZoneId;
 import java.time.temporal.TemporalAmount;
 import java.util.Base64;
 import java.util.Date;
+
+import static com.model_store.exception.constant.ErrorCode.TOKEN_INVALID_OR_EXPIRED;
 
 @Slf4j
 @Service
@@ -158,7 +160,8 @@ public class JwtServiceImpl implements JwtService {
             Jws<Claims> claimsJws = jwtParser.parseClaimsJws(token);
             return claimsJws.getBody();
         } catch (JwtException | IllegalArgumentException e) {
-            throw new InvalidTokenException();
+            throw ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Token недействителен или срок его действия истек");
+
         }
     }
 

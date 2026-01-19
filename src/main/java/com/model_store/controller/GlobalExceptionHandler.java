@@ -1,10 +1,8 @@
 package com.model_store.controller;
 
 import com.amazonaws.services.kms.model.NotFoundException;
-import com.model_store.exception.ApiAuthException;
-import com.model_store.exception.TooManyRequestsException;
+import com.model_store.exception.ApiException;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.support.DefaultMessageSourceResolvable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AccountExpiredException;
@@ -16,12 +14,9 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.support.WebExchangeBindException;
-import reactor.core.publisher.Mono;
 
 import java.time.OffsetDateTime;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -30,87 +25,96 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(NotFoundException.class)
-    public ResponseEntity<Object> handleNotFoundException(NotFoundException ex) {
-        return new ResponseEntity<>(ex.getMessage(), HttpStatus.NOT_FOUND);
-    }
-
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<Object> handleGenericException(Exception ex) {
-        log.error("Unhandled exception", ex);
-        HttpStatus status = (ex instanceof RuntimeException) ? HttpStatus.BAD_REQUEST : HttpStatus.INTERNAL_SERVER_ERROR;
-        Map<String, Object> body = Map.of(
-                "error", ex.getMessage(),
-                "status", status.value(),
-                "timestamp", OffsetDateTime.now().toString()
-        );
-
-        return new ResponseEntity<>(body, status);
+    public ResponseEntity<ApiErrorResponse> handleNotFound(NotFoundException ex) {
+        return build(HttpStatus.NOT_FOUND, "NOT_FOUND", ex.getMessage(), null);
     }
 
     @ExceptionHandler(AuthenticationException.class)
-    public ResponseEntity<Object> handleAuthException(AuthenticationException ex) {
-        log.warn("Ошибка при авторизации: {}", ex.getLocalizedMessage());
-
+    public ResponseEntity<ApiErrorResponse> handleAuth(AuthenticationException ex) {
         return switch (ex) {
             case BadCredentialsException ignored ->
-                    new ResponseEntity<>("Ошибка: Неверный логин или пароль", HttpStatus.UNAUTHORIZED);
+                    build(HttpStatus.UNAUTHORIZED, "BAD_CREDENTIALS", "Неверный логин или пароль", null);
             case DisabledException ignored ->
-                    new ResponseEntity<>("Ошибка: Учетная запись отключена", HttpStatus.FORBIDDEN);
+                    build(HttpStatus.FORBIDDEN, "ACCOUNT_DISABLED", "Учетная запись отключена", null);
             case LockedException ignored ->
-                    new ResponseEntity<>("Ошибка: Учетная запись заблокирована", HttpStatus.FORBIDDEN);
+                    build(HttpStatus.FORBIDDEN, "ACCOUNT_LOCKED", "Учетная запись заблокирована", null);
             case AccountExpiredException ignored ->
-                    new ResponseEntity<>("Ошибка: Срок действия учетной записи истек", HttpStatus.FORBIDDEN);
+                    build(HttpStatus.FORBIDDEN, "ACCOUNT_EXPIRED", "Срок действия учетной записи истек", null);
             case CredentialsExpiredException ignored ->
-                    new ResponseEntity<>("Ошибка: Срок действия пароля истек", HttpStatus.FORBIDDEN);
-            default -> new ResponseEntity<>("Ошибка аутентификации: " + ex.getMessage(), HttpStatus.UNAUTHORIZED);
+                    build(HttpStatus.FORBIDDEN, "CREDENTIALS_EXPIRED", "Срок действия пароля истек", null);
+            default ->
+                    build(HttpStatus.UNAUTHORIZED, "AUTH_ERROR", "Ошибка аутентификации", Map.of("reason", ex.getMessage()));
         };
     }
 
-    @ExceptionHandler(ApiAuthException.class)
-    public ResponseEntity<Map<String, Object>> handle(ApiAuthException ex) {
-        Map<String, Object> body = new HashMap<>();
-        body.put("code", ex.getCode());
-        body.put("message", ex.getMessage());
+    @ExceptionHandler({org.springframework.dao.DuplicateKeyException.class,
+            org.springframework.dao.DataIntegrityViolationException.class})
+    public ResponseEntity<ApiErrorResponse> handleDbIntegrity(Exception ex) {
+        String msg = rootMessage(ex);
 
-        if ("WAITING_VERIFY".equals(ex.getCode())) {
-            body.put("next", "VERIFY_EMAIL");
+        if (msg != null && msg.contains("uq_product_active")) {
+            return build(HttpStatus.CONFLICT, "PRODUCT_ALREADY_EXISTS", "Товар с такими параметрами уже существует", null);
         }
 
-        return ResponseEntity.status(ex.getHttpStatus()).body(body);
+        // общий кейс
+        return build(HttpStatus.CONFLICT, "DUPLICATE_KEY", "Нарушено ограничение уникальности", Map.of("dbMessage", msg));
     }
 
-    @ExceptionHandler(TooManyRequestsException.class)
-    public ResponseEntity<Map<String, Object>> handle(TooManyRequestsException ex) {
-        Map<String, Object> body = new HashMap<>();
-        body.put("code", ex.getCode());
-        body.put("message", "Слишком много запросов");
-        if (ex.getRetryAfterSec() >= 0) body.put("retryAfterSec", ex.getRetryAfterSec());
+    @ExceptionHandler({MethodArgumentNotValidException.class, WebExchangeBindException.class})
+    public ResponseEntity<ApiErrorResponse> handleValidation(Exception ex) {
+        List<String> errors;
 
-        return ResponseEntity.status(429).body(body);
+        if (ex instanceof MethodArgumentNotValidException manv) {
+            errors = manv.getBindingResult().getFieldErrors().stream()
+                    .map(f -> f.getField() + ": " + f.getDefaultMessage())
+                    .toList();
+        } else {
+            WebExchangeBindException web = (WebExchangeBindException) ex;
+            errors = web.getFieldErrors().stream()
+                    .map(f -> f.getField() + ": " + f.getDefaultMessage())
+                    .toList();
+        }
+
+        return build(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Ошибка валидации", Map.of("errors", errors));
     }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Mono<Map<String, Object>> handleValidationErrors(MethodArgumentNotValidException ex) {
-        log.warn("Ошибка при валидации запроса: {}", ex.getMessage());
-
-        Map<String, Object> error = new HashMap<>();
-        error.put("error", "Ошибка валидации");
-        error.put("Описание", ex.getBindingResult()
-                .getFieldErrors()
-                .stream()
-                .map(f -> f.getField() + " " + f.getDefaultMessage())
-                .toList());
-
-        return Mono.just(error);
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiErrorResponse> handleBadRequest(IllegalArgumentException ex) {
+        return build(HttpStatus.BAD_REQUEST, "BAD_REQUEST", ex.getMessage(), null);
     }
 
-    @ExceptionHandler(WebExchangeBindException.class)
-    public ResponseEntity<Object> handleConstraintViolationException(WebExchangeBindException ex) {
-        List<String> errorMessages = ex.getFieldErrors().stream()
-                .map(DefaultMessageSourceResolvable::getDefaultMessage) // Получаем сообщение об ошибке
-                .toList();
-
-        return new ResponseEntity<>(errorMessages, HttpStatus.BAD_REQUEST);
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiErrorResponse> handleGeneric(Exception ex) {
+        log.error("Unhandled exception", ex);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Внутренняя ошибка", null);
     }
+
+    @ExceptionHandler(ApiException.class)
+    public ResponseEntity<ApiErrorResponse> handleApi(ApiException ex) {
+        return build(ex.getStatus(), ex.getCode().toString(), ex.getMessage(), ex.getDetails());
+    }
+
+    private String rootMessage(Throwable ex) {
+        Throwable t = ex;
+        while (t.getCause() != null) t = t.getCause();
+        return t.getMessage();
+    }
+
+    private ResponseEntity<ApiErrorResponse> build(HttpStatus status, String code, String message, Object details) {
+        return ResponseEntity.status(status).body(new ApiErrorResponse(
+                code,
+                message,
+                status.value(),
+                OffsetDateTime.now().toString(),
+                details
+        ));
+    }
+
+    public record ApiErrorResponse(
+            String code,
+            String message,
+            int status,
+            String timestamp,
+            Object details
+    ) { }
 }

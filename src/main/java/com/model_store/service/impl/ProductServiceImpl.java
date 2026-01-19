@@ -1,7 +1,8 @@
 package com.model_store.service.impl;
 
-import com.amazonaws.services.kms.model.NotFoundException;
 import com.model_store.configuration.property.ApplicationProperties;
+import com.model_store.exception.ApiErrors;
+import com.model_store.exception.constant.ErrorCode;
 import com.model_store.mapper.ProductMapper;
 import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.FindMyProductRequest;
@@ -146,7 +147,8 @@ public class ProductServiceImpl implements ProductService {
             throw new IllegalArgumentException("Предоплата указанна неверно");
         }
 
-        if (nonNull(request.getCount()) && request.getCount() <= 0) throw new IllegalArgumentException("Введено некорректное кол-во товаров");
+        if (nonNull(request.getCount()) && request.getCount() <= 0)
+            throw new IllegalArgumentException("Введено некорректное кол-во товаров");
 
         return productRepository.save(product)
                 .flatMap(savedProduct ->
@@ -164,7 +166,9 @@ public class ProductServiceImpl implements ProductService {
         return productRepository.findActualProduct(id)
                 .doOnNext(product -> log.debug("Product found : {}", product))
                 .filter(product -> Objects.equals(product.getParticipantId(), participantId))
-                .switchIfEmpty(Mono.error(new NotFoundException("Product not found")))
+                .switchIfEmpty(Mono.error(
+                        ApiErrors.notFound(ErrorCode.PRODUCT_NOT_FOUND, "Не удалось выполнить операцию: не достаточно прав или его не существует")
+                ))
                 .map(product -> productMapper.updateProduct(request, product))
                 .flatMap(productRepository::save)
                 .flatMap(p -> updateImagesStatus(request.getImageIds(), id))
@@ -175,8 +179,9 @@ public class ProductServiceImpl implements ProductService {
         log.info("Delete product id: {}, participantId: {}", id, participantId);
         return productRepository.findActualProduct(id)
                 .filter(product -> Objects.equals(product.getParticipantId(), participantId))
-                .switchIfEmpty(Mono.error(new NotFoundException("Product not found")))
-                .flatMap(product -> {
+                .switchIfEmpty(Mono.error(
+                        ApiErrors.notFound(ErrorCode.PRODUCT_NOT_FOUND, "Не удалось обновить товар: не достаточно прав или его не существует")
+                )).flatMap(product -> {
                     product.setStatus(ProductStatus.DELETED);
                     return productRepository.save(product)
                             .then(imageService.deleteImagesByEntityId(product.getParticipantId(), ImageTag.PRODUCT));
@@ -187,8 +192,9 @@ public class ProductServiceImpl implements ProductService {
     public Mono<Void> updateProductStatus(Long id, ProductStatus status) {
         log.info("Update product id: {}, status: {}", id, status);
         return productRepository.findActualProduct(id)
-                .switchIfEmpty(Mono.error(new NotFoundException("Product not found")))
-                .flatMap(product -> {
+                .switchIfEmpty(Mono.error(
+                        ApiErrors.notFound(ErrorCode.PRODUCT_NOT_FOUND, "Не удалось выполнить операцию: не достаточно прав или его не существует")
+                )).flatMap(product -> {
                     product.setStatus(status);
                     return productRepository.save(product).then();
                 });
@@ -204,8 +210,9 @@ public class ProductServiceImpl implements ProductService {
         log.info("Extend expiration date id: {}, participantId: {}", id, participantId);
         return productRepository.findActualProduct(id)
                 .filter(product -> Objects.equals(product.getParticipantId(), participantId))
-                .switchIfEmpty(Mono.error(new NotFoundException("Product not found")))
-                .flatMap(product -> {
+                .switchIfEmpty(Mono.error(
+                        ApiErrors.notFound(ErrorCode.PRODUCT_NOT_FOUND, "Не удалось выполнить операцию: не достаточно прав или его не существует")
+                )).flatMap(product -> {
                     product.setExpirationDate(getExpirationDate());
                     return productRepository.save(product);
                 }).then();

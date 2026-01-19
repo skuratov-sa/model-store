@@ -1,7 +1,8 @@
 package com.model_store.service.impl;
 
 import com.amazonaws.services.kms.model.NotFoundException;
-import com.model_store.exception.ParticipantNotFoundException;
+import com.model_store.exception.ApiErrors;
+import com.model_store.exception.constant.ErrorCode;
 import com.model_store.mapper.ParticipantMapper;
 import com.model_store.model.CreateParticipantRequest;
 import com.model_store.model.FindParticipantRequest;
@@ -22,7 +23,6 @@ import com.model_store.repository.ParticipantRepository;
 import com.model_store.repository.SellerRatingRepository;
 import com.model_store.repository.SocialNetworkRepository;
 import com.model_store.repository.TransferRepository;
-import com.model_store.service.EmailService;
 import com.model_store.service.ImageService;
 import com.model_store.service.ParticipantService;
 import lombok.RequiredArgsConstructor;
@@ -183,7 +183,9 @@ public class ParticipantServiceImpl implements ParticipantService {
     public Mono<Long> updateParticipant(Long id, UpdateParticipantRequest request) {
         return participantRepository.findById(id)
                 .filter(participant -> ACTIVE.equals(participant.getStatus()))
-                .switchIfEmpty(Mono.error(new ParticipantNotFoundException(id)))
+                .switchIfEmpty(Mono.error(
+                        ApiErrors.notFound(ErrorCode.PARTICIPANT_NOT_FOUND, "Такого пользователя не существует или он был заблокирован")
+                ))
                 .flatMap(existingParticipant -> {
                     Participant updatedParticipant = participantMapper.toParticipant(request, ACTIVE);
                     updatedParticipant.setId(existingParticipant.getId());
@@ -225,7 +227,9 @@ public class ParticipantServiceImpl implements ParticipantService {
     @Override
     public Mono<Long> updateParticipantPassword(Long participantId, String oldPassword, String newPassword) {
         return participantRepository.findById(participantId)
-                .switchIfEmpty(Mono.error(new ParticipantNotFoundException(participantId)))
+                .switchIfEmpty(Mono.error(
+                        ApiErrors.notFound(ErrorCode.PARTICIPANT_NOT_FOUND, "Такого пользователя не существует")
+                ))
                 .flatMap(participant -> changePassword(participantId, oldPassword, newPassword, participant));
     }
 
@@ -236,8 +240,9 @@ public class ParticipantServiceImpl implements ParticipantService {
             String encoded = passwordEncoder.encode(newPassword);
 
             return participantRepository.findById(participantId)
-                    .switchIfEmpty(Mono.error(new ParticipantNotFoundException(participantId)))
-                    .flatMap(p -> switch (p.getStatus()) {
+                    .switchIfEmpty(Mono.error(
+                            ApiErrors.notFound(ErrorCode.PARTICIPANT_NOT_FOUND, "Такого пользователя не существует")
+                    )).flatMap(p -> switch (p.getStatus()) {
                         case BLOCKED -> Mono.error(new IllegalStateException("Аккаунт заблокирован"));
                         case DELETED -> Mono.error(new IllegalStateException("Аккаунт удален"));
                         default -> {

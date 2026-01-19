@@ -1,7 +1,6 @@
 package com.model_store.controller;
 
-import com.model_store.exception.InvalidTokenException;
-import com.model_store.exception.ApiAuthException;
+import com.model_store.exception.ApiErrors;
 import com.model_store.model.CustomUserDetails;
 import com.model_store.model.VerifyCodeRequest;
 import com.model_store.model.dto.LoginRequest;
@@ -28,6 +27,11 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.model_store.exception.constant.ErrorCode.ACCOUNT_BLOCKED;
+import static com.model_store.exception.constant.ErrorCode.ACCOUNT_DELETED;
+import static com.model_store.exception.constant.ErrorCode.TOKEN_INVALID_OR_EXPIRED;
+import static com.model_store.exception.constant.ErrorCode.WAITING_VERIFY;
+
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
@@ -48,9 +52,15 @@ public class AuthController {
                             CustomUserDetails customUserDetails = (CustomUserDetails) userDetails;
                             return switch (customUserDetails.getStatus()) {
                                 case ACTIVE -> Mono.just(ResponseEntity.ok(getTokensResponse(customUserDetails)));
-                                case WAITING_VERIFY -> Mono.error(ApiAuthException.waitingVerify());
-                                case BLOCKED -> Mono.error(ApiAuthException.blocked());
-                                case DELETED -> Mono.error(ApiAuthException.deleted());
+                                case WAITING_VERIFY -> Mono.error(
+                                        ApiErrors.authException(WAITING_VERIFY, "Необходимо подтвердить почту")
+                                );
+                                case BLOCKED -> Mono.error(
+                                        ApiErrors.authException(ACCOUNT_BLOCKED, "Пользователь заблокирован")
+                                );
+                                case DELETED -> Mono.error(
+                                        ApiErrors.authException(ACCOUNT_DELETED, "Учетная запись была удалена")
+                                );
                             };
                         })
         );
@@ -85,7 +95,7 @@ public class AuthController {
     public Mono<ResponseEntity<String>> refreshToken(@RequestHeader("X-Refresh-Token") String refreshToken) {
         return jwtService.refreshAccessToken(refreshToken)
                 .map(ResponseEntity::ok)
-                .onErrorMap(ex -> new InvalidTokenException());
+                .onErrorMap(ex -> ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Token недействителен или срок его действия истек"));
     }
 
     @GetMapping("/profile")
@@ -95,7 +105,8 @@ public class AuthController {
                 .map(claims -> {
                     Map<String, Object> claimsMap = new HashMap<>(claims);
                     return ResponseEntity.ok(claimsMap);
-                }).onErrorMap(ex -> new InvalidTokenException());
+                }).onErrorMap(ex -> ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Token недействителен или срок его действия истек"));
+
     }
 
     @NotNull
