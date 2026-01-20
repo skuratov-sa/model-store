@@ -1,4 +1,4 @@
-FROM openjdk:21-jdk-slim AS builder
+FROM openjdk:22-jdk-slim AS builder
 RUN apt-get update && apt-get install -y dos2unix
 
 WORKDIR /backend
