@@ -16,6 +16,7 @@ import com.model_store.model.dto.GetRequiredODataOrderDto;
 import com.model_store.model.dto.UpdateOrderRequest;
 import com.model_store.repository.OrderRepository;
 import com.model_store.service.AddressService;
+import com.model_store.service.BasketService;
 import com.model_store.service.ImageService;
 import com.model_store.service.OrderService;
 import com.model_store.service.OrderStatusHistoryService;
@@ -29,8 +30,10 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static com.model_store.exception.constant.ErrorCode.PARTICIPANT_NOT_FOUND;
 import static com.model_store.exception.constant.ErrorCode.PRODUCT_NOT_FOUND;
@@ -57,6 +60,7 @@ public class OrderServiceImpl implements OrderService {
     private final AddressService addressService;
     private final OrderMapper orderMapper;
     private final ImageService imageService;
+    private final BasketService basketService;
 
     @Override
     public Mono<GetRequiredODataOrderDto> getRequiredDataForCreateOrder(Long participantId, Long productId) {
@@ -82,7 +86,28 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public Mono<Long> createOrder(CreateOrderRequest request, Long participantId) {
+    public Mono<List<Long>> createOrders(List<CreateOrderRequest> requests, Long participantId) {
+        Map<Long, CreateOrderRequest> merged = mergeRequests(requests);
+
+        return Flux.fromIterable(merged.values())
+                .concatMap(req -> createOrder(req, participantId))
+                .collectList();
+    }
+
+    private Map<Long, CreateOrderRequest> mergeRequests(List<CreateOrderRequest> requests) {
+        return requests.stream()
+                .collect(Collectors.toMap(
+                        CreateOrderRequest::getProductId,
+                        r -> r,
+                        (r1, r2) -> {
+                            r1.setCount(r1.getCount() + r2.getCount());
+                            return r1;
+                        }
+                ));
+    }
+
+
+    protected Mono<Long> createOrder(CreateOrderRequest request, Long participantId) {
         return validateCreateOrderRequest(request, participantId)
                 .then(productService.findById(request.getProductId()))
                 .switchIfEmpty(Mono.error(new IllegalStateException("Товар не найден")))
@@ -93,7 +118,6 @@ public class OrderServiceImpl implements OrderService {
                 .flatMap(product -> createOrderAndUpdateProduct(product, request, participantId));
     }
 
-    @Transactional
     protected Mono<Long> createOrderAndUpdateProduct(Product product, CreateOrderRequest request, Long participantId) {
         var prepayment = Optional.ofNullable(product.getPrepaymentAmount()).orElse(0F);
 
@@ -102,7 +126,10 @@ public class OrderServiceImpl implements OrderService {
         order.setSellerId(product.getParticipantId());
         order.setCustomerId(participantId);
         order.setTotalPrice((product.getPrice() - prepayment) * request.getCount());
-        Mono<Order> saveOrder = Mono.defer(() -> orderRepository.save(order));
+        Mono<Order> saveOrder = Mono.defer(() ->
+                basketService.removeFromBasket(participantId, product.getId())
+                        .then( orderRepository.save(order))
+        );
 
         if (product.getAvailability().equals(PURCHASABLE)) {
             if (nonNull(product.getCount())) product.setCount(product.getCount() - request.getCount());

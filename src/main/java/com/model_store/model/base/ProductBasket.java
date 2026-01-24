@@ -19,4 +19,5 @@ public class ProductBasket {
     private Long id;
     private Long participantId;
     private Long productId;
+    private Integer count;
 }

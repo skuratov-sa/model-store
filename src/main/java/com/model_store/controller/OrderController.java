@@ -51,9 +51,9 @@ public class OrderController {
 
     @Operation(summary = "1.Создать новый заказ")
     @PostMapping("/BOOKED")
-    public Mono<Long> createOrder(@RequestHeader("Authorization") String authorizationHeader, @RequestBody CreateOrderRequest request) {
+    public Mono<List<Long>> createOrder(@RequestHeader("Authorization") String authorizationHeader, @RequestBody List<CreateOrderRequest> requests) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        return orderService.createOrder(request, participantId);
+        return orderService.createOrders(requests, participantId);
     }
 
     @Operation(summary = "2.Продавец подтверждает заказ/предзаказ")

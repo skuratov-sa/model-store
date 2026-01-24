@@ -12,7 +12,7 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 
 public interface OrderService {
-    Mono<Long> createOrder(CreateOrderRequest request, Long participantId);
+    Mono<List<Long>> createOrders(List<CreateOrderRequest> request, Long participantId);
 
     /**
      * Предоплата товара
