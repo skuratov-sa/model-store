@@ -1,5 +1,6 @@
 package com.model_store.model.base;
 
+import com.model_store.model.constant.AddressStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -22,6 +23,8 @@ public class Address {
     private String houseNumber;
     private String apartmentNumber;
     private Integer index;
+    private AddressStatus status;
+
 
     public String getFullAddress() {
         return country + " г. " + city + " ул. " + street + " " + houseNumber + " кв. " + apartmentNumber + ", индекс: " + index;

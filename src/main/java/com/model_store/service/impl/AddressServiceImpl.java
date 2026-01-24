@@ -1,9 +1,11 @@
 package com.model_store.service.impl;
 
-import com.amazonaws.services.kms.model.NotFoundException;
+import com.model_store.exception.ApiErrors;
+import com.model_store.exception.constant.ErrorCode;
 import com.model_store.mapper.AddressMapper;
 import com.model_store.model.base.Address;
 import com.model_store.model.base.ParticipantAddress;
+import com.model_store.model.constant.AddressStatus;
 import com.model_store.model.dto.AddressDto;
 import com.model_store.repository.AddressRepository;
 import com.model_store.repository.ParticipantAddressRepository;
@@ -43,7 +45,9 @@ public class AddressServiceImpl implements AddressService {
 
     @Override
     public Flux<Address> findByParticipantIdOrException(Long participantId) {
-        return addressRepository.findByParticipantId(participantId);
+        return addressRepository.findByParticipantId(participantId)
+                .filter(address -> address.getStatus() == AddressStatus.ACTIVE)
+                .switchIfEmpty(Mono.error(ApiErrors.notFound(ErrorCode.ADDRESS_NOT_FOUND, "У данного пользователя отсутствуют адреса доставки")));
     }
 
     @Override
@@ -59,16 +63,41 @@ public class AddressServiceImpl implements AddressService {
                 .doOnError(throwable -> log.error("Ошибка при сохранении адреса: {}", throwable.getMessage()));
     }
 
+    @Transactional
+    @Override
+    public Mono<Address> updateAddress(Long participantId, Long addressId, @NonNull AddressDto dto) {
+        return participantAddressRepository.findByParticipantId(participantId)
+                .filter(pa -> pa.getAddressId().equals(addressId))
+                .switchIfEmpty(Mono.error(ApiErrors.notFound(ErrorCode.ADDRESS_NOT_FOUND, "Адрес доставки не найден")))
+                .then(addressRepository.findById(addressId)
+                        .filter(address -> AddressStatus.ACTIVE.equals(address.getStatus()))
+                        .switchIfEmpty(Mono.error(ApiErrors.notFound(ErrorCode.ADDRESS_NOT_FOUND, "Адрес доставки не найден")))
+                )
+                .flatMap(address -> {
+                    var updateAdress = addressMapper.toUpdateAddress(address, dto);
+                    return addressRepository.save(updateAdress);
+                })
+                .doOnError(e -> log.error("Ошибка при обновлении адреса {}: {}", addressId, e.getMessage()));
+    }
+
     @Override
     @Transactional
-    public Mono<Void> deleteAddresses(Long participantId, @NonNull Long addressId) {
+    public Mono<Void> softDelete(Long participantId, @NonNull Long addressId) {
         return participantAddressRepository.findByParticipantId(participantId)
-                .filter(address -> address.getAddressId().equals(addressId))
-                .switchIfEmpty(Mono.error(new NotFoundException("Адрес не был найден у данного пользователя")))
-                .flatMap(participantAddress ->
-                                addressRepository.deleteById(addressId)
-                                        .then(participantAddressRepository.deleteById(participantAddress.getId()))
-                ).then();
+                .filter(pa -> pa.getAddressId().equals(addressId))
+                .switchIfEmpty(Mono.error(ApiErrors.notFound(ErrorCode.ADDRESS_NOT_FOUND, "Адрес доставки не найден")))
+                .flatMap(pa ->
+                        participantAddressRepository.deleteById(pa.getId())
+                                .then(addressRepository.findById(addressId)
+                                        .filter(address -> AddressStatus.ACTIVE.equals(address.getStatus()))
+                                        .switchIfEmpty(Mono.error(ApiErrors.notFound(ErrorCode.ADDRESS_NOT_FOUND, "Адрес доставки не найден")))
+                                        .flatMap(address -> {
+                                            address.setStatus(AddressStatus.DELETED);
+                                            return addressRepository.save(address);
+                                        })
+                                )
+                )
+                .then();
     }
 
     @Override

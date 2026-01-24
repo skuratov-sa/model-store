@@ -52,7 +52,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleDbIntegrity(Exception ex) {
         String msg = rootMessage(ex);
 
-        if (msg != null && msg.contains("uq_product_active")) {
+        if (msg != null && msg.contains("uq_product_one_client")) {
             return build(HttpStatus.CONFLICT, "PRODUCT_ALREADY_EXISTS", "Товар с такими параметрами уже существует", null);
         }
 

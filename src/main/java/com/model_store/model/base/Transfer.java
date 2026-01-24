@@ -2,6 +2,7 @@ package com.model_store.model.base;
 
 import com.model_store.model.constant.Currency;
 import com.model_store.model.constant.ShippingMethodsType;
+import com.model_store.model.constant.TransferStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -22,4 +23,5 @@ public class Transfer {
     private Integer price;
     private Currency currency;
     private Long participantId;
+    private TransferStatus status;
 }

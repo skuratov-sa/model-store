@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,14 +33,6 @@ public class AddressController {
         return service.getAllRegions();
     }
 
-    @Operation(summary = "Добавить адрес участнику")
-    @PostMapping
-    public Mono<Long> addAddress(
-            @RequestHeader("Authorization") String authorizationHeader,
-            @RequestBody AddressDto addressDto) {
-        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        return service.addAddresses(participantId, addressDto);
-    }
 
     @Operation(summary = "Получить список адресов пользователя")
     @GetMapping
@@ -48,12 +41,33 @@ public class AddressController {
         return service.getAddress(participantId);
     }
 
+
+    @Operation(summary = "Добавить адрес пользователя")
+    @PostMapping
+    public Mono<Long> addAddress(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @RequestBody AddressDto addressDto) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return service.addAddresses(participantId, addressDto);
+    }
+
+    @Operation(summary = "Обновить адрес пользователя")
+    @PutMapping("/{addressId}")
+    public Mono<Address> updateAddress(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @PathVariable Long addressId,
+            @RequestBody AddressDto addressDto) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return service.updateAddress(participantId, addressId, addressDto);
+    }
+
     @Operation(summary = "Удалить адрес участника")
     @DeleteMapping("/{addressId}")
     public Mono<Void> deleteAddress(
             @RequestHeader("Authorization") String authorizationHeader,
             @PathVariable Long addressId) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        return service.deleteAddresses(participantId, addressId);
+        return service.softDelete(participantId, addressId);
     }
+
 }

@@ -1,5 +1,6 @@
 package com.model_store.service.impl;
 
+import com.model_store.exception.ApiErrors;
 import com.model_store.mapper.OrderMapper;
 import com.model_store.model.base.Address;
 import com.model_store.model.base.Order;
@@ -31,6 +32,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import static com.model_store.exception.constant.ErrorCode.PARTICIPANT_NOT_FOUND;
+import static com.model_store.exception.constant.ErrorCode.PRODUCT_NOT_FOUND;
+import static com.model_store.exception.constant.ErrorCode.TRANSFER_NOT_FOUND;
 import static com.model_store.model.constant.OrderStatus.AWAITING_PAYMENT;
 import static com.model_store.model.constant.OrderStatus.AWAITING_PREPAYMENT;
 import static com.model_store.model.constant.OrderStatus.AWAITING_PREPAYMENT_APPROVAL;
@@ -277,7 +281,7 @@ public class OrderServiceImpl implements OrderService {
 
     private Mono<FindOrderResponse> findOrderByUser(FindOrderResponse response) {
         if (isNull(response.getUserInfo().getId())) {
-            return Mono.error(new RuntimeException("Пользователь не найден"));
+            return Mono.error(ApiErrors.notFound(PARTICIPANT_NOT_FOUND, "Пользователь не найден"));
         }
 
         return participantService.findShortInfo(response.getUserInfo().getId())
@@ -287,7 +291,7 @@ public class OrderServiceImpl implements OrderService {
 
     private Mono<FindOrderResponse> findOrderByProduct(FindOrderResponse response) {
         if (isNull(response.getProduct().getId())) {
-            return Mono.error(new RuntimeException("Товар не найден"));
+            return Mono.error(ApiErrors.notFound(PRODUCT_NOT_FOUND, "Товар не найден"));
         }
 
         return productService.shortInfoById(response.getProduct().getId())
@@ -300,7 +304,7 @@ public class OrderServiceImpl implements OrderService {
         Long transferId = response.getTransfer().getTransferId();
         Long addressId = response.getTransfer().getAddressId();
         if (isNull(transferId) || isNull(addressId)) {
-            return Mono.error(new RuntimeException("Не найден способ доставки"));
+            return Mono.error(ApiErrors.notFound(TRANSFER_NOT_FOUND, "Способ доставки не найден"));
         }
 
         return Mono.zip(transferService.findById(transferId), addressService.findById(addressId))

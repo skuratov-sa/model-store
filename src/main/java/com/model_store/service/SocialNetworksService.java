@@ -9,4 +9,6 @@ public interface SocialNetworksService {
     Mono<Void> create(Long participantId, SocialNetworkDto dto);
     Flux<SocialNetwork> findByParticipantId(Long participantId);
     Mono<Void> delete(Long participantId, Long id);
+
+    Mono<SocialNetwork> update(Long participantId, Long id, SocialNetworkDto dto);
 }

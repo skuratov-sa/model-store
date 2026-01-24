@@ -112,13 +112,13 @@ public class JwtServiceImpl implements JwtService {
             // Проверка на "type" claim
             String tokenType = claims.get("type", String.class);
             if (tokenType == null || !tokenType.equals("refresh")) {
-                return Mono.error(new RuntimeException("Invalid token type"));
+                return Mono.error(ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Неверный тип токена"));
             }
 
             // Проверка, что токен не просрочен
             Date expiration = claims.getExpiration();
             if (expiration.before(new Date())) {
-                return Mono.error(new RuntimeException("Refresh token has expired"));
+                return Mono.error(ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Токен просрочен"));
             }
 
             String username = claims.getSubject();
@@ -126,10 +126,11 @@ public class JwtServiceImpl implements JwtService {
             // Если refresh токен валиден, генерируем новый access токен
             return userDetailsService.findByUsername(username)
                     .map(userDetails -> generateAccessToken((CustomUserDetails) userDetails, Duration.ofMinutes(30)))
-                    .switchIfEmpty(Mono.error(new RuntimeException("User not found")));
+                    .switchIfEmpty(Mono.error(ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Пользователь не найден")));
 
         } catch (JwtException | IllegalArgumentException e) {
-            return Mono.error(new RuntimeException("Invalid or expired refresh token", e));
+            log.error(e.getMessage());
+            return Mono.error(ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Недействительный токен для обновления"));
         }
     }
 

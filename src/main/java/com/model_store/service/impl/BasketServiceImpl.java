@@ -4,7 +4,9 @@ import com.model_store.exception.ApiErrors;
 import com.model_store.mapper.ProductMapper;
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.ProductBasket;
+import com.model_store.model.base.SellerRating;
 import com.model_store.model.constant.ImageTag;
+import com.model_store.model.dto.CategoryDto;
 import com.model_store.model.dto.ProductDto;
 import com.model_store.repository.ProductBasketRepository;
 import com.model_store.repository.ProductRepository;
@@ -13,10 +15,13 @@ import com.model_store.service.CategoryService;
 import com.model_store.service.ImageService;
 import com.model_store.service.ParticipantService;
 import com.model_store.service.ProductService;
+import com.model_store.service.SellerRatingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+
+import java.util.List;
 
 import static com.model_store.exception.constant.ErrorCode.PRODUCT_ALREADY_IN_BASKET;
 import static com.model_store.exception.constant.ErrorCode.PRODUCT_NOT_FOUND;
@@ -28,9 +33,7 @@ public class BasketServiceImpl implements BasketService {
     private final ProductService productService;
     private final ProductRepository productRepository;
     private final ProductBasketRepository productBasketRepository;
-    private final ProductMapper productMapper;
-    private final ImageService imageService;
-    private final CategoryService categoryService;
+
 
     @Override
     public Flux<ProductDto> findBasketProductsByParams(Long participantId, FindProductRequest searchParams) {
@@ -39,10 +42,7 @@ public class BasketServiceImpl implements BasketService {
                 .collectList()
                 .flatMapMany(ids ->
                         productRepository.findByParams(searchParams, ids.toArray(Long[]::new))
-                                .concatMap(product -> categoryService.findByProductId(product.getId()).collectList()
-                                        .zipWith(imageService.findMainImage(product.getId(), ImageTag.PRODUCT).defaultIfEmpty(-1L))
-                                        .map(tuple -> productMapper.toProductDto(product, tuple.getT1(), tuple.getT2() == -1L ? null : tuple.getT2()))
-                                )
+                                .concatMap(productService::buildProductDto)
                 );
     }
 

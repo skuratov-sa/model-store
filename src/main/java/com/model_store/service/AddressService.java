@@ -16,6 +16,10 @@ public interface AddressService {
     Flux<Address> findByParticipantIdOrException(Long participantId);
 
     Mono<Long> addAddresses(Long participantId, @NonNull AddressDto addresses);
-    Mono<Void> deleteAddresses(Long participantId, @NonNull Long addressId);
+
+
+    Mono<Address> updateAddress(Long participantId, Long addressId, @NonNull AddressDto dto);
+
+    Mono<Void> softDelete(Long participantId, @NonNull Long addressId);
     Flux<Address> getAddress(Long participantId);
 }

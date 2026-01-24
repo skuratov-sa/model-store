@@ -47,9 +47,9 @@ public interface ProductMapper {
     @Mapping(target = "id", source = "product.id")
     @Mapping(target = "name", source = "product.name")
     @Mapping(target = "sellerId", source = "product.participantId")
-    ProductDto toProductDto(Product product, List<CategoryDto> categories, Long imageId);
+    ProductDto toProductDto(Product product, List<CategoryDto> categories, Long imageId, String sellerLogin, Float sellerRating, Integer totalReviews);
 
     @Mapping(target = "id", source = "product.id")
     @Mapping(target = "name", source = "product.name")
-    GetProductResponse toGetProductResponse(Product product, List<CategoryDto> categories, List<Long> imageIds, List<ReviewResponseDto> reviews, String sellerLogin, Float sellerRating);
+    GetProductResponse toGetProductResponse(Product product, List<CategoryDto> categories, List<Long> imageIds, List<ReviewResponseDto> reviews, String sellerLogin, Float sellerRating, Integer totalReviews);
 }

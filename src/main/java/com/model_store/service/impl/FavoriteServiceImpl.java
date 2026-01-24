@@ -1,17 +1,14 @@
 package com.model_store.service.impl;
 
 import com.amazonaws.services.kms.model.NotFoundException;
-import com.model_store.mapper.ProductMapper;
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.ProductFavorite;
-import com.model_store.model.constant.ImageTag;
 import com.model_store.model.dto.ProductDto;
 import com.model_store.repository.ProductFavoriteRepository;
 import com.model_store.repository.ProductRepository;
-import com.model_store.service.CategoryService;
 import com.model_store.service.FavoriteService;
-import com.model_store.service.ImageService;
 import com.model_store.service.ParticipantService;
+import com.model_store.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -22,10 +19,8 @@ import reactor.core.publisher.Mono;
 public class FavoriteServiceImpl implements FavoriteService {
     private final ProductFavoriteRepository productFavoriteRepository;
     private final ProductRepository productRepository;
+    private final ProductService productService;
     private final ParticipantService participantService;
-    private final ImageService imageService;
-    private final ProductMapper productMapper;
-    private final CategoryService categoryService;
 
     @Override
     public Flux<ProductDto> findFavoriteByParams(Long participantId, FindProductRequest searchParams) {
@@ -34,11 +29,9 @@ public class FavoriteServiceImpl implements FavoriteService {
                 .collectList()
                 .flatMapMany(ids ->
                         productRepository.findByParams(searchParams, ids.toArray(Long[]::new))
-                                .concatMap(product -> categoryService.findByProductId(product.getId()).collectList()
-                                        .zipWith(imageService.findMainImage(product.getId(), ImageTag.PRODUCT).defaultIfEmpty(-1L))
-                                        .map(tuple -> productMapper.toProductDto(product, tuple.getT1(), tuple.getT2() == -1L ? null : tuple.getT2()))
-                                )
+                                .concatMap(productService::buildProductDto)
                 );
+
     }
 
     @Override

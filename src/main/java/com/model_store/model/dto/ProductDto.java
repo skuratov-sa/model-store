@@ -24,5 +24,8 @@ public class ProductDto {
     private Instant expirationDate;
     private ProductStatus status;
     private ProductAvailabilityType availability;
+    private String sellerLogin;
+    private Float sellerRating;
+    private Integer totalReviews;
     private Instant createdAt;
 }

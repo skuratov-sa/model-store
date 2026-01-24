@@ -9,5 +9,6 @@ public interface TransferService {
     Mono<Transfer> findById(Long id);
     Mono<Void> create(Long participantId, TransferDto dto);
     Flux<Transfer> findByParticipantId(Long id);
-    Mono<Void> delete(Long participantId, Long id);
+    Mono<Void> softDelete(Long participantId, Long id);
+    Mono<Transfer> update(Long participantId, Long id, TransferDto dto);
 }

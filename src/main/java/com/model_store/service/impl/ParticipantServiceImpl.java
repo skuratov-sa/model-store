@@ -38,6 +38,7 @@ import reactor.core.publisher.Mono;
 import java.security.SecureRandom;
 import java.util.List;
 
+import static com.model_store.exception.constant.ErrorCode.PARTICIPANT_ALREADY_EXISTS;
 import static com.model_store.model.constant.ParticipantStatus.ACTIVE;
 import static com.model_store.model.constant.ParticipantStatus.DELETED;
 import static com.model_store.service.util.UtilService.getExpensive;
@@ -154,7 +155,7 @@ public class ParticipantServiceImpl implements ParticipantService {
         return participantRepository.findByMail(request.getMail())
                 .flatMap(existing ->
                         Mono.<Participant>error(
-                                new RuntimeException("Пользователь с таким email уже зарегистрирован")
+                                ApiErrors.notFound(PARTICIPANT_ALREADY_EXISTS, "Пользователь с таким email уже зарегистрирован")
                         )
                 )
                 .switchIfEmpty(Mono.defer(() ->
@@ -175,7 +176,8 @@ public class ParticipantServiceImpl implements ParticipantService {
                         user.setStatus(ParticipantStatus.ACTIVE);
                         return participantRepository.save(user);
                     }
-                    return Mono.error(new RuntimeException("User already activated"));
+                    return Mono.error(
+                            ApiErrors.alreadyExist(PARTICIPANT_ALREADY_EXISTS, "Учетная запись уже активирована"));
                 });
     }
 

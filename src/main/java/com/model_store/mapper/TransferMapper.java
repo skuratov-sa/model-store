@@ -8,4 +8,11 @@ import org.mapstruct.Mapper;
 public interface TransferMapper {
 
     Transfer toTransfer(TransferDto dto, Long participantId);
+
+    default Transfer toUpdateTransfer(Transfer transfer, TransferDto dto, Long participantId){
+        var fromDto = toTransfer(dto, participantId);
+        fromDto.setId(transfer.getId());
+        fromDto.setStatus(transfer.getStatus());
+        return fromDto;
+    }
 }

@@ -15,6 +15,7 @@ import com.model_store.model.constant.ImageTag;
 import com.model_store.model.constant.ParticipantRole;
 import com.model_store.model.constant.ProductAvailabilityType;
 import com.model_store.model.constant.ProductStatus;
+import com.model_store.model.dto.CategoryDto;
 import com.model_store.model.dto.GetProductResponse;
 import com.model_store.model.dto.ProductDto;
 import com.model_store.repository.ProductRepository;
@@ -64,7 +65,8 @@ public class ProductServiceImpl implements ProductService {
         Mono<Product> productFindMono = productRepository.findActualProduct(productId);
         Mono<Long> participantIdMono = productFindMono.map(Product::getParticipantId);
         Mono<String> loginMono = participantIdMono.flatMap(participantService::findLoginById).defaultIfEmpty("unknown");
-        Mono<Float> ratingMono = participantIdMono.flatMap(sellerRatingService::findBySellarId).map(SellerRating::getAverageRating).defaultIfEmpty(0f);
+        Mono<SellerRating> ratingMono = participantIdMono.flatMap(sellerRatingService::findBySellarId).defaultIfEmpty(new SellerRating(0L,0f, 0));
+
 
         return Mono.zip(productFindMono, imageFindMono, findReviewsMono, loginMono, ratingMono)
                 .flatMap(tuple5 ->
@@ -76,7 +78,8 @@ public class ProductServiceImpl implements ProductService {
                                                 tuple5.getT2(),
                                                 tuple5.getT3(),
                                                 tuple5.getT4(),
-                                                tuple5.getT5()
+                                                tuple5.getT5().getAverageRating(),
+                                                tuple5.getT5().getTotalReviews()
                                         )
                                 )
                 );
@@ -89,13 +92,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public Mono<ProductDto> shortInfoById(Long productId) {
-        return findById(productId)
-                .flatMap(product -> categoryService.findByProductId(product.getId()).collectList()
-                        .zipWith(imageService.findMainImage(product.getId(), ImageTag.PRODUCT).defaultIfEmpty(-1L))
-                        .map(tuple2 ->
-                                productMapper.toProductDto(product, tuple2.getT1(), tuple2.getT2() == -1L ? null : tuple2.getT2())
-                        )
-                );
+        return findById(productId).flatMap(this::buildProductDto);
     }
 
     @Override
@@ -104,25 +101,46 @@ public class ProductServiceImpl implements ProductService {
     }
 
     public Flux<ProductDto> findByParams(FindProductRequest searchParams) {
-        return productRepository.findByParams(searchParams, null)
-                .concatMap(product -> categoryService.findByProductId(product.getId()).collectList()
-                        .zipWith(imageService.findMainImage(product.getId(), ImageTag.PRODUCT).defaultIfEmpty(-1L))
-                        .map(tuple -> productMapper.toProductDto(product, tuple.getT1(), tuple.getT2() == -1L ? null : tuple.getT2()))
-                );
+        return productRepository.findByParams(searchParams, null).concatMap(this::buildProductDto);
+    }
+
+    @Override
+    public Flux<ProductDto> findMyByParams(FindMyProductRequest searchParams, Long participantId) {
+        return productRepository.findMyByParams(searchParams, participantId).concatMap(this::buildProductDto);
+    }
+
+    @Override
+    public Mono<ProductDto> buildProductDto(Product product) {
+        Mono<List<CategoryDto>> categoriesMono =
+                categoryService.findByProductId(product.getId()).collectList();
+
+        Mono<Long> imageMono =
+                imageService.findMainImage(product.getId(), ImageTag.PRODUCT)
+                        .defaultIfEmpty(-1L);
+
+        Mono<String> loginMono =
+                participantService.findLoginById(product.getParticipantId())
+                        .defaultIfEmpty("unknown");
+
+        Mono<SellerRating> ratingMono =
+                sellerRatingService.findBySellarId(product.getParticipantId())
+                        .defaultIfEmpty(new SellerRating(0L,0f, 0)); // avg, count
+
+        return Mono.zip(categoriesMono, imageMono, loginMono, ratingMono)
+                .map(t -> productMapper.toProductDto(
+                        product,
+                        t.getT1(),
+                        t.getT2() == -1L ? null : t.getT2(),
+                        t.getT3(),
+                        t.getT4().getAverageRating(), // rating
+                        t.getT4().getTotalReviews()   // totalReviews
+                ));
     }
 
     public Flux<Long> findExpiredActiveProductIds() {
         return productRepository.findExpiredActiveProductIds();
     }
 
-    @Override
-    public Flux<ProductDto> findMyByParams(FindMyProductRequest searchParams, Long participantId) {
-        return productRepository.findMyByParams(searchParams, participantId)
-                .concatMap(product -> categoryService.findByProductId(product.getId()).collectList()
-                        .zipWith(imageService.findMainImage(product.getId(), ImageTag.PRODUCT).defaultIfEmpty(-1L))
-                        .map(tuple -> productMapper.toProductDto(product, tuple.getT1(), tuple.getT2() == -1L ? null : tuple.getT2()))
-                );
-    }
 
     @Override
     public Mono<Product> findActualProduct(Long productId) {
@@ -143,7 +161,8 @@ public class ProductServiceImpl implements ProductService {
 
         if (request.getAvailability() == ProductAvailabilityType.EXTERNAL_ONLY) product.setCount(null);
 
-        if (ProductAvailabilityType.PREORDER.equals(product.getAvailability()) && isNull(request.getPrepaymentAmount()) || request.getPrepaymentAmount() <= 0) {
+        if (ProductAvailabilityType.PREORDER.equals(product.getAvailability())
+                && (isNull(request.getPrepaymentAmount()) || request.getPrepaymentAmount() <= 0)) {
             throw new IllegalArgumentException("Предоплата указанна неверно");
         }
 

@@ -30,4 +30,5 @@ public class GetProductResponse {
 
     private String sellerLogin;
     private Float sellerRating;
+    private Integer totalReviews;
 }
