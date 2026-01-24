@@ -146,6 +146,28 @@ public class JwtServiceImpl implements JwtService {
         return ParticipantRole.valueOf(claims.get("role").toString());
     }
 
+    @Override
+    public String generateAgentToken(@NonNull CustomUserDetails userDetails, @NonNull TemporalAmount lifetime) {
+        final LocalDateTime now = LocalDateTime.now();
+        final Instant exp = now.plus(lifetime).atZone(ZoneId.systemDefault()).toInstant();
+
+        return Jwts.builder()
+                .setSubject(userDetails.getUsername())
+                .setIssuedAt(Date.from(now.atZone(ZoneId.systemDefault()).toInstant()))
+                .setExpiration(Date.from(exp))
+                .claim("type", "agent_access")          // отличаем от обычного access
+                .claim("issuedBy", "admin")             // метка
+                .claim("id", userDetails.getId())
+                .claim("login", userDetails.getLogin())
+                .claim("email", userDetails.getEmail())
+                .claim("fullName", userDetails.getFullName())
+                .claim("imageId", userDetails.getImageId())
+                .claim("role", userDetails.getAuthorities().iterator().next().getAuthority())
+                .signWith(privateKey)
+                .compact();
+    }
+
+
 
     @Override
     public Claims parseAccessToken(@NonNull String token) {

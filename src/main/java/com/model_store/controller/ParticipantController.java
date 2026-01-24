@@ -71,10 +71,4 @@ public class ParticipantController {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
         return participantService.updateParticipantPassword(participantId, oldPassword, newPassword);
     }
-
-    @Operation(summary = "Изменить статус пользователя")
-    @PutMapping("/admin/actions/participants/{participantId}/status")
-    public Mono<Void> updateParticipantStatus(@PathVariable Long participantId) {
-        return participantService.updateParticipantStatus(participantId, ParticipantStatus.BLOCKED);
-    }
 }

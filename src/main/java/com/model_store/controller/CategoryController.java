@@ -19,16 +19,4 @@ public class CategoryController {
     public Mono<List<CategoryResponse>> getCategories() {
         return service.getCategories();
     }
-
-    @Operation(summary = "Создать категорию")
-    @PostMapping("/admin/actions/categories")
-    public Mono<Long> createCategory(@RequestParam String name, @RequestParam(required = false) Long parentId) {
-        return service.createCategory(name, parentId);
-    }
-
-    @Operation(summary = "Обновить название категории")
-    @PutMapping("/admin/actions/categories")
-    public Mono<Void> updateCategory(@RequestParam Long categoryId, @RequestParam String name) {
-        return service.updateCategory(categoryId, name);
-    }
 }

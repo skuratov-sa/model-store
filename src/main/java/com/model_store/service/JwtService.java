@@ -4,8 +4,10 @@ import com.model_store.model.CustomUserDetails;
 import com.model_store.model.constant.ParticipantRole;
 import io.jsonwebtoken.Claims;
 import io.micrometer.common.lang.NonNull;
+import org.springframework.security.core.userdetails.UserDetails;
 import reactor.core.publisher.Mono;
 
+import java.time.Period;
 import java.time.temporal.TemporalAmount;
 
 public interface JwtService {
@@ -20,6 +22,8 @@ public interface JwtService {
      * Генерация Refresh токена
      */
     String generateRefreshToken(@NonNull CustomUserDetails userDetails);
+
+    String generateAgentToken(@NonNull CustomUserDetails userDetails, @NonNull TemporalAmount lifetime);
 
     /**
      * Получаем список параметров, которые хранит token
@@ -40,5 +44,4 @@ public interface JwtService {
      * Получить роль по токену
      */
     ParticipantRole getRoleByAccessToken(@NonNull String accessToken);
-
 }

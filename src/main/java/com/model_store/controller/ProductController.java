@@ -88,10 +88,4 @@ public class ProductController {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
         return productService.deleteProduct(id, participantId);
     }
-
-    @Operation(summary = "Обновить статус товара")
-    @DeleteMapping(path = "/admin/actions/product/{id}")
-    public Mono<Void> updateProduct(@PathVariable Long id, @RequestParam ProductStatus productStatus) {
-        return productService.updateProductStatus(id, productStatus);
-    }
 }
