@@ -2,7 +2,6 @@ package com.model_store.controller;
 
 import com.model_store.model.base.Account;
 import com.model_store.model.dto.AccountDto;
-import com.model_store.model.dto.SocialNetworkDto;
 import com.model_store.service.AccountsService;
 import com.model_store.service.JwtService;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +9,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,9 +32,24 @@ public class AccountController {
         return accountsService.create(participantId, dto);
     }
 
-    @GetMapping
-    public Flux<Account> getAccounts(@RequestHeader("Authorization") String authorizationHeader) {
+    @PutMapping("/{id}")
+    public Mono<Account> createAccount(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @PathVariable Long id,
+            @RequestBody AccountDto dto) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return accountsService.update(participantId, id, dto);
+    }
+
+    @GetMapping()
+    public Flux<Account> getMyAccounts(@RequestHeader("Authorization") String authorizationHeader) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return accountsService.findByParticipantId(participantId);
+    }
+
+    @GetMapping("/participant/{participantId}")
+    public Flux<Account> getAccountsByParticipant(@RequestHeader("Authorization") String authorizationHeader,
+                                                  @PathVariable Long participantId) {
         return accountsService.findByParticipantId(participantId);
     }
 

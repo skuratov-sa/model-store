@@ -66,8 +66,10 @@ public class ParticipantServiceImpl implements ParticipantService {
     @Override
     public Mono<UserInfoDto> findShortInfo(Long id) {
         return participantRepository.findActualParticipant(id)
-                .flatMap(p -> imageService.findMainImage(id, ImageTag.PARTICIPANT).defaultIfEmpty(-1L)
-                        .map(imageId -> participantMapper.toUserInfoDto(p, imageId == -1 ? null : imageId))
+                .flatMap(p ->
+                        imageService.findMainImage(id, ImageTag.PARTICIPANT)
+                                .map(imageId -> participantMapper.toUserInfoDto(p, imageId))
+                                .switchIfEmpty(Mono.defer(() -> Mono.just(participantMapper.toUserInfoDto(p, null))))
                 );
     }
 
@@ -84,7 +86,7 @@ public class ParticipantServiceImpl implements ParticipantService {
                 )
                 .map(tuple7 ->
                         participantMapper.toFullParticipantDto(
-                                tuple7.getT1(), tuple7.getT2(), tuple7.getT3(), tuple7.getT4(), tuple7.getT5(), tuple7.getT6(), tuple7.getT7()
+                                tuple7.getT1(), tuple7.getT2(), tuple7.getT3(), tuple7.getT4(), tuple7.getT5() == -1L ? null : tuple7.getT5(), tuple7.getT6(), tuple7.getT7()
                         )
                 );
     }
@@ -122,30 +124,33 @@ public class ParticipantServiceImpl implements ParticipantService {
     public Flux<FindParticipantsDto> findByParams(FindParticipantRequest searchParams) {
         return participantRepository.findByParams(searchParams)
                 .flatMap(participant -> {
-                    // Создание DTO
-                    Mono<FindParticipantsDto> dtoMono = imageService.findMainImage(participant.getId(), ImageTag.PARTICIPANT)
-                            .defaultIfEmpty(-1L)
-                            .map(imageId -> {
-                                FindParticipantsDto dto = participantMapper.toFindParticipantDto(participant, imageId == -1L ? null : imageId);
-                                dto.setExperience(getExpensive(participant.getCreatedAt())); // Рассчитываем стаж
-                                return dto;
-                            });
+                    // Сначала создаем базовое DTO без картинки
+                    FindParticipantsDto baseDto = participantMapper.toFindParticipantDto(participant, null);
+                    baseDto.setExperience(getExpensive(participant.getCreatedAt())); // Рассчитываем стаж
 
-                    // Обогащение DTO
-                    return dtoMono.flatMap(dto ->
-                            orderRepository.findCompletedCountBySellerId(dto.getId())
-                                    .defaultIfEmpty(0)
-                                    .doOnNext(dto::setOrderCompletedCount)
-                                    .then(orderRepository.findCompletedCountByCustomerId(dto.getId())
-                                            .defaultIfEmpty(0)
-                                            .doOnNext(dto::setOrderPurchaseCount))
-                                    .thenMany(accountRepository.findTypeByParticipantId(dto.getId())
-                                            .map(TransferMoneyType::valueOf)
-                                            .collectList()
-                                            .doOnNext(dto::setTransferMoneys))
-                                    .then(Mono.just(dto))
-                    );
+                    // Пытаемся добавить картинку
+                    return imageService.findMainImage(participant.getId(), ImageTag.PARTICIPANT)
+                            .map(imageId -> {
+                                baseDto.setImageId(imageId);
+                                return baseDto;
+                            })
+                            .defaultIfEmpty(baseDto) // если картинки нет - возвращаем как есть
+                            .flatMap(this::enrichDto); // выносим обогащение в отдельный метод
                 });
+    }
+
+    private Mono<FindParticipantsDto> enrichDto(FindParticipantsDto dto) {
+        return orderRepository.findCompletedCountBySellerId(dto.getId())
+                .defaultIfEmpty(0)
+                .doOnNext(dto::setOrderCompletedCount)
+                .then(orderRepository.findCompletedCountByCustomerId(dto.getId())
+                        .defaultIfEmpty(0)
+                        .doOnNext(dto::setOrderPurchaseCount))
+                .thenMany(accountRepository.findTypeByParticipantId(dto.getId())
+                        .map(TransferMoneyType::valueOf)
+                        .collectList()
+                        .doOnNext(dto::setTransferMoneys))
+                .then(Mono.just(dto));
     }
 
     @Transactional

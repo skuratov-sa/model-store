@@ -15,5 +15,7 @@ public interface ReviewRepository extends ReactiveCrudRepository<Review, Long> {
 
     Mono<Boolean> existsByOrderIdAndReviewerId(Long orderProductId, Long reviewerId);
 
-    Mono<Review> findByReviewerId(Long reviewerId);
+    Mono<Review> findByOrderIdAndReviewerId(Long productId, Long reviewerId);
+
+    Mono<Review> findByReviewerId(Long participantId);
 }

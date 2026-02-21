@@ -1,11 +1,14 @@
 package com.model_store.service.impl;
 
+import com.model_store.exception.ApiErrors;
+import com.model_store.exception.constant.ErrorCode;
 import com.model_store.mapper.ReviewMapper;
 import com.model_store.model.ReviewRequestDto;
 import com.model_store.model.ReviewResponseDto;
 import com.model_store.model.base.Order;
 import com.model_store.model.base.Review;
 import com.model_store.model.constant.ImageTag;
+import com.model_store.model.constant.OrderStatus;
 import com.model_store.repository.OrderRepository;
 import com.model_store.repository.ReviewRepository;
 import com.model_store.service.ImageService;
@@ -15,6 +18,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -27,10 +32,17 @@ public class ReviewServiceImpl implements ReviewService {
 
     @Override
     public Mono<Long> addReview(ReviewRequestDto dto, Long participantId) {
-        return reviewRepository.findByReviewerId(participantId)
-                .flatMap(i -> Mono.error(new IllegalStateException("Отзыв уже существует для этого заказа от пользователя.")))
-                .switchIfEmpty(orderRepository.findById(dto.getOrderId()))
-                .flatMap(order -> reviewRepository.save(reviewMapper.toReview(dto, (Order) order, participantId)).map(Review::getId));
+        return reviewRepository.findByOrderIdAndReviewerId(dto.getOrderId(), participantId)
+                .flatMap(i -> Mono.error(ApiErrors.badRequest(ErrorCode.REVIEW_ALREADY_EXIST, "Вы уже оставили отзыв для этого заказа")))
+                .switchIfEmpty(
+                        orderRepository.findById(dto.getOrderId())
+                                .filter(order -> order.getCustomerId().equals(participantId))
+                                .switchIfEmpty(Mono.error(ApiErrors.notFound(ErrorCode.ORDER_NOT_FOUND, "Нет данных о заказе товара")))
+                                .filter(order -> List.of(OrderStatus.COMPLETED, OrderStatus.FAILED).contains(order.getStatus()))
+                                .switchIfEmpty(Mono.error(ApiErrors.badRequest(ErrorCode.ORDER_NOT_TERMINATED, "Нельзя оставить отзыв пока заказ еще активен")))
+                )
+                .cast(Order.class)
+                .flatMap(order -> reviewRepository.save(reviewMapper.toReview(dto, order, participantId)).map(Review::getId));
     }
 
     @Override
@@ -50,14 +62,14 @@ public class ReviewServiceImpl implements ReviewService {
                                         participantService.findFullNameById(review.getReviewerId()).defaultIfEmpty("unknown"),
                                         imageService.findMainImage(review.getReviewerId(), ImageTag.PARTICIPANT).defaultIfEmpty(-1L)
                                 )
-                                .map(t -> reviewMapper.toReviewResponseDto(review, t.getT1(), t.getT2()))
+                                .map(t -> reviewMapper.toReviewResponseDto(review, t.getT1(), t.getT2() == -1L ? null : t.getT2()))
                 );
     }
 
     @Override
     public Mono<Void> deleteReview(Long reviewId, Long participantId) {
-        return reviewRepository.findByReviewerId(participantId)
-                .filter(review -> review.getId().equals(reviewId))
+        return reviewRepository.findById(reviewId)
+                .filter(review -> review.getReviewerId().equals(participantId))
                 .flatMap(i -> reviewRepository.deleteById(reviewId));
     }
 }

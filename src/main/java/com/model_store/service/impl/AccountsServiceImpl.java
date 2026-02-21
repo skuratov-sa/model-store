@@ -34,6 +34,15 @@ public class AccountsServiceImpl implements AccountsService {
     }
 
     @Override
+    public Mono<Account> update(Long participantId, Long id, AccountDto dto) {
+        return accountRepository.findById(id)
+                .filter(s -> s.getParticipantId().equals(participantId))
+                .switchIfEmpty(Mono.error(ApiErrors.notFound(ErrorCode.ACCOUNT_NOT_FOUND, "Не удалось найти способы оплаты для данного пользователя")))
+                .map(account -> accountMapper.toAccount(account.getId(), dto, participantId))
+                .flatMap(accountRepository::save);
+    }
+
+    @Override
     public Flux<Account> findByParticipantId(Long participantId) {
         return accountRepository.findByParticipantId(participantId)
                 .switchIfEmpty(Mono.error(ApiErrors.notFound(ErrorCode.ACCOUNT_NOT_FOUND, "Не удалось найти способы оплаты для данного пользователя")));

@@ -24,6 +24,7 @@ public final class ApiErrors {
     public static ApiException badRequest(ErrorCode code, String message) {
         return new ApiException(HttpStatus.BAD_REQUEST, code, message);
     }
+
     public static ApiException forbidden(ErrorCode code, String message) {
         return new ApiException(HttpStatus.FORBIDDEN, code, message);
     }

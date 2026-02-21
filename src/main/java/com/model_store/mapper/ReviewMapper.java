@@ -10,6 +10,8 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface ReviewMapper {
 
+    @Mapping(target = "id", ignore = true)  // явно игнорируем id
+    @Mapping(target = "createdAt", ignore = true)  // игнорируем createdAt
     @Mapping(target = "comment", source = "dto.comment")
     Review toReview(ReviewRequestDto dto, Order order, Long reviewerId);
 

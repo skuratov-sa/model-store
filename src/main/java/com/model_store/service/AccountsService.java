@@ -7,6 +7,7 @@ import reactor.core.publisher.Mono;
 
 public interface AccountsService {
     Mono<Void> create(Long participantId, AccountDto dto);
+    Mono<Account> update(Long participantId, Long id, AccountDto dto);
     Flux<Account> findByParticipantId(Long participantId);
     Mono<Void> delete(Long participantId, Long id);
 }

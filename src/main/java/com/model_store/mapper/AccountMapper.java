@@ -7,4 +7,5 @@ import org.mapstruct.Mapper;
 @Mapper(componentModel = "spring")
 public interface AccountMapper {
     Account toAccount(AccountDto dto, Long participantId);
+    Account toAccount(Long id, AccountDto dto, Long participantId);
 }

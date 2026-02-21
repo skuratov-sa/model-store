@@ -17,5 +17,6 @@ public class FindOrderResponse {
     private ProductDto product;
     private OrderTransferDto transfer;
     private List<Long> images;
+    private String deliveryUrl;
     private List<OrderStatusHistoryDto> histories;
 }

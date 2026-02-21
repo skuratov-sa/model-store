@@ -3,6 +3,9 @@ package com.model_store.controller;
 import com.amazonaws.services.kms.model.NotFoundException;
 import com.model_store.exception.ApiException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AccountExpiredException;
@@ -47,13 +50,16 @@ public class GlobalExceptionHandler {
         };
     }
 
-    @ExceptionHandler({org.springframework.dao.DuplicateKeyException.class,
-            org.springframework.dao.DataIntegrityViolationException.class})
+    @ExceptionHandler({DuplicateKeyException.class, DataIntegrityViolationException.class, IncorrectResultSizeDataAccessException.class})
     public ResponseEntity<ApiErrorResponse> handleDbIntegrity(Exception ex) {
         String msg = rootMessage(ex);
 
         if (msg != null && msg.contains("uq_product_one_client")) {
             return build(HttpStatus.CONFLICT, "PRODUCT_ALREADY_EXISTS", "Товар с такими параметрами уже существует", null);
+        }
+
+        if (msg != null && msg.contains("review")) {
+            return build(HttpStatus.CONFLICT, "REVIEW_ALREADY_EXISTS", "Отзыв уже существует. Нельзя создать повторный отзыв.", null);
         }
 
         // общий кейс
