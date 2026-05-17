@@ -4,6 +4,7 @@ import com.model_store.configuration.property.ApplicationProperties;
 import com.model_store.exception.ApiErrors;
 import com.model_store.exception.constant.ErrorCode;
 import com.model_store.mapper.ProductMapper;
+import com.model_store.model.CreateAgentProductRequest;
 import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.FindMyProductRequest;
 import com.model_store.model.FindProductRequest;
@@ -20,14 +21,16 @@ import com.model_store.model.dto.GetProductResponse;
 import com.model_store.model.dto.ProductDto;
 import com.model_store.repository.ProductRepository;
 import com.model_store.service.CategoryService;
+import com.model_store.service.ImageService;
 import com.model_store.service.ParticipantService;
 import com.model_store.service.ProductService;
 import com.model_store.service.ReviewService;
 import com.model_store.service.SellerRatingService;
 import com.model_store.service.SocialNetworksService;
 import com.model_store.service.TransferService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
@@ -44,18 +47,42 @@ import static java.util.Objects.nonNull;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ProductServiceImpl implements ProductService {
     private final ProductRepository productRepository;
     private final CategoryService categoryService;
     private final ProductMapper productMapper;
-    private final ImageServiceImpl imageService;
+    private final ImageService imageService;
     private final ReviewService reviewService;
     private final ApplicationProperties properties;
     private final SocialNetworksService socialNetworksService;
     private final TransferService transferService;
     private final SellerRatingService sellerRatingService;
     private final ParticipantService participantService;
+
+    @Autowired
+    public ProductServiceImpl(
+            ProductRepository productRepository,
+            CategoryService categoryService,
+            ProductMapper productMapper,
+            @Lazy ImageService imageService,
+            ReviewService reviewService,
+            ApplicationProperties properties,
+            SocialNetworksService socialNetworksService,
+            TransferService transferService,
+            SellerRatingService sellerRatingService,
+            ParticipantService participantService
+    ) {
+        this.productRepository = productRepository;
+        this.categoryService = categoryService;
+        this.productMapper = productMapper;
+        this.imageService = imageService;
+        this.reviewService = reviewService;
+        this.properties = properties;
+        this.socialNetworksService = socialNetworksService;
+        this.transferService = transferService;
+        this.sellerRatingService = sellerRatingService;
+        this.participantService = participantService;
+    }
 
     @Transactional
     public Mono<GetProductResponse> getProductById(Long productId) {
@@ -100,13 +127,32 @@ public class ProductServiceImpl implements ProductService {
         return productRepository.findNamesBySearch(search);
     }
 
-    public Flux<ProductDto> findByParams(FindProductRequest searchParams) {
-        return productRepository.findByParams(searchParams, null).concatMap(this::buildProductDto);
+    public Flux<ProductDto> findByParams(FindProductRequest searchParams, Long currentParticipantId) {
+        if (Boolean.TRUE.equals(searchParams.getIncludeAdult())) {
+            return checkAdultAccess(currentParticipantId)
+                    .thenMany(productRepository.findByParams(searchParams, null).flatMapSequential(this::buildProductDto, 10));
+        }
+        return productRepository.findByParams(searchParams, null).flatMapSequential(this::buildProductDto, 10);
+    }
+
+    private Mono<Void> checkAdultAccess(Long participantId) {
+        if (participantId == null) {
+            return Mono.error(ApiErrors.forbidden(ErrorCode.ADULT_CONTENT_RESTRICTED,
+                    "Для просмотра контента 18+ необходима авторизация"));
+        }
+        return participantService.findAgeById(participantId)
+                .flatMap(age -> {
+                    if (age == null || age < 18) {
+                        return Mono.error(ApiErrors.forbidden(ErrorCode.ADULT_CONTENT_RESTRICTED,
+                                "Контент 18+ доступен только пользователям от 18 лет"));
+                    }
+                    return Mono.<Void>empty();
+                });
     }
 
     @Override
     public Flux<ProductDto> findMyByParams(FindMyProductRequest searchParams, Long participantId) {
-        return productRepository.findMyByParams(searchParams, participantId).concatMap(this::buildProductDto);
+        return productRepository.findMyByParams(searchParams, participantId).flatMapSequential(this::buildProductDto, 10);
     }
 
     @Override
@@ -152,22 +198,56 @@ public class ProductServiceImpl implements ProductService {
         return Mono.zip(
                 transferService.findByParticipantId(participantId).hasElements(),
                 socialNetworksService.findByParticipantId(participantId).hasElements()
-        ).flatMap(tuple -> createProduct(request, participantId));
+        ).flatMap(tuple -> {
+            if (!tuple.getT1())
+                return Mono.error(ApiErrors.badRequest(ErrorCode.TRANSFER_NOT_FOUND, "Добавьте способ получения оплаты перед созданием товара"));
+            if (!tuple.getT2())
+                return Mono.error(ApiErrors.badRequest(ErrorCode.SOCIAL_NETWORK_NOT_FOUND, "Добавьте социальную сеть перед созданием товара"));
+            return createProduct(request, participantId);
+        });
     }
 
     private Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId) {
         log.info("Create product request: {}, participantId: {}", request, participantId);
-        Product product = productMapper.toProduct(request, participantId, ACTIVE, getExpirationDate());
 
-        if (request.getAvailability() == ProductAvailabilityType.EXTERNAL_ONLY) product.setCount(null);
-
-        if (ProductAvailabilityType.PREORDER.equals(product.getAvailability())
+        if (ProductAvailabilityType.PREORDER.equals(request.getAvailability())
                 && (isNull(request.getPrepaymentAmount()) || request.getPrepaymentAmount() <= 0)) {
-            throw new IllegalArgumentException("Предоплата указанна неверно");
+            return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Предоплата указана неверно"));
         }
 
-        if (nonNull(request.getCount()) && request.getCount() <= 0)
-            throw new IllegalArgumentException("Введено некорректное кол-во товаров");
+        if (nonNull(request.getCount()) && request.getCount() <= 0) {
+            return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Введено некорректное кол-во товаров"));
+        }
+
+        Product product = productMapper.toProduct(request, participantId, ACTIVE, getExpirationDate());
+        if (request.getAvailability() == ProductAvailabilityType.EXTERNAL_ONLY) product.setCount(null);
+
+        return productRepository.save(product)
+                .flatMap(savedProduct ->
+                        Mono.when(
+                                updateImagesStatus(request.getImageIds(), savedProduct.getId()),
+                                addLinkProductAndCategories(request.getCategoryIds(), savedProduct.getId())
+                        ).thenReturn(savedProduct.getId())
+                );
+    }
+
+    @Override
+    @Transactional
+    public Mono<Long> createAgentProduct(CreateAgentProductRequest request, Long participantId) {
+        log.info("Create agent product request: {}, participantId: {}", request, participantId);
+        Product product = Product.builder()
+                .name(request.getName())
+                .description(request.getDescription())
+                .price(request.getPrice())
+                .currency(request.getCurrency())
+                .originality(request.getOriginality())
+                .externalUrl(request.getExternalUrl())
+                .availability(ProductAvailabilityType.EXTERNAL_ONLY)
+                .count(null)
+                .participantId(participantId)
+                .status(ACTIVE)
+                .expirationDate(getExpirationDate())
+                .build();
 
         return productRepository.save(product)
                 .flatMap(savedProduct ->
@@ -203,7 +283,7 @@ public class ProductServiceImpl implements ProductService {
                 )).flatMap(product -> {
                     product.setStatus(ProductStatus.DELETED);
                     return productRepository.save(product)
-                            .then(imageService.deleteImagesByEntityId(product.getParticipantId(), ImageTag.PRODUCT));
+                            .then(imageService.deleteImagesByEntityId(product.getId(), ImageTag.PRODUCT));
                 });
     }
 
@@ -253,6 +333,14 @@ public class ProductServiceImpl implements ProductService {
             return Mono.empty();
         }
         return categoryService.addLinkProductAndCategories(categoryIds, productId);
+    }
+
+    @Override
+    public Mono<Void> decrementCountIfSufficient(Long productId, Integer amount) {
+        return productRepository.decrementCountIfSufficient(productId, amount)
+                .flatMap(updated -> updated == 0
+                        ? Mono.error(ApiErrors.badRequest(ErrorCode.OUT_OF_STOCK, "Недостаточно товара на складе"))
+                        : Mono.empty());
     }
 
     private Instant getExpirationDate() {

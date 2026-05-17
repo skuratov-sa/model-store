@@ -9,11 +9,13 @@ import com.model_store.model.dto.TransferDto;
 import com.model_store.repository.TransferRepository;
 import com.model_store.service.TransferService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TransferServiceImpl implements TransferService {
@@ -27,6 +29,7 @@ public class TransferServiceImpl implements TransferService {
 
     @Override
     public Mono<Void> create(Long participantId, TransferDto dto) {
+        log.info("Creating transfer: participantId={}, type={}", participantId, dto.getSending());
         return transferRepository.existsByParticipantIdAndType(participantId, dto.getSending())
                 .flatMap(exists -> exists
                         ? Mono.error(ApiErrors.alreadyExist(ErrorCode.TRANSFER_NOT_FOUND, "Такой способ доставки уже добавлен"))
@@ -44,6 +47,7 @@ public class TransferServiceImpl implements TransferService {
     @Override
     @Transactional
     public Mono<Void> softDelete(Long participantId, Long id) {
+        log.info("Deleting transfer: id={}, participantId={}", id, participantId);
         return transferRepository.findById(id)
                 .filter(t -> t.getParticipantId().equals(participantId))
                 .switchIfEmpty(Mono.error(ApiErrors.notFound(ErrorCode.TRANSFER_NOT_FOUND, "Способ доставки не найден")))

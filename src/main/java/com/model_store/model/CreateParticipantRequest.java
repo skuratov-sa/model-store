@@ -1,9 +1,8 @@
 package com.model_store.model;
 
-import com.model_store.model.dto.AccountDto;
-import com.model_store.model.dto.AddressDto;
-import com.model_store.model.dto.SocialNetworkDto;
-import com.model_store.model.dto.TransferDto;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.util.List;
@@ -12,4 +11,9 @@ import java.util.List;
 public class CreateParticipantRequest {
     private String mail;
     private String password;
+
+    @NotNull(message = "Возраст обязателен")
+    @Min(value = 0, message = "Возраст не может быть отрицательным")
+    @Max(value = 150, message = "Некорректный возраст")
+    private Integer age;
 }

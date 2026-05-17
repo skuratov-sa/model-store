@@ -16,4 +16,5 @@ public class FindProductRequest {
     private Long imageId;
     private DateRange dateRange;
     private @Valid Pageable pageable;
+    private Boolean includeAdult;
 }

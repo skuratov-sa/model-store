@@ -23,7 +23,14 @@ public interface JwtService {
      */
     String generateRefreshToken(@NonNull CustomUserDetails userDetails);
 
+    /**
+     * Генерация Refresh токена с кастомным сроком жизни.
+     */
+    String generateRefreshToken(@NonNull CustomUserDetails userDetails, @NonNull TemporalAmount lifetime);
+
     String generateAgentToken(@NonNull CustomUserDetails userDetails, @NonNull TemporalAmount lifetime);
+
+    String generateAgentRefreshToken(@NonNull CustomUserDetails userDetails, @NonNull TemporalAmount lifetime);
 
     /**
      * Получаем список параметров, которые хранит token
@@ -44,4 +51,9 @@ public interface JwtService {
      * Получить роль по токену
      */
     ParticipantRole getRoleByAccessToken(@NonNull String accessToken);
+
+    /**
+     * Вернуть true если токен был выдан агенту (type=agent_access, issuedBy=admin)
+     */
+    boolean isAgentToken(@NonNull String accessToken);
 }

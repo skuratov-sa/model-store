@@ -2,6 +2,7 @@ package com.model_store.controller;
 
 import com.amazonaws.services.kms.model.NotFoundException;
 import com.model_store.model.constant.ImageTag;
+import com.model_store.model.dto.ImageMetadataDto;
 import com.model_store.model.dto.ImageResponse;
 import com.model_store.service.ImageService;
 import com.model_store.service.JwtService;
@@ -39,6 +40,12 @@ public class ImageController {
     @GetMapping("/default")
     public Mono<ImageResponse> findDefaultImage() {
         return imageService.findImageDefault();
+    }
+
+    @Operation(summary = "Получить метадату картинок по ID (CDN URL)")
+    @GetMapping("/metadata")
+    public Flux<ImageMetadataDto> findImageMetadata(@RequestParam List<Long> ids) {
+        return imageService.findImageMetadataByIds(ids);
     }
 
     @Operation(summary = "Сохранить картинку")

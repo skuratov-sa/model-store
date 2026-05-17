@@ -281,6 +281,11 @@ public class ParticipantServiceImpl implements ParticipantService {
     }
 
 
+    @Override
+    public Mono<Integer> findAgeById(Long participantId) {
+        return participantRepository.findActualParticipant(participantId).map(Participant::getAge);
+    }
+
     private Mono<Void> updateImageStatus(Long imageId, Long entityId) {
         if (isNull(imageId)) return Mono.empty();
         return imageService.replaceForParticipant(imageId, entityId, ImageTag.PARTICIPANT);

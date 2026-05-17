@@ -53,4 +53,6 @@ public interface ParticipantService {
     Mono<Long> updateParticipantPassword(Long participantId, String password, String newPassword);
 
     Mono<String> resetAndUpdateTemplatePassword(Long participantId);
+
+    Mono<Integer> findAgeById(Long participantId);
 }

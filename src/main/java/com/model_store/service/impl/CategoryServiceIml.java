@@ -9,12 +9,14 @@ import com.model_store.repository.CategoryRepository;
 import com.model_store.repository.ProductCategoryRepository;
 import com.model_store.service.CategoryService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CategoryServiceIml implements CategoryService {
@@ -31,8 +33,10 @@ public class CategoryServiceIml implements CategoryService {
 
     @Override
     public Mono<Long> createCategory(String name, Long parentId) {
+        log.info("Creating category: name={}, parentId={}", name, parentId);
         return categoryRepository.save(Category.builder().name(name).parentId(parentId).build())
-                .map(Category::getId);
+                .map(Category::getId)
+                .doOnSuccess(id -> log.debug("Category created: id={}", id));
     }
 
     @Override
@@ -45,6 +49,7 @@ public class CategoryServiceIml implements CategoryService {
 
     @Override
     public Mono<Void> updateCategory(Long categoryId, String name) {
+        log.info("Updating category: id={}, name={}", categoryId, name);
         return categoryRepository.findById(categoryId)
                 .doOnNext(category -> category.setName(name))
                 .flatMap(categoryRepository::save)

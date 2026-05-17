@@ -1,0 +1,1 @@
+ALTER TABLE participant ADD COLUMN IF NOT EXISTS age SMALLINT CHECK (age >= 0);

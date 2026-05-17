@@ -8,11 +8,13 @@ import com.model_store.model.dto.SocialNetworkDto;
 import com.model_store.repository.SocialNetworkRepository;
 import com.model_store.service.SocialNetworksService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SocialNetworksServiceIml implements SocialNetworksService {
@@ -22,6 +24,7 @@ public class SocialNetworksServiceIml implements SocialNetworksService {
     @Override
     @Transactional
     public Mono<Void> create(Long participantId, SocialNetworkDto dto) {
+        log.info("Creating social network: participantId={}, type={}", participantId, dto.getType());
         return socialNetworkRepository.existsByParticipantIdAndType(participantId, dto.getType())
                 .flatMap(exists -> exists
                         ? Mono.error(ApiErrors.alreadyExist(ErrorCode.SOCIAL_NETWORK_ALREADY_EXISTS, "Такая соцсеть уже добавлена"))
@@ -37,6 +40,7 @@ public class SocialNetworksServiceIml implements SocialNetworksService {
 
     @Override
     public Mono<Void> delete(Long participantId, Long id) {
+        log.info("Deleting social network: id={}, participantId={}", id, participantId);
         return socialNetworkRepository.findById(id)
                 .filter(s -> s.getParticipantId().equals(participantId))
                 .switchIfEmpty(Mono.error(ApiErrors.notFound(ErrorCode.SOCIAL_NETWORK_NOT_FOUND, "Социальная сеть не найдена")))

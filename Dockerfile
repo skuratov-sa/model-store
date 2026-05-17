@@ -1,13 +1,25 @@
-FROM openjdk:22-jdk-slim AS builder
-RUN apt-get update && apt-get install -y dos2unix
+# Stage 1: Build
+FROM eclipse-temurin:21-jdk-jammy AS builder
+
+RUN apt-get update && apt-get install -y dos2unix && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /backend
-COPY . .
-RUN dos2unix gradlew entrypoint.sh
-RUN chmod +x /backend/gradlew && chmod +x /backend/entrypoint.sh && /backend/gradlew build --no-daemon
 
-# Копируем ключи в контейнер (из папки resources)
-COPY src/main/resources/keys /backend/keys
+# Copy only build files first — this layer is cached until build.gradle changes
+COPY gradlew gradlew.bat build.gradle settings.gradle ./
+COPY gradle/ gradle/
+RUN dos2unix gradlew && chmod +x gradlew && ./gradlew dependencies --no-daemon
 
-ENTRYPOINT ["bash", "-c", "source /backend/entrypoint.sh && \"$@\"", "--"]
-CMD ["java", "-jar", "build/libs/model-store-0.0.1-SNAPSHOT.jar"]
+# Copy sources and build (skip tests)
+COPY src/ src/
+RUN ./gradlew build -x test --no-daemon
+
+# Stage 2: Runtime — JRE only, no sources or Gradle tooling
+FROM eclipse-temurin:21-jre-jammy AS runtime
+
+WORKDIR /backend
+COPY --from=builder /backend/build/libs/model-store-0.0.1-SNAPSHOT.jar app.jar
+COPY --from=builder /backend/src/main/resources/keys /backend/keys
+
+EXPOSE 8081
+CMD ["java", "-jar", "/backend/app.jar"]

@@ -18,6 +18,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import reactor.core.publisher.Mono;
 
@@ -25,14 +27,18 @@ import java.time.Instant;
 
 @SpringBootTest
 @ExtendWith(SpringExtension.class)
+@ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-public class IntegrationTest  {
+public class IntegrationTest extends BaseIntegrationTest {
 
     @Autowired
     protected ProductService productService;
 
     @MockBean
-    private AmazonS3 amazonS3; // мокируем клиент S3
+    private AmazonS3 amazonS3;
+
+    @MockBean
+    private JavaMailSender javaMailSender;
 
     @Autowired
     protected ProductRepository productRepository;
@@ -66,7 +72,6 @@ public class IntegrationTest  {
 
     protected Mono<Product> createProduct(ProductStatus status, Long participantId, ProductAvailabilityType availability, Float prepaymentAmount, String externalUrl) {
         Product.ProductBuilder builder = Product.builder()
-                .id(100L)
                 .name("Test Product")
                 .description("Description for test product")
                 .price(1500f)
@@ -111,6 +116,7 @@ public class IntegrationTest  {
                 .deadlineSending(3)
                 .deadlinePayment(7)
                 .sellerStatus(SellerStatus.DEFAULT)
+                .age(25)
                 .createdAt(Instant.now())
                 .build();
 

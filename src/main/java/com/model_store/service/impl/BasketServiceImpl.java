@@ -13,6 +13,7 @@ import com.model_store.service.BasketService;
 import com.model_store.service.ParticipantService;
 import com.model_store.service.ProductService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
@@ -28,6 +29,7 @@ import static com.model_store.exception.constant.ErrorCode.PARTICIPANT_NOT_FOUND
 import static com.model_store.exception.constant.ErrorCode.PRODUCT_ALREADY_IN_BASKET;
 import static com.model_store.exception.constant.ErrorCode.PRODUCT_NOT_FOUND;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class BasketServiceImpl implements BasketService {
@@ -70,6 +72,7 @@ public class BasketServiceImpl implements BasketService {
     @Override
     @Transactional
     public Mono<Void> addToBasket(Long participantId, Long productId, Integer count) {
+        log.info("Add to basket: participantId={}, productId={}, count={}", participantId, productId, count);
         final int qty = (count == null ? 0 : count);
         if (qty <= 0) {
             return Mono.error(ApiErrors.badRequest(ErrorCode.COUNT_INVALID, "Количество должно быть > 0"));
@@ -134,6 +137,7 @@ public class BasketServiceImpl implements BasketService {
 
     @Override
     public Mono<Void> removeFromBasket(Long participantId, Long productId) {
+        log.info("Remove from basket: participantId={}, productId={}", participantId, productId);
         return productBasketRepository.deleteByParticipantIdAndProductId(participantId, productId);
     }
 }

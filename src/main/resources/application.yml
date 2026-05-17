@@ -22,7 +22,6 @@ spring:
       validation-depth: remote
   flyway:
     locations: classpath:/db/migration  # Путь к миграциям
-    baseline-version: 7.17.7
     enabled: true
   mail:
     host: smtp.mail.ru                      # Хост SMTP-сервера (например: smtp.gmail.com, smtp.mail.ru)
@@ -60,16 +59,25 @@ app:
   max-participant-images: 1
   max-product-images: 4
   product-expiration-days: 30
-  private-key-path: test/private.pk8
-  public-key-path: test/public.key
+  private-key-path: keys/private_key.pem
+  public-key-path: keys/public_key.pem
   email-from: ${spring.mail.username}
+  cors-allow-all: false
+  allowed-origins:
+    - "http://localhost:3000"
+    - "http://localhost:5173"
+  # Базовый URL CDN (Content Delivery Network) для отдачи изображений напрямую клиенту.
+  # Используется в /images/metadata — фронт получает ссылку и загружает картинку без проксирования через бэкенд.
+  # Локально: укажи http://localhost:9000 (MinIO), в проде — реальный CDN-домен. (https://cdn.figurzilla.ru)
+  cdn-base-url: http://localhost:9000
 
 logging:
   level:
-    root: INFO                         # все логи уровня INFO+
-    org.springframework.web: DEBUG     # HTTP-запросы и базовый WebFlux лог
+    root: INFO
+    com.model_store: DEBUG             # DEBUG для всех наших классов
+    org.springframework.web: DEBUG
     org.springframework.web.server: DEBUG
-    com.example.filter: INFO            # мой фильтр
+    com.example.filter: INFO
     org.springdoc: WARN
     org.flywaydb.core: WARN
     org.springframework.jdbc.core: WARN

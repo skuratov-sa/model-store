@@ -37,10 +37,12 @@ public interface ProductMapper {
                 .prepaymentAmount(Optional.ofNullable(productRequest.getPrepaymentAmount()).orElse(product.getPrepaymentAmount()))
                 .currency(Optional.ofNullable(productRequest.getCurrency()).orElse(product.getCurrency()))
                 .originality(Optional.ofNullable(productRequest.getOriginality()).orElse(product.getOriginality()))
-                .availability(Optional.ofNullable(product.getAvailability()).orElse(product.getAvailability()))
-                .externalUrl(Optional.ofNullable(product.getExternalUrl()).orElse(product.getExternalUrl()))
+                .availability(Optional.ofNullable(productRequest.getAvailability()).orElse(product.getAvailability()))
+                .externalUrl(Optional.ofNullable(productRequest.getExternalUrl()).orElse(product.getExternalUrl()))
                 .participantId(product.getParticipantId())
                 .status(product.getStatus())
+                .expirationDate(product.getExpirationDate())
+                .createdAt(product.getCreatedAt())
                 .build();
     }
 

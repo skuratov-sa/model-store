@@ -18,6 +18,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.support.WebExchangeBindException;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -62,6 +63,10 @@ public class GlobalExceptionHandler {
             return build(HttpStatus.CONFLICT, "REVIEW_ALREADY_EXISTS", "Отзыв уже существует. Нельзя создать повторный отзыв.", null);
         }
 
+        if (msg != null && msg.contains("foreign key constraint")) {
+            return build(HttpStatus.BAD_REQUEST, "INVALID_REFERENCE", "Указана ссылка на несуществующий объект", Map.of("dbMessage", msg));
+        }
+
         // общий кейс
         return build(HttpStatus.CONFLICT, "DUPLICATE_KEY", "Нарушено ограничение уникальности", Map.of("dbMessage", msg));
     }
@@ -87,6 +92,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiErrorResponse> handleBadRequest(IllegalArgumentException ex) {
         return build(HttpStatus.BAD_REQUEST, "BAD_REQUEST", ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ApiErrorResponse> handleResponseStatus(ResponseStatusException ex) {
+        HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
+        if (status == null) status = HttpStatus.INTERNAL_SERVER_ERROR;
+        String message = ex.getReason() != null ? ex.getReason() : status.getReasonPhrase();
+        if (status.is5xxServerError()) log.error("Response status error", ex);
+        return build(status, status.name(), message, null);
     }
 
     @ExceptionHandler(Exception.class)

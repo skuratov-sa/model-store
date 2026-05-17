@@ -33,8 +33,20 @@ public class ProductController {
 
     @Operation(summary = "Поиск списка товаров")
     @PostMapping(path = "/products/find")
-    public Flux<ProductDto> findProducts(@RequestBody FindProductRequest searchParams) {
-        return productService.findByParams(searchParams);
+    public Flux<ProductDto> findProducts(
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @RequestBody FindProductRequest searchParams) {
+        Long participantId = tryExtractParticipantId(authorizationHeader);
+        return productService.findByParams(searchParams, participantId);
+    }
+
+    private Long tryExtractParticipantId(String authorizationHeader) {
+        if (authorizationHeader == null || authorizationHeader.isBlank()) return null;
+        try {
+            return jwtService.getIdByAccessToken(authorizationHeader);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @Operation(summary = "Поиск названий товаров и категорий в поисковой строке")

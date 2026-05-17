@@ -10,10 +10,12 @@ import com.model_store.service.FavoriteService;
 import com.model_store.service.ParticipantService;
 import com.model_store.service.ProductService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FavoriteServiceImpl implements FavoriteService {
@@ -36,6 +38,7 @@ public class FavoriteServiceImpl implements FavoriteService {
 
     @Override
     public Mono<Void> addToFavorites(Long participantId, Long productId) {
+        log.info("Add to favorites: participantId={}, productId={}", participantId, productId);
         return Mono.zip(productRepository.findActualProduct(productId), participantService.findActualById(participantId))
                 .switchIfEmpty(Mono.error(new NotFoundException("Product or participant not found")))
                 .flatMap(ignore ->
@@ -50,6 +53,7 @@ public class FavoriteServiceImpl implements FavoriteService {
 
     @Override
     public Mono<Void> removeFromFavorites(Long participantId, Long productId) {
+        log.info("Remove from favorites: participantId={}, productId={}", participantId, productId);
         return productFavoriteRepository.deleteByParticipantIdAndProductId(participantId, productId);
     }
 }

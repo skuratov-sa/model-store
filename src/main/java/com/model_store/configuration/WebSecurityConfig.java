@@ -96,12 +96,13 @@ public class WebSecurityConfig {
                 .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
                 .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
                 .authorizeExchange(exchanges -> exchanges
-                        .pathMatchers("/auth/login", "/auth/verification/resend", "/auth/password/reset", "/auth/verify-code", "/auth/refresh", "/webjars/swagger-ui/**", "/v3/api-docs/**").permitAll() // Эти пути не требуют токен
-                        .pathMatchers("/images", "/images/default", "/dictionary", "/regions").permitAll() // Эти пути не требуют токен
-                        .pathMatchers(HttpMethod.GET,"/categories", "/product/*").permitAll() // Эти пути не требуют токен
-                        .pathMatchers(HttpMethod.POST, "/participant", "/products/find", "/products/names/find","/participant","/participants/find").permitAll()
+                        .pathMatchers("/auth/login", "/auth/verification/resend", "/auth/password/reset", "/auth/verify-code", "/auth/refresh").permitAll()
+                        .pathMatchers("/swagger-ui.html", "/swagger-ui/**", "/webjars/**", "/v3/api-docs/**").permitAll()
+                        .pathMatchers("/images", "/images/default", "/images/metadata", "/dictionary", "/regions").permitAll()
+                        .pathMatchers(HttpMethod.GET, "/categories", "/product/*").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/participant", "/products/find", "/products/names/find", "/participants/find").permitAll()
                         .pathMatchers("/admin/actions/**").hasAuthority("SCOPE_ADMIN")
-                        .anyExchange().authenticated() // Все остальные требуют токен
+                        .anyExchange().authenticated()
                 ).oauth2ResourceServer(oauth2 ->
                         oauth2.jwt(jwt -> jwt.jwtDecoder(jwtDecoder).jwtAuthenticationConverter(jwtAuthenticationConverter()))
                 );

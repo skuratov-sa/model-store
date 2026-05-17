@@ -15,12 +15,14 @@ import com.model_store.service.ImageService;
 import com.model_store.service.ParticipantService;
 import com.model_store.service.ReviewService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ReviewServiceImpl implements ReviewService {
@@ -32,6 +34,7 @@ public class ReviewServiceImpl implements ReviewService {
 
     @Override
     public Mono<Long> addReview(ReviewRequestDto dto, Long participantId) {
+        log.info("Adding review: orderId={}, participantId={}", dto.getOrderId(), participantId);
         return reviewRepository.findByOrderIdAndReviewerId(dto.getOrderId(), participantId)
                 .flatMap(i -> Mono.error(ApiErrors.badRequest(ErrorCode.REVIEW_ALREADY_EXIST, "Вы уже оставили отзыв для этого заказа")))
                 .switchIfEmpty(
@@ -68,6 +71,7 @@ public class ReviewServiceImpl implements ReviewService {
 
     @Override
     public Mono<Void> deleteReview(Long reviewId, Long participantId) {
+        log.info("Deleting review: reviewId={}, participantId={}", reviewId, participantId);
         return reviewRepository.findById(reviewId)
                 .filter(review -> review.getReviewerId().equals(participantId))
                 .flatMap(i -> reviewRepository.deleteById(reviewId));

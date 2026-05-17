@@ -20,6 +20,12 @@ services:
       echo \"cron.database_name = 'model_store'\" >> /usr/share/postgresql/postgresql.conf.sample && \
       docker-entrypoint.sh postgres
       "
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d model_store"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
   minio:
     image: quay.io/minio/minio:RELEASE.2022-02-18T01-50-10Z
     volumes:
@@ -33,11 +39,19 @@ services:
       MINIO_ADDRESS: ':9000'
       MINIO_CONSOLE_ADDRESS: ':9001'
     command: minio server /data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
   backend:
-    image: ready555/model_store:v1.19
+    image: ready555/model_store:v1.25
     depends_on:
-      - db
-      - minio
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     ports:
       - "8081:8081"
     environment:
@@ -59,7 +73,7 @@ services:
       SPRING_MAIL_HOST: smtp.mail.ru
       SPRING_MAIL_PORT: 587
       SPRING_MAIL_USERNAME: figurzilla@mail.ru
-      SPRING_MAIL_PASSWORD: password
+      SPRING_MAIL_PASSWORD: gTBGUZNISOsZCG4i4ri6
       SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "true"
       SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
       SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST: "smtp.mail.ru"
@@ -76,14 +90,14 @@ services:
       APP_MAX_PARTICIPANT_IMAGES: 1
       APP_MAX_PRODUCT_IMAGES: 4
       APP_PRODUCT-EXPIRATION-DAYS: 30
-      APP_PRIVATE_KEY_PATH: /backend/keys/private.pk8
-      APP_PUBLIC_KEY_PATH: /backend/keys/public.key
+      APP_PRIVATE_KEY_PATH: /backend/keys/private_key.pem
+      APP_PUBLIC_KEY_PATH: /backend/keys/public_key.pem
       APP_EMAIL_FROM: figurzilla@mail.ru
-networks:
-  app-network:
-    driver: bridge
+      APP_CORS-ALLOW-ALL: "false"
+      APP_ALLOWED-ORIGINS: "https://your-frontend.com" # CORS: разрешённые origins для продакшна
+      # Базовый URL CDN для формирования ссылок на изображения в /images/metadata.
+      # Локально указывай на MinIO (http://localhost:9000), в проде — реальный CDN-домен.
+      APP_CDN-BASE-URL: http://localhost:9000
 
 volumes:
   db_data:
-  minio_data:
-    driver: local

@@ -8,7 +8,8 @@ import org.mapstruct.Mapper;
 
 @Mapper(componentModel = "spring")
 public interface ImageMapper {
-    Image toImage(Long entityId, ImageTag tag, String filename, ImageStatus status);
+    Image toImage(Long entityId, ImageTag tag, String filename, ImageStatus status,
+                  String contentType, Integer width, Integer height);
 
     ImageResponse toImageResponseDto(String fileName, String contentType, byte[] imageData);
 }

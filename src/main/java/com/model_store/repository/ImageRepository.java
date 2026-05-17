@@ -34,9 +34,6 @@ public interface ImageRepository extends ReactiveCrudRepository<Image, Long> {
             """)
     Flux<Long> findActualIdsByEntity(Long entityId, ImageTag tag);
 
-    @Query("SELECT i.status FROM Image i WHERE i.id = :id AND i.status = 'TEMPORARY'")
-    Mono<Boolean> isTemporaryStatusById(Long id);
-
     @Query("SELECT * FROM image WHERE status in ('DELETE', 'TEMPORARY') AND created_at <= NOW() - INTERVAL '24 HOURS'")
     Flux<Image> findImagesToDelete();
 }

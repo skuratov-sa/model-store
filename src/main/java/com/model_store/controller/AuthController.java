@@ -44,31 +44,29 @@ public class AuthController {
     private final EmailService emailService;
 
     @PostMapping("/login")
-    public Mono<ResponseEntity<Map<String, String>>> login(@RequestBody Mono<LoginRequest> request) {
-        return request.flatMap(req ->
-                authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(req.getMail(), req.getPassword()))
-                        .flatMap(auth -> userDetailsService.findByUsername(req.getMail()))
-                        .flatMap(userDetails -> {
-                            CustomUserDetails customUserDetails = (CustomUserDetails) userDetails;
-                            return switch (customUserDetails.getStatus()) {
-                                case ACTIVE -> Mono.just(ResponseEntity.ok(getTokensResponse(customUserDetails)));
-                                case WAITING_VERIFY -> Mono.error(
-                                        ApiErrors.authException(WAITING_VERIFY, "Необходимо подтвердить почту")
-                                );
-                                case BLOCKED -> Mono.error(
-                                        ApiErrors.authException(ACCOUNT_BLOCKED, "Пользователь заблокирован")
-                                );
-                                case DELETED -> Mono.error(
-                                        ApiErrors.authException(ACCOUNT_DELETED, "Учетная запись была удалена")
-                                );
-                            };
-                        })
-        );
+    public Mono<ResponseEntity<Map<String, String>>> login(@RequestBody LoginRequest request) {
+        return authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(request.getMail(), request.getPassword()))
+                .flatMap(auth -> userDetailsService.findByUsername(request.getMail()))
+                .flatMap(userDetails -> {
+                    CustomUserDetails customUserDetails = (CustomUserDetails) userDetails;
+                    return switch (customUserDetails.getStatus()) {
+                        case ACTIVE -> Mono.just(ResponseEntity.ok(getTokensResponse(customUserDetails)));
+                        case WAITING_VERIFY -> Mono.error(
+                                ApiErrors.authException(WAITING_VERIFY, "Необходимо подтвердить почту")
+                        );
+                        case BLOCKED -> Mono.error(
+                                ApiErrors.authException(ACCOUNT_BLOCKED, "Пользователь заблокирован")
+                        );
+                        case DELETED -> Mono.error(
+                                ApiErrors.authException(ACCOUNT_DELETED, "Учетная запись была удалена")
+                        );
+                    };
+                });
     }
 
     @PostMapping("/verification/resend")
     public Mono<Long> resend(@RequestParam String email) {
-       return emailService.sendVerificationCode(email);
+        return emailService.sendVerificationCode(email);
     }
 
     @PostMapping("/password/reset")

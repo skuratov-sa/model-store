@@ -8,6 +8,7 @@ import com.model_store.model.constant.SortByType;
 import com.model_store.model.page.Pageable;
 import com.model_store.model.util.DateRange;
 import com.model_store.model.util.PriceRange;
+import org.springframework.data.r2dbc.repository.Modifying;
 import org.springframework.data.r2dbc.repository.Query;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 import org.springframework.stereotype.Repository;
@@ -40,6 +41,11 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 (:dateTimeTo IS NULL OR p.created_at <= :dateTimeTo) AND
                 (:productStatuses IS NULL OR p.status::product_status = ANY(:productStatuses::product_status[])) AND
                 (:categoryId IS NULL OR c.id = :categoryId) AND
+                (:includeAdult IS TRUE OR NOT EXISTS (
+                    SELECT 1 FROM product_category pc2
+                    JOIN category c2 ON pc2.category_id = c2.id
+                    WHERE pc2.product_id = p.id AND c2.slug = 'nsfw_adult'
+                )) AND
                 (
                     -- Условие пагинации для сортировки по дате
                     (:sortBy = 'DATE_DESC' AND (:lastCreatedAt IS NULL OR (p.created_at < :lastCreatedAt OR (p.created_at = :lastCreatedAt AND p.id < :lastId)))) OR
@@ -74,6 +80,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
             Float lastPrice,
             Long lastId,
             SortByType sortBy,
+            Boolean includeAdult,
             Integer limit
     );
 
@@ -116,6 +123,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastPrice).orElse(null),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastId).orElse(0L),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
+                searchParams.getIncludeAdult(),
                 limit
         );
     }
@@ -139,6 +147,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastPrice).orElse(null),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastId).orElse(0L),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
+                true,
                 limit
         );
     }
@@ -152,9 +161,10 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
     @Query("SELECT * FROM product WHERE status in ('ACTIVE', 'BLOCKED') AND id = :productId")
     Mono<Product> findProductForExtend(Long productId);
 
-    @Query("SELECT * FROM product WHERE status = 'ACTIVE' AND id = :productId")
-    Mono<Product> findFullProductInfo(Long productId);
-
     @Query("SELECT id FROM product WHERE status = 'ACTIVE' AND expiration_date < CURRENT_TIMESTAMP")
     Flux<Long> findExpiredActiveProductIds();
+
+    @Modifying
+    @Query("UPDATE product SET count = count - :amount WHERE id = :id AND count >= :amount")
+    Mono<Integer> decrementCountIfSufficient(Long id, Integer amount);
 }

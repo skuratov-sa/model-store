@@ -22,4 +22,7 @@ public class Image {
     private ImageTag tag;
     private ImageStatus status;
     private Long entityId;
+    private String contentType;
+    private Integer width;
+    private Integer height;
 }

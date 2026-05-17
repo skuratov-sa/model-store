@@ -3,14 +3,37 @@ spring:
     url: r2dbc:postgresql://localhost:5432/testdb
     username: test
     password: test
-
   flyway:
     enabled: true
     locations: classpath:/db/migration
+  mail:
+    host: localhost
+    port: 3025
+    username: test@test.com
+    password: test
+
+app:
+  private-key-path: keys/test_private_key.pem
+  public-key-path: keys/test_public_key.pem
+  product-expiration-days: 30
+  max-participant-images: 5
+  max-product-images: 10
+  allowed-origins:
+    - "http://localhost:3000"
+  cdn-base-url: http://localhost:9000
+
 s3:
   enabled: false
+  access-key: test
+  secret-key: test
+  endpoint: http://localhost:9000
+  region: us-east-1
+  participant-bucket-name: participant-bucket
+  product-bucket-name: product-bucket
+  system-bucket-name: system-bucket
+  order-bucket-name: order-bucket
 
 logging:
   level:
-    org.flywaydb: DEBUG
-    io.r2dbc.postgresql: DEBUG
+    org.flywaydb: WARN
+    io.r2dbc.postgresql: WARN

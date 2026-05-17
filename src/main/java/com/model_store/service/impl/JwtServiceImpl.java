@@ -17,6 +17,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.security.KeyFactory;
 import java.security.PrivateKey;
@@ -55,8 +56,8 @@ public class JwtServiceImpl implements JwtService {
         final Date accessExpiration = Date.from(accessExpirationInstant);
 
         return Jwts.builder()
-                .setExpiration(accessExpiration)
-                .claim("type", "verify")  // Добавляем тип токена
+                .expiration(accessExpiration)
+                .claim("type", "verify")
                 .claim("id", participantId)
                 .signWith(privateKey)
                 .compact();
@@ -64,14 +65,15 @@ public class JwtServiceImpl implements JwtService {
 
     @Override
     public String generateAccessToken(@NonNull CustomUserDetails userDetails, @NonNull TemporalAmount lifetime) {
+        log.debug("Generating access token: participantId={}, lifetime={}", userDetails.getId(), lifetime);
         final LocalDateTime now = LocalDateTime.now();
         final Instant accessExpirationInstant = now.plus(lifetime).atZone(ZoneId.systemDefault()).toInstant();
         final Date accessExpiration = Date.from(accessExpirationInstant);
 
         return Jwts.builder()
-                .setSubject(userDetails.getUsername())
-                .setExpiration(accessExpiration)
-                .claim("type", "access")  // Добавляем тип токена
+                .subject(userDetails.getUsername())
+                .expiration(accessExpiration)
+                .claim("type", "access")
                 .claim("id", userDetails.getId())
                 .claim("login", userDetails.getLogin())
                 .claim("email", userDetails.getEmail())
@@ -84,54 +86,60 @@ public class JwtServiceImpl implements JwtService {
 
     @Override
     public String generateRefreshToken(@NonNull CustomUserDetails userDetails) {
+        return generateRefreshToken(userDetails, Duration.ofDays(30));
+    }
+
+    @Override
+    public String generateRefreshToken(@NonNull CustomUserDetails userDetails, @NonNull TemporalAmount lifetime) {
         final LocalDateTime now = LocalDateTime.now();
-        final Instant refreshExpirationInstant = now.plusDays(30).atZone(ZoneId.systemDefault()).toInstant();
+        final Instant refreshExpirationInstant = now.plus(lifetime).atZone(ZoneId.systemDefault()).toInstant();
         final Date refreshExpiration = Date.from(refreshExpirationInstant);
         return Jwts.builder()
-                .setSubject(userDetails.getEmail())
-                .setExpiration(refreshExpiration)
-                .claim("type", "refresh")  // Добавляем тип токена
+                .subject(userDetails.getEmail())
+                .expiration(refreshExpiration)
+                .claim("type", "refresh")
                 .signWith(privateKey)
                 .compact();
     }
 
     @Override
     public Mono<String> refreshAccessToken(@NonNull String refreshToken) {
-        try {
-            if (refreshToken.startsWith("Bearer ")) {
-                refreshToken = refreshToken.substring(7);  // Убираем "Bearer " (7 символов)
-            }
+        final String token = refreshToken.startsWith("Bearer ") ? refreshToken.substring(7) : refreshToken;
 
-            JwtParser jwtParser = Jwts.parserBuilder()
-                    .setSigningKey(publicKey)
-                    .build();
+        return Mono.fromCallable(() -> {
+                    JwtParser jwtParser = Jwts.parser().verifyWith(publicKey).build();
+                    return jwtParser.parseSignedClaims(token).getPayload();
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .onErrorMap(JwtException.class, e -> {
+                    log.warn("Invalid refresh token: {}", e.getMessage());
+                    return ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Недействительный токен для обновления");
+                })
+                .onErrorMap(IllegalArgumentException.class, e -> {
+                    log.warn("Malformed refresh token: {}", e.getMessage());
+                    return ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Недействительный токен для обновления");
+                })
+                .flatMap(claims -> {
+                    String tokenType = claims.get("type", String.class);
+                    if (tokenType == null || !tokenType.equals("refresh")) {
+                        log.warn("Token refresh rejected: wrong type={}", tokenType);
+                        return Mono.error(ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Неверный тип токена"));
+                    }
+                    if (claims.getExpiration().before(new Date())) {
+                        log.warn("Token refresh rejected: expired");
+                        return Mono.error(ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Токен просрочен"));
+                    }
 
-            Jws<Claims> claimsJws = jwtParser.parseClaimsJws(refreshToken);
-            Claims claims = claimsJws.getBody();
+                    String username = claims.getSubject();
+                    boolean isAgent = "admin".equals(claims.get("issuedBy", String.class));
+                    log.debug("Refreshing token: username={}, isAgent={}", username, isAgent);
 
-            // Проверка на "type" claim
-            String tokenType = claims.get("type", String.class);
-            if (tokenType == null || !tokenType.equals("refresh")) {
-                return Mono.error(ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Неверный тип токена"));
-            }
-
-            // Проверка, что токен не просрочен
-            Date expiration = claims.getExpiration();
-            if (expiration.before(new Date())) {
-                return Mono.error(ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Токен просрочен"));
-            }
-
-            String username = claims.getSubject();
-
-            // Если refresh токен валиден, генерируем новый access токен
-            return userDetailsService.findByUsername(username)
-                    .map(userDetails -> generateAccessToken((CustomUserDetails) userDetails, Duration.ofMinutes(30)))
-                    .switchIfEmpty(Mono.error(ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Пользователь не найден")));
-
-        } catch (JwtException | IllegalArgumentException e) {
-            log.error(e.getMessage());
-            return Mono.error(ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Недействительный токен для обновления"));
-        }
+                    return userDetailsService.findByUsername(username)
+                            .map(userDetails -> isAgent
+                                    ? generateAgentToken((CustomUserDetails) userDetails, Duration.ofHours(24))
+                                    : generateAccessToken((CustomUserDetails) userDetails, Duration.ofMinutes(30)))
+                            .switchIfEmpty(Mono.error(ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Пользователь не найден")));
+                });
     }
 
     @Override
@@ -147,16 +155,24 @@ public class JwtServiceImpl implements JwtService {
     }
 
     @Override
+    public boolean isAgentToken(@NonNull String accessToken) {
+        Claims claims = parseAccessToken(accessToken);
+        return "agent_access".equals(claims.get("type", String.class))
+                && "admin".equals(claims.get("issuedBy", String.class));
+    }
+
+    @Override
     public String generateAgentToken(@NonNull CustomUserDetails userDetails, @NonNull TemporalAmount lifetime) {
+        log.info("Generating agent token: participantId={}, lifetime={}", userDetails.getId(), lifetime);
         final LocalDateTime now = LocalDateTime.now();
         final Instant exp = now.plus(lifetime).atZone(ZoneId.systemDefault()).toInstant();
 
         return Jwts.builder()
-                .setSubject(userDetails.getUsername())
-                .setIssuedAt(Date.from(now.atZone(ZoneId.systemDefault()).toInstant()))
-                .setExpiration(Date.from(exp))
-                .claim("type", "agent_access")          // отличаем от обычного access
-                .claim("issuedBy", "admin")             // метка
+                .subject(userDetails.getUsername())
+                .issuedAt(Date.from(now.atZone(ZoneId.systemDefault()).toInstant()))
+                .expiration(Date.from(exp))
+                .claim("type", "agent_access")
+                .claim("issuedBy", "admin")
                 .claim("id", userDetails.getId())
                 .claim("login", userDetails.getLogin())
                 .claim("email", userDetails.getEmail())
@@ -167,24 +183,37 @@ public class JwtServiceImpl implements JwtService {
                 .compact();
     }
 
+    @Override
+    public String generateAgentRefreshToken(@NonNull CustomUserDetails userDetails, @NonNull TemporalAmount lifetime) {
+        final LocalDateTime now = LocalDateTime.now();
+        final Instant exp = now.plus(lifetime).atZone(ZoneId.systemDefault()).toInstant();
+        return Jwts.builder()
+                .subject(userDetails.getEmail())
+                .expiration(Date.from(exp))
+                .claim("type", "refresh")
+                .claim("issuedBy", "admin")
+                .signWith(privateKey)
+                .compact();
+    }
+
 
 
     @Override
     public Claims parseAccessToken(@NonNull String token) {
         try {
             if (token.startsWith("Bearer ")) {
-                token = token.substring(7);  // Убираем "Bearer " (7 символов)
+                token = token.substring(7);
             }
 
-            JwtParser jwtParser = Jwts.parserBuilder()
-                    .setSigningKey(publicKey) // Устанавливаем публичный ключ для проверки подписи
+            JwtParser jwtParser = Jwts.parser()
+                    .verifyWith(publicKey)
                     .build();
 
-            Jws<Claims> claimsJws = jwtParser.parseClaimsJws(token);
-            return claimsJws.getBody();
+            Jws<Claims> claimsJws = jwtParser.parseSignedClaims(token);
+            return claimsJws.getPayload();
         } catch (JwtException | IllegalArgumentException e) {
+            log.warn("Token validation failed: {}", e.getMessage());
             throw ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED, "Token недействителен или срок его действия истек");
-
         }
     }
 

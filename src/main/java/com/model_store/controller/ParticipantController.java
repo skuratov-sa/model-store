@@ -11,6 +11,7 @@ import com.model_store.service.EmailService;
 import com.model_store.service.JwtService;
 import com.model_store.service.ParticipantService;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,7 +46,7 @@ public class ParticipantController {
 
     @Operation(summary = "Создать пользователя")
     @PostMapping(path = "/participant")
-    public Mono<Long> createParticipant(@RequestBody CreateParticipantRequest request) {
+    public Mono<Long> createParticipant(@Valid @RequestBody CreateParticipantRequest request) {
         return participantService.createParticipant(request)
                 .flatMap(participantId -> emailService.sendVerificationWithoutLimitCode(request.getMail()));
     }

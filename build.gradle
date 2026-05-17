@@ -1,10 +1,19 @@
+buildscript {
+    repositories { mavenCentral() }
+    dependencies {
+        classpath 'org.postgresql:postgresql:42.7.5'
+        classpath 'org.flywaydb:flyway-database-postgresql:10.20.1'
+    }
+}
+
 plugins {
     id 'java'
     id 'application'
-    id 'org.flywaydb.flyway' version '9.20.0'
-    id 'org.springframework.boot' version '3.2.4'
-    id 'io.spring.dependency-management' version '1.1.4'
+    id 'org.flywaydb.flyway' version '10.21.0'
+    id 'org.springframework.boot' version '3.4.5'
+    id 'io.spring.dependency-management' version '1.1.7'
 }
+
 repositories {
     mavenCentral()
 }
@@ -23,7 +32,6 @@ configurations {
     }
 }
 
-
 flyway {
     url = 'jdbc:postgresql://localhost:5432/model_store'
     user = 'root'
@@ -33,52 +41,66 @@ flyway {
     cleanDisabled = false
 }
 
-
 dependencies {
-    annotationProcessor 'org.projectlombok:lombok:1.18.32'
 
-    implementation 'org.springframework.boot:spring-boot-starter-webflux:3.4.0'
-    implementation 'org.springdoc:springdoc-openapi-starter-webflux-ui:2.6.0'
+    // Lombok
+    annotationProcessor 'org.projectlombok:lombok:1.18.38'
 
-    implementation 'org.springframework.boot:spring-boot-starter-mail'
+    // Web
+    implementation 'org.springframework.boot:spring-boot-starter-webflux:3.4.5'
+    implementation 'org.springdoc:springdoc-openapi-starter-webflux-ui:2.8.6'
 
-    //DB
-    implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc:3.4.0'
+    // Mail
+    implementation 'org.springframework.boot:spring-boot-starter-mail:3.4.5'
+
+    // DB
+    implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc:3.4.5'
     implementation 'org.postgresql:r2dbc-postgresql:1.0.7.RELEASE'
-    implementation 'org.postgresql:postgresql:42.7.4'
+    runtimeOnly 'org.postgresql:postgresql:42.7.5'
 
-    implementation 'io.minio:minio:8.5.14'
+    // Flyway (10.x требует отдельный модуль для PostgreSQL)
+    implementation 'org.flywaydb:flyway-core:10.20.1'
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql:10.20.1'
+
+
+    // JetBrains annotations (был транзитивным через minio/aws-sdk-v2, теперь явный)
+    implementation 'org.jetbrains:annotations:26.0.1'
+
+    // S3 (AWS SDK v1 — используется в коде, com.amazonaws импорты)
     implementation 'org.springframework.cloud:spring-cloud-starter-aws:2.2.6.RELEASE'
-    implementation 'software.amazon.awssdk:s3:2.30.2'
-    implementation 'org.springframework.boot:spring-boot-starter-json'
 
-    implementation 'org.springframework.boot:spring-boot-starter-validation:2.7.3'
+    // Validation
+    implementation 'org.springframework.boot:spring-boot-starter-validation:3.4.5'
 
-    //Security
-    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server:3.4.2'
-    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
-    implementation 'io.jsonwebtoken:jjwt-impl:0.11.5'
-    implementation 'io.jsonwebtoken:jjwt-jackson:0.11.5'
-    implementation 'org.bouncycastle:bcprov-jdk15on:1.70'
-    implementation 'org.bouncycastle:bcpkix-jdk15on:1.70'
+    // Security
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server:3.4.5'
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 
-    implementation 'org.mapstruct:mapstruct:1.5.5.Final'
-    annotationProcessor 'org.mapstruct:mapstruct-processor:1.5.5.Final'
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'io.projectreactor:reactor-test'
-    implementation("net.logstash.logback:logstash-logback-encoder:8.1")
-    implementation 'org.springframework.boot:spring-boot-starter-aop'
+    // MapStruct
+    implementation 'org.mapstruct:mapstruct:1.6.3'
+    annotationProcessor 'org.mapstruct:mapstruct-processor:1.6.3'
 
+    // Logstash JSON encoder — используется в logback-spring.xml
+    implementation 'net.logstash.logback:logstash-logback-encoder:8.1'
 
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // MDC propagation across Reactor thread switches
+    implementation 'io.micrometer:context-propagation'
 
-    // Testcontainers
-    testImplementation 'org.testcontainers:junit-jupiter:1.19.7'
-    testImplementation 'org.testcontainers:postgresql:1.19.7'
+    // AOP
+    implementation 'org.springframework.boot:spring-boot-starter-aop:3.4.5'
 
-    // JUnit 5
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
+    // Image resizing
+    implementation 'org.imgscalr:imgscalr-lib:4.2'
 
-    // Reactor Test
-    testImplementation 'io.projectreactor:reactor-test'
+    // Test
+    testImplementation 'org.springframework.boot:spring-boot-starter-test:3.4.5'
+    testImplementation 'io.projectreactor:reactor-test:3.7.5'
+    testImplementation 'io.zonky.test:embedded-postgres:2.0.7'
+}
+
+test {
+    useJUnitPlatform()
+    jvmArgs '-Dnet.bytebuddy.experimental=true'
 }
