@@ -1,0 +1,2 @@
+ALTER TABLE image DROP COLUMN IF EXISTS variant;
+DROP TYPE IF EXISTS image_variant CASCADE;

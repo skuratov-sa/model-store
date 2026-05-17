@@ -1,0 +1,2 @@
+CREATE TYPE image_variant AS ENUM ('ORIGINAL', 'MEDIUM', 'THUMBNAIL');
+ALTER TABLE image ADD COLUMN variant image_variant NOT NULL DEFAULT 'ORIGINAL';
