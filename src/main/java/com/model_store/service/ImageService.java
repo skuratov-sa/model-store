@@ -33,6 +33,8 @@ public interface ImageService {
 
     Mono<Void> deleteById(Long id);
 
+    Mono<Void> deleteAllByIds(List<Long> ids);
+
     Mono<Void> deleteImages(List<Long> imageIds, ImageTag tag, Long participantId);
 
     Mono<ImageResponse> findImageDefault();

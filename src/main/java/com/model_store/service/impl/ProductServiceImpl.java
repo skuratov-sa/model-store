@@ -84,7 +84,6 @@ public class ProductServiceImpl implements ProductService {
         this.participantService = participantService;
     }
 
-    @Transactional
     public Mono<GetProductResponse> getProductById(Long productId) {
         Mono<List<Long>> imageFindMono = imageService.findActualImages(productId, ImageTag.PRODUCT).collectList().defaultIfEmpty(List.of());
         Mono<List<ReviewResponseDto>> findReviewsMono = reviewService.findByProductId(productId).collectList().defaultIfEmpty(List.of());
@@ -224,10 +223,9 @@ public class ProductServiceImpl implements ProductService {
 
         return productRepository.save(product)
                 .flatMap(savedProduct ->
-                        Mono.when(
-                                updateImagesStatus(request.getImageIds(), savedProduct.getId()),
-                                addLinkProductAndCategories(request.getCategoryIds(), savedProduct.getId())
-                        ).thenReturn(savedProduct.getId())
+                        updateImagesStatus(request.getImageIds(), savedProduct.getId())
+                                .then(addLinkProductAndCategories(request.getCategoryIds(), savedProduct.getId()))
+                                .thenReturn(savedProduct.getId())
                 );
     }
 
@@ -251,10 +249,9 @@ public class ProductServiceImpl implements ProductService {
 
         return productRepository.save(product)
                 .flatMap(savedProduct ->
-                        Mono.when(
-                                updateImagesStatus(request.getImageIds(), savedProduct.getId()),
-                                addLinkProductAndCategories(request.getCategoryIds(), savedProduct.getId())
-                        ).thenReturn(savedProduct.getId())
+                        updateImagesStatus(request.getImageIds(), savedProduct.getId())
+                                .then(addLinkProductAndCategories(request.getCategoryIds(), savedProduct.getId()))
+                                .thenReturn(savedProduct.getId())
                 );
     }
 

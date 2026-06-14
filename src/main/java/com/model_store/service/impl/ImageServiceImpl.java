@@ -22,7 +22,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -103,21 +102,14 @@ public class ImageServiceImpl implements ImageService {
     }
 
     @Override
-    @Transactional
     public Mono<Void> updateImagesStatus(List<Long> imageIds, Long entityId, ImageStatus status, ImageTag tag) {
-        return Flux.fromIterable(imageIds)
-                .flatMap(imageRepository::findById)
-                .filter(image -> (isNull(tag) || image.getTag().equals(tag)) && (isNull(image.getEntityId()) || image.getEntityId().equals(entityId)))
-                .switchIfEmpty(Mono.error(
-                        ApiErrors.notFound(ErrorCode.IMAGE_NOT_FOUND, "Не удалось найти картинку, либо нехватает прав для ее обновления.")
-                ))
-                .flatMap(image -> {
-                    image.setStatus(status);
-                    if (!isNull(entityId)) {
-                        image.setEntityId(entityId);
-                    }
-                    return imageRepository.save(image);
-                }).then();
+        if (imageIds == null || imageIds.isEmpty()) return Mono.empty();
+        return imageRepository.updateStatusByIds(
+                imageIds.toArray(Long[]::new),
+                entityId,
+                status.name(),
+                tag != null ? tag.name() : null
+        );
     }
 
     @Override
@@ -182,6 +174,11 @@ public class ImageServiceImpl implements ImageService {
     @Override
     public Mono<Void> deleteById(Long id) {
         return imageRepository.deleteById(id);
+    }
+
+    @Override
+    public Mono<Void> deleteAllByIds(List<Long> ids) {
+        return imageRepository.deleteAllByIds(ids.toArray(Long[]::new));
     }
 
     @Override

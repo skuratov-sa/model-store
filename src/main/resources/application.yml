@@ -15,9 +15,10 @@ spring:
     pool:
       enabled: true
       initial-size: 5
-      max-size: 20
+      max-size: 40
       max-idle-time: 20m
       max-life-time: 30m
+      max-acquire-time: 10s
       validation-query: "SELECT 1"
       validation-depth: remote
   flyway:

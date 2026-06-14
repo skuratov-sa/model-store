@@ -36,4 +36,15 @@ public interface ImageRepository extends ReactiveCrudRepository<Image, Long> {
 
     @Query("SELECT * FROM image WHERE status in ('DELETE', 'TEMPORARY') AND created_at <= NOW() - INTERVAL '24 HOURS'")
     Flux<Image> findImagesToDelete();
+
+    @Modifying
+    @Query("UPDATE image SET status = :status, entity_id = COALESCE(:entityId, entity_id) " +
+           "WHERE id = ANY(:ids) " +
+           "AND (:tag IS NULL OR tag::text = :tag) " +
+           "AND (entity_id IS NULL OR entity_id = :entityId)")
+    Mono<Void> updateStatusByIds(Long[] ids, Long entityId, String status, String tag);
+
+    @Modifying
+    @Query("DELETE FROM image WHERE id = ANY(:ids)")
+    Mono<Void> deleteAllByIds(Long[] ids);
 }

@@ -30,7 +30,6 @@ public interface ProductService {
 
     Flux<ProductDto> findMyByParams(FindMyProductRequest searchParams, Long participantId);
 
-
     Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId, ParticipantRole role);
 
     Mono<Long> createAgentProduct(CreateAgentProductRequest request, Long participantId);

@@ -60,7 +60,7 @@ public class CategoryServiceIml implements CategoryService {
     public Mono<Void> addLinkProductAndCategories(List<Long> categoryIds, Long productId) {
         return Flux.fromIterable(categoryIds)
                 .map(categoryId -> new ProductCategory(productId, categoryId))
-                .flatMap(productCategoryRepository::save)
+                .concatMap(productCategoryRepository::save)
                 .then();
     }
 }
