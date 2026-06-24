@@ -88,7 +88,7 @@ public class ProductServiceImpl implements ProductService {
         Mono<List<Long>> imageFindMono = imageService.findActualImages(productId, ImageTag.PRODUCT).collectList().defaultIfEmpty(List.of());
         Mono<List<ReviewResponseDto>> findReviewsMono = reviewService.findByProductId(productId).collectList().defaultIfEmpty(List.of());
 
-        Mono<Product> productFindMono = productRepository.findActualProduct(productId);
+        Mono<Product> productFindMono = productRepository.findActualProduct(productId).cache();
         Mono<Long> participantIdMono = productFindMono.map(Product::getParticipantId);
         Mono<String> loginMono = participantIdMono.flatMap(participantService::findLoginById).defaultIfEmpty("unknown");
         Mono<SellerRating> ratingMono = participantIdMono.flatMap(sellerRatingService::findBySellarId).defaultIfEmpty(new SellerRating(0L,0f, 0));
@@ -129,9 +129,9 @@ public class ProductServiceImpl implements ProductService {
     public Flux<ProductDto> findByParams(FindProductRequest searchParams, Long currentParticipantId) {
         if (Boolean.TRUE.equals(searchParams.getIncludeAdult())) {
             return checkAdultAccess(currentParticipantId)
-                    .thenMany(productRepository.findByParams(searchParams, null).flatMapSequential(this::buildProductDto, 10));
+                    .thenMany(productRepository.findByParams(searchParams, null).concatMap(this::buildProductDto));
         }
-        return productRepository.findByParams(searchParams, null).flatMapSequential(this::buildProductDto, 10);
+        return productRepository.findByParams(searchParams, null).concatMap(this::buildProductDto);
     }
 
     private Mono<Void> checkAdultAccess(Long participantId) {
@@ -151,7 +151,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public Flux<ProductDto> findMyByParams(FindMyProductRequest searchParams, Long participantId) {
-        return productRepository.findMyByParams(searchParams, participantId).flatMapSequential(this::buildProductDto, 10);
+        return productRepository.findMyByParams(searchParams, participantId).concatMap(this::buildProductDto);
     }
 
     @Override

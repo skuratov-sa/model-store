@@ -51,9 +51,10 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     public Flux<ReviewResponseDto> getReviewsForSeller(Long sellerId) {
         return reviewRepository.findBySellerIdOrderByCreatedAtDesc(sellerId)
-                .flatMap(review -> participantService.findFullNameById(review.getReviewerId())
-                        .zipWith(imageService.findMainImage(review.getReviewerId(), ImageTag.PARTICIPANT))
-                        .map(tuple2 -> reviewMapper.toReviewResponseDto(review, tuple2.getT1(), tuple2.getT2()))
+                .concatMap(review -> participantService.findFullNameById(review.getReviewerId())
+                        .zipWith(imageService.findMainImage(review.getReviewerId(), ImageTag.PARTICIPANT)
+                                .defaultIfEmpty(-1L))
+                        .map(tuple2 -> reviewMapper.toReviewResponseDto(review, tuple2.getT1(), tuple2.getT2() == -1L ? null : tuple2.getT2()))
                 );
     }
 

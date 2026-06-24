@@ -226,11 +226,11 @@ public class OrderServiceImpl implements OrderService {
 
     private Flux<FindOrderResponse> enrichOrders(Flux<FindOrderResponse> source) {
         return source
-                .flatMap(this::findImages)
-                .flatMap(this::findOrderByHistory)
-                .flatMap(this::findOrderByUser)
-                .flatMap(this::findOrderByProduct)
-                .flatMap(this::findOrderByTransfer);
+                .concatMap(this::findImages)
+                .concatMap(this::findOrderByHistory)
+                .concatMap(this::findOrderByUser)
+                .concatMap(this::findOrderByProduct)
+                .concatMap(this::findOrderByTransfer);
     }
 
     @Override

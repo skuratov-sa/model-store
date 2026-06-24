@@ -93,7 +93,7 @@ public class ParticipantServiceImpl implements ParticipantService {
 
     @Override
     public Mono<FindParticipantByLoginDto> findByLogin(String login) {
-        Mono<Participant> participantMono = participantRepository.findByLogin(login);
+        Mono<Participant> participantMono = participantRepository.findByLogin(login).cache();
         Mono<Long> imageMono = participantMono.flatMap(participant -> imageService.findMainImage(participant.getId(), ImageTag.PARTICIPANT));
         return Mono.zip(participantMono, imageMono.defaultIfEmpty(0L))
                 .map(tuple2 ->
@@ -103,7 +103,7 @@ public class ParticipantServiceImpl implements ParticipantService {
 
     @Override
     public Mono<FindParticipantByLoginDto> findByMail(String mail) {
-        Mono<Participant> participantMono = participantRepository.findByMail(mail);
+        Mono<Participant> participantMono = participantRepository.findByMail(mail).cache();
         Mono<Long> imageMono = participantMono.flatMap(participant -> imageService.findMainImage(participant.getId(), ImageTag.PARTICIPANT));
         return Mono.zip(participantMono, imageMono.defaultIfEmpty(0L))
                 .map(tuple2 ->
@@ -123,7 +123,7 @@ public class ParticipantServiceImpl implements ParticipantService {
 
     public Flux<FindParticipantsDto> findByParams(FindParticipantRequest searchParams) {
         return participantRepository.findByParams(searchParams)
-                .flatMap(participant -> {
+                .concatMap(participant -> {
                     // Сначала создаем базовое DTO без картинки
                     FindParticipantsDto baseDto = participantMapper.toFindParticipantDto(participant, null);
                     baseDto.setExperience(getExpensive(participant.getCreatedAt())); // Рассчитываем стаж
