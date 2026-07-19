@@ -48,28 +48,37 @@ public class ImageServiceImpl implements ImageService {
 
     @Override
     public Flux<ImageResponse> findImagesByIds(List<Long> imageIds) {
-        return Flux.fromIterable(imageIds)
-                .flatMap(imageRepository::findById)
-                .filter(image -> image.getStatus() == ImageStatus.ACTIVE && image.getTag() == ImageTag.ORDER)
+        if (imageIds == null || imageIds.isEmpty()) return Flux.empty();
+        return imageRepository.findActiveByIds(imageIds.toArray(Long[]::new))
+                .filter(image -> image.getTag() == ImageTag.ORDER)
+                .collectMap(Image::getId)
+                .flatMapMany(imagesById -> Flux.fromIterable(imageIds)
+                        .concatMap(id -> Mono.justOrEmpty(imagesById.get(id))))
                 .flatMap(image -> s3Service.getFile(image.getTag(), "original/" + image.getFilename()), 10)
                 .onErrorResume(e -> findImageDefault());
     }
 
     @Override
     public Flux<ImageMetadataDto> findImageMetadataByIds(List<Long> imageIds) {
-        return Flux.fromIterable(imageIds)
-                .flatMap(imageRepository::findById)
-                .filter(image -> image.getStatus() == ImageStatus.ACTIVE)
+        if (imageIds == null || imageIds.isEmpty()) return Flux.empty();
+        return imageRepository.findActiveByIds(imageIds.toArray(Long[]::new))
                 .filter(image -> image.getTag() != ImageTag.ORDER)
-                .map(image -> new ImageMetadataDto(
-                        image.getId(),
-                        buildCdnUrl(image, "original"),
-                        buildCdnUrl(image, "medium"),
-                        buildCdnUrl(image, "thumbnail"),
-                        image.getWidth(),
-                        image.getHeight(),
-                        image.getContentType()
-                ));
+                .collectMap(Image::getId)
+                .flatMapMany(imagesById -> Flux.fromIterable(imageIds)
+                        .concatMap(id -> Mono.justOrEmpty(imagesById.get(id))))
+                .map(this::toImageMetadataDto);
+    }
+
+    private ImageMetadataDto toImageMetadataDto(Image image) {
+        return new ImageMetadataDto(
+                image.getId(),
+                buildCdnUrl(image, "original"),
+                buildCdnUrl(image, "medium"),
+                buildCdnUrl(image, "thumbnail"),
+                image.getWidth(),
+                image.getHeight(),
+                image.getContentType()
+        );
     }
 
     private String buildCdnUrl(Image image, String variant) {

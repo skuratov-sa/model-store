@@ -18,12 +18,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import reactor.core.publisher.Mono;
+import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -69,7 +70,7 @@ class ImageServiceMetadataUnitTest {
                 .height(800)
                 .build();
 
-        when(imageRepository.findById(1L)).thenReturn(Mono.just(image));
+        when(imageRepository.findActiveByIds(any())).thenReturn(Flux.just(image));
 
         StepVerifier.create(imageService.findImageMetadataByIds(List.of(1L)))
                 .assertNext(dto -> {
@@ -86,7 +87,7 @@ class ImageServiceMetadataUnitTest {
 
     @Test
     void findImageMetadataByIds_imageNotFound_returnsEmptyFlux() {
-        when(imageRepository.findById(999L)).thenReturn(Mono.empty());
+        when(imageRepository.findActiveByIds(any())).thenReturn(Flux.empty());
 
         StepVerifier.create(imageService.findImageMetadataByIds(List.of(999L)))
                 .verifyComplete();
@@ -101,7 +102,7 @@ class ImageServiceMetadataUnitTest {
                 .status(ImageStatus.TEMPORARY)
                 .build();
 
-        when(imageRepository.findById(2L)).thenReturn(Mono.just(image));
+        when(imageRepository.findActiveByIds(any())).thenReturn(Flux.empty());
 
         StepVerifier.create(imageService.findImageMetadataByIds(List.of(2L)))
                 .verifyComplete();
@@ -116,7 +117,7 @@ class ImageServiceMetadataUnitTest {
                 .status(ImageStatus.DELETE)
                 .build();
 
-        when(imageRepository.findById(3L)).thenReturn(Mono.just(image));
+        when(imageRepository.findActiveByIds(any())).thenReturn(Flux.empty());
 
         StepVerifier.create(imageService.findImageMetadataByIds(List.of(3L)))
                 .verifyComplete();
@@ -124,7 +125,7 @@ class ImageServiceMetadataUnitTest {
 
     @Test
     void findImageMetadataByIds_doesNotCallS3() {
-        when(imageRepository.findById(1L)).thenReturn(Mono.empty());
+        when(imageRepository.findActiveByIds(any())).thenReturn(Flux.empty());
 
         StepVerifier.create(imageService.findImageMetadataByIds(List.of(1L)))
                 .verifyComplete();
@@ -141,7 +142,7 @@ class ImageServiceMetadataUnitTest {
                 .status(ImageStatus.ACTIVE)
                 .build();
 
-        when(imageRepository.findById(5L)).thenReturn(Mono.just(image));
+        when(imageRepository.findActiveByIds(any())).thenReturn(Flux.just(image));
 
         StepVerifier.create(imageService.findImageMetadataByIds(List.of(5L)))
                 .assertNext(dto -> {
@@ -161,7 +162,7 @@ class ImageServiceMetadataUnitTest {
                 .status(ImageStatus.ACTIVE)
                 .build();
 
-        when(imageRepository.findById(6L)).thenReturn(Mono.just(image));
+        when(imageRepository.findActiveByIds(any())).thenReturn(Flux.just(image));
 
         StepVerifier.create(imageService.findImageMetadataByIds(List.of(6L)))
                 .verifyComplete();

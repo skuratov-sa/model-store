@@ -14,6 +14,14 @@ import reactor.core.publisher.Mono;
 @Repository
 public interface ImageRepository extends ReactiveCrudRepository<Image, Long> {
 
+    @Query("""
+            SELECT *
+            FROM image
+            WHERE id = ANY(:ids)
+              AND status = 'ACTIVE'
+            """)
+    Flux<Image> findActiveByIds(Long[] ids);
+
     @Modifying
     @Query("UPDATE image SET status = :status WHERE id = :id")
     Mono<Void> updateStatusById(Long id, ImageStatus status);
@@ -41,7 +49,7 @@ public interface ImageRepository extends ReactiveCrudRepository<Image, Long> {
             WHERE entity_id = ANY(:entityIds)
               AND tag = :tag::image_tag
               AND status = 'ACTIVE'
-            ORDER BY entity_id, created_at
+            ORDER BY entity_id, created_at, id
             """)
     Flux<ImageMainView> findMainImageViewsByEntities(Long[] entityIds, ImageTag tag);
 
