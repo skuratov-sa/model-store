@@ -15,8 +15,8 @@ import static com.model_store.exception.constant.ErrorCode.VERIFICATION_DAILY_LI
 @Service
 public class VerificationCodeServiceImpl implements VerificationCodeService {
     private static final Duration CODE_TTL = Duration.ofMinutes(10);
-    private static final Duration COOLDOWN = Duration.ofSeconds(30);
-    private static final int DAILY_LIMIT = 30;
+    private static final Duration COOLDOWN = Duration.ofSeconds(10);
+    private static final int DAILY_LIMIT = 100;
 
     private final ConcurrentHashMap<Long, CodeEntry> codeStorage = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, RateEntry> rateStorage = new ConcurrentHashMap<>();
@@ -58,7 +58,7 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
             synchronized (lock) {
                 long now = System.currentTimeMillis();
 
-                RateEntry rate = rateStorage.computeIfAbsent(userId, k -> new RateEntry(now, now, 0));
+                RateEntry rate = rateStorage.computeIfAbsent(userId, k -> new RateEntry(now - COOLDOWN.toMillis(), now, 0));
 
                 // суточное окно (скользящее 24ч)
                 if (now - rate.windowStartMs >= Duration.ofHours(24).toMillis()) {
@@ -69,14 +69,14 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
                 // cooldown
                 if (now - rate.lastSentAtMs < COOLDOWN.toMillis()) {
                     long retryMs = COOLDOWN.toMillis() - (now - rate.lastSentAtMs);
-                    int retryAfterSec = (int) (retryMs / 1000);
+                    int retryAfterSec = (int) Math.ceil(retryMs / 1000.0);
 
                     throw ApiErrors.tooManyRequests(VERIFICATION_COOLDOWN, String.format("Слишком много запросов. Попробуйте снова через %d сек.", retryAfterSec));
                 }
 
                 // дневной лимит
                 if (rate.sentInWindow >= DAILY_LIMIT) {
-                    throw ApiErrors.tooManyRequests(VERIFICATION_DAILY_LIMIT, "Превышен лимит запросов на день (30)");
+                    throw ApiErrors.tooManyRequests(VERIFICATION_DAILY_LIMIT, "Превышен лимит запросов на день (" + DAILY_LIMIT + ")");
                 }
 
                 // фиксируем факт отправки (важно: внутри lock)
