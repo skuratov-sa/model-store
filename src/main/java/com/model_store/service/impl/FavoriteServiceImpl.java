@@ -29,10 +29,14 @@ public class FavoriteServiceImpl implements FavoriteService {
         return productFavoriteRepository.findByParticipantId(participantId)
                 .map(ProductFavorite::getProductId)
                 .collectList()
-                .flatMapMany(ids ->
-                        productRepository.findByParams(searchParams, ids.toArray(Long[]::new))
-                                .concatMap(productService::buildProductDto)
-                );
+                .flatMapMany(ids -> {
+                    if (ids.isEmpty()) {
+                        return Flux.empty();
+                    }
+                    return productRepository.findByParams(searchParams, ids.toArray(Long[]::new))
+                            .collectList()
+                            .flatMapMany(productService::buildProductDtos);
+                });
 
     }
 

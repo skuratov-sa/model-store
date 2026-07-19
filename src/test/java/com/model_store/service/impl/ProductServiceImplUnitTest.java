@@ -12,7 +12,11 @@ import com.model_store.model.constant.ImageTag;
 import com.model_store.model.constant.ParticipantRole;
 import com.model_store.model.constant.ProductAvailabilityType;
 import com.model_store.model.constant.ProductStatus;
+import com.model_store.repository.ImageRepository;
+import com.model_store.repository.ParticipantRepository;
+import com.model_store.repository.ProductCategoryRepository;
 import com.model_store.repository.ProductRepository;
+import com.model_store.repository.SellerRatingRepository;
 import com.model_store.service.CategoryService;
 import com.model_store.service.ImageService;
 import com.model_store.service.ParticipantService;
@@ -55,6 +59,10 @@ class ProductServiceImplUnitTest {
     @Mock TransferService transferService;
     @Mock SellerRatingService sellerRatingService;
     @Mock ParticipantService participantService;
+    @Mock ProductCategoryRepository productCategoryRepository;
+    @Mock ImageRepository imageRepository;
+    @Mock ParticipantRepository participantRepository;
+    @Mock SellerRatingRepository sellerRatingRepository;
 
     ProductServiceImpl productService;
 
@@ -63,7 +71,8 @@ class ProductServiceImplUnitTest {
         productService = new ProductServiceImpl(
                 productRepository, categoryService, productMapper,
                 imageService, reviewService, properties,
-                socialNetworksService, transferService, sellerRatingService, participantService
+                socialNetworksService, transferService, sellerRatingService, participantService,
+                productCategoryRepository, imageRepository, participantRepository, sellerRatingRepository
         );
         when(properties.getProductExpirationDays()).thenReturn(30);
     }

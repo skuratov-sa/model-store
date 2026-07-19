@@ -3,6 +3,7 @@ package com.model_store.repository;
 import com.model_store.model.FindParticipantRequest;
 import com.model_store.model.base.Participant;
 import com.model_store.model.constant.SellerStatus;
+import com.model_store.model.projection.ParticipantLoginView;
 import org.springframework.data.r2dbc.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
@@ -25,6 +26,9 @@ public interface ParticipantRepository extends ReactiveCrudRepository<Participan
 
     @Query("SELECT login FROM participant WHERE id = :id")
     Mono<String> findLoginById(Long id);
+
+    @Query("SELECT id AS participant_id, login FROM participant WHERE id = ANY(:participantIds)")
+    Flux<ParticipantLoginView> findLoginViewsByIds(Long[] participantIds);
 
     @Query(value = """
                SELECT DISTINCT p.*

@@ -12,6 +12,8 @@ import com.model_store.model.dto.ProductDto;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
+
 public interface ProductService {
 
     Mono<GetProductResponse> getProductById(Long productId);
@@ -25,6 +27,8 @@ public interface ProductService {
     Flux<ProductDto> findByParams(FindProductRequest searchParams, Long currentParticipantId);
 
     Mono<ProductDto> buildProductDto(Product product);
+
+    Flux<ProductDto> buildProductDtos(List<Product> products);
 
     Flux<Long> findExpiredActiveProductIds();
 

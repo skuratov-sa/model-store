@@ -19,7 +19,11 @@ import com.model_store.model.constant.ProductStatus;
 import com.model_store.model.dto.CategoryDto;
 import com.model_store.model.dto.GetProductResponse;
 import com.model_store.model.dto.ProductDto;
+import com.model_store.repository.ImageRepository;
+import com.model_store.repository.ParticipantRepository;
+import com.model_store.repository.ProductCategoryRepository;
 import com.model_store.repository.ProductRepository;
+import com.model_store.repository.SellerRatingRepository;
 import com.model_store.service.CategoryService;
 import com.model_store.service.ImageService;
 import com.model_store.service.ParticipantService;
@@ -38,8 +42,11 @@ import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static com.model_store.model.constant.ProductStatus.ACTIVE;
 import static java.util.Objects.isNull;
@@ -58,6 +65,10 @@ public class ProductServiceImpl implements ProductService {
     private final TransferService transferService;
     private final SellerRatingService sellerRatingService;
     private final ParticipantService participantService;
+    private final ProductCategoryRepository productCategoryRepository;
+    private final ImageRepository imageRepository;
+    private final ParticipantRepository participantRepository;
+    private final SellerRatingRepository sellerRatingRepository;
 
     @Autowired
     public ProductServiceImpl(
@@ -70,7 +81,11 @@ public class ProductServiceImpl implements ProductService {
             SocialNetworksService socialNetworksService,
             TransferService transferService,
             SellerRatingService sellerRatingService,
-            ParticipantService participantService
+            ParticipantService participantService,
+            ProductCategoryRepository productCategoryRepository,
+            ImageRepository imageRepository,
+            ParticipantRepository participantRepository,
+            SellerRatingRepository sellerRatingRepository
     ) {
         this.productRepository = productRepository;
         this.categoryService = categoryService;
@@ -82,6 +97,10 @@ public class ProductServiceImpl implements ProductService {
         this.transferService = transferService;
         this.sellerRatingService = sellerRatingService;
         this.participantService = participantService;
+        this.productCategoryRepository = productCategoryRepository;
+        this.imageRepository = imageRepository;
+        this.participantRepository = participantRepository;
+        this.sellerRatingRepository = sellerRatingRepository;
     }
 
     public Mono<GetProductResponse> getProductById(Long productId) {
@@ -129,9 +148,9 @@ public class ProductServiceImpl implements ProductService {
     public Flux<ProductDto> findByParams(FindProductRequest searchParams, Long currentParticipantId) {
         if (Boolean.TRUE.equals(searchParams.getIncludeAdult())) {
             return checkAdultAccess(currentParticipantId)
-                    .thenMany(productRepository.findByParams(searchParams, null).concatMap(this::buildProductDto));
+                    .thenMany(buildProductDtos(productRepository.findByParams(searchParams, null)));
         }
-        return productRepository.findByParams(searchParams, null).concatMap(this::buildProductDto);
+        return buildProductDtos(productRepository.findByParams(searchParams, null));
     }
 
     private Mono<Void> checkAdultAccess(Long participantId) {
@@ -151,35 +170,93 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public Flux<ProductDto> findMyByParams(FindMyProductRequest searchParams, Long participantId) {
-        return productRepository.findMyByParams(searchParams, participantId).concatMap(this::buildProductDto);
+        return buildProductDtos(productRepository.findMyByParams(searchParams, participantId));
     }
 
     @Override
     public Mono<ProductDto> buildProductDto(Product product) {
-        Mono<List<CategoryDto>> categoriesMono =
-                categoryService.findByProductId(product.getId()).collectList();
+        if (product == null) {
+            return Mono.empty();
+        }
+        return buildProductDtos(List.of(product)).next();
+    }
 
-        Mono<Long> imageMono =
-                imageService.findMainImage(product.getId(), ImageTag.PRODUCT)
-                        .defaultIfEmpty(-1L);
+    @Override
+    public Flux<ProductDto> buildProductDtos(List<Product> products) {
+        if (products == null || products.isEmpty()) {
+            return Flux.empty();
+        }
 
-        Mono<String> loginMono =
-                participantService.findLoginById(product.getParticipantId())
-                        .defaultIfEmpty("unknown");
+        Long[] productIds = products.stream()
+                .map(Product::getId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toArray(Long[]::new);
+        Long[] participantIds = products.stream()
+                .map(Product::getParticipantId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toArray(Long[]::new);
 
-        Mono<SellerRating> ratingMono =
-                sellerRatingService.findBySellarId(product.getParticipantId())
-                        .defaultIfEmpty(new SellerRating(0L,0f, 0)); // avg, count
+        Mono<Map<Long, List<CategoryDto>>> categoriesByProductIdMono =
+                productIds.length == 0
+                        ? Mono.just(Collections.emptyMap())
+                        : productCategoryRepository.findCategoryViewsByProductIds(productIds)
+                        .collectMultimap(
+                                view -> view.getProductId(),
+                                view -> CategoryDto.builder()
+                                        .id(view.getCategoryId())
+                                        .name(view.getCategoryName())
+                                        .build()
+                        )
+                        .map(grouped -> grouped.entrySet().stream()
+                                .collect(Collectors.toMap(
+                                        Map.Entry::getKey,
+                                        entry -> List.copyOf(entry.getValue())
+                                )));
 
-        return Mono.zip(categoriesMono, imageMono, loginMono, ratingMono)
-                .map(t -> productMapper.toProductDto(
+        Mono<Map<Long, Long>> mainImageByProductIdMono =
+                productIds.length == 0
+                        ? Mono.just(Collections.emptyMap())
+                        : imageRepository.findMainImageViewsByEntities(productIds, ImageTag.PRODUCT)
+                        .collectMap(view -> view.getEntityId(), view -> view.getImageId());
+
+        Mono<Map<Long, String>> loginByParticipantIdMono =
+                participantIds.length == 0
+                        ? Mono.just(Collections.emptyMap())
+                        : participantRepository.findLoginViewsByIds(participantIds)
+                        .collectMap(view -> view.getParticipantId(), view -> view.getLogin());
+
+        Mono<Map<Long, SellerRating>> ratingByParticipantIdMono =
+                participantIds.length == 0
+                        ? Mono.just(Collections.emptyMap())
+                        : sellerRatingRepository.findBySellerIds(participantIds)
+                        .collectMap(SellerRating::getSellerId);
+
+        return Mono.zip(categoriesByProductIdMono, mainImageByProductIdMono, loginByParticipantIdMono, ratingByParticipantIdMono)
+                .flatMapMany(tuple -> Flux.fromIterable(products).map(product -> {
+                    SellerRating rating = tuple.getT4().get(product.getParticipantId());
+                    return productMapper.toProductDto(
                         product,
-                        t.getT1(),
-                        t.getT2() == -1L ? null : t.getT2(),
-                        t.getT3(),
-                        t.getT4().getAverageRating(), // rating
-                        t.getT4().getTotalReviews()   // totalReviews
-                ));
+                        tuple.getT1().getOrDefault(product.getId(), List.of()),
+                        tuple.getT2().get(product.getId()),
+                        tuple.getT3().getOrDefault(product.getParticipantId(), "unknown"),
+                        averageRating(rating),
+                        totalReviews(rating)
+                    );
+                }));
+    }
+
+    private Flux<ProductDto> buildProductDtos(Flux<Product> products) {
+        return products.collectList().flatMapMany(this::buildProductDtos);
+    }
+
+    private Float averageRating(SellerRating rating) {
+        return rating == null || rating.getAverageRating() == null ? 0f : rating.getAverageRating();
+    }
+
+    private Integer totalReviews(SellerRating rating) {
+        return rating == null || rating.getTotalReviews() == null ? 0 : rating.getTotalReviews();
     }
 
     public Flux<Long> findExpiredActiveProductIds() {

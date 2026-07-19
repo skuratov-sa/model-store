@@ -109,7 +109,9 @@ public class ImageServiceImpl implements ImageService {
                 entityId,
                 status.name(),
                 tag != null ? tag.name() : null
-        );
+        ).flatMap(updated -> updated == 0
+                ? Mono.error(ApiErrors.notFound(ErrorCode.IMAGE_NOT_FOUND, "Image not found"))
+                : Mono.empty());
     }
 
     @Override

@@ -12,7 +12,6 @@ public class FindMyProductRequest {
     private Long categoryId;
     private String originality;
     private @Valid PriceRange priceRange;
-    private Long imageId;
     private DateRange dateRange;
     private @Valid Pageable pageable;
 }

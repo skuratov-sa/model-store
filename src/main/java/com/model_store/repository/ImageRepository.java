@@ -3,6 +3,7 @@ package com.model_store.repository;
 import com.model_store.model.base.Image;
 import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
+import com.model_store.model.projection.ImageMainView;
 import org.springframework.data.r2dbc.repository.Modifying;
 import org.springframework.data.r2dbc.repository.Query;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
@@ -34,6 +35,16 @@ public interface ImageRepository extends ReactiveCrudRepository<Image, Long> {
             """)
     Flux<Long> findActualIdsByEntity(Long entityId, ImageTag tag);
 
+    @Query("""
+            SELECT DISTINCT ON (entity_id) entity_id, id AS image_id
+            FROM image
+            WHERE entity_id = ANY(:entityIds)
+              AND tag = :tag::image_tag
+              AND status = 'ACTIVE'
+            ORDER BY entity_id, created_at
+            """)
+    Flux<ImageMainView> findMainImageViewsByEntities(Long[] entityIds, ImageTag tag);
+
     @Query("SELECT * FROM image WHERE status in ('DELETE', 'TEMPORARY') AND created_at <= NOW() - INTERVAL '24 HOURS'")
     Flux<Image> findImagesToDelete();
 
@@ -42,7 +53,7 @@ public interface ImageRepository extends ReactiveCrudRepository<Image, Long> {
            "WHERE id = ANY(:ids) " +
            "AND (:tag IS NULL OR tag::text = :tag) " +
            "AND (entity_id IS NULL OR entity_id = :entityId)")
-    Mono<Void> updateStatusByIds(Long[] ids, Long entityId, String status, String tag);
+    Mono<Integer> updateStatusByIds(Long[] ids, Long entityId, String status, String tag);
 
     @Modifying
     @Query("DELETE FROM image WHERE id = ANY(:ids)")

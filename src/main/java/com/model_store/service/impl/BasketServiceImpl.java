@@ -58,7 +58,8 @@ public class BasketServiceImpl implements BasketService {
                     Long[] ids = countByProductId.keySet().toArray(Long[]::new);
 
                     return productRepository.findByParams(searchParams, ids)
-                            .concatMap(productService::buildProductDto)
+                            .collectList()
+                            .flatMapMany(productService::buildProductDtos)
                             .map(dto -> {
                                 ProductBasketDto out = new ProductBasketDto();
                                 out.setProduct(dto);
