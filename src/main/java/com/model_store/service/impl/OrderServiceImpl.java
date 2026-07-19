@@ -36,8 +36,14 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static com.model_store.exception.constant.ErrorCode.COUNT_INVALID;
+import static com.model_store.exception.constant.ErrorCode.INVALID_ADDRESS;
+import static com.model_store.exception.constant.ErrorCode.INVALID_TRANSFER;
+import static com.model_store.exception.constant.ErrorCode.OUT_OF_STOCK;
+import static com.model_store.exception.constant.ErrorCode.OWN_PRODUCT_ORDER_FORBIDDEN;
 import static com.model_store.exception.constant.ErrorCode.PARTICIPANT_NOT_FOUND;
 import static com.model_store.exception.constant.ErrorCode.PRODUCT_NOT_FOUND;
+import static com.model_store.exception.constant.ErrorCode.PRODUCT_NOT_PURCHASABLE;
 import static com.model_store.exception.constant.ErrorCode.TRANSFER_NOT_FOUND;
 import static com.model_store.model.constant.OrderStatus.AWAITING_PAYMENT;
 import static com.model_store.model.constant.OrderStatus.AWAITING_PREPAYMENT;
@@ -66,7 +72,8 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Mono<GetRequiredODataOrderDto> getRequiredDataForCreateOrder(Long participantId, Long productId) {
-        Mono<Product> productMono = productService.findById(productId);
+        Mono<Product> productMono = productService.findActualProduct(productId)
+                .switchIfEmpty(Mono.error(ApiErrors.notFound(PRODUCT_NOT_FOUND, "Товар не найден")));
         Mono<List<Address>> addressMono = addressService.findByParticipantId(participantId).collectList().defaultIfEmpty(emptyList());
         Mono<List<Transfer>> transferMono = productMono.flatMapMany(e -> transferService.findByParticipantId(e.getParticipantId())).collectList().defaultIfEmpty(emptyList());
 
@@ -118,11 +125,11 @@ public class OrderServiceImpl implements OrderService {
 
     protected Mono<Long> createOrder(CreateOrderRequest request, Long participantId) {
         log.debug("Creating order: productId={}, participantId={}, count={}", request.getProductId(), participantId, request.getCount());
-        return validateCreateOrderRequest(request, participantId)
-                .then(productService.findById(request.getProductId()))
-                .switchIfEmpty(Mono.error(new IllegalStateException("Товар не найден")))
+        return productService.findActualProduct(request.getProductId())
+                .switchIfEmpty(Mono.error(ApiErrors.notFound(PRODUCT_NOT_FOUND, "Товар не найден")))
                 .flatMap(product ->
-                        validateCreateOrder(product, request.getCount(), participantId)
+                        validateCreateOrderRequest(request, participantId, product)
+                                .then(validateCreateOrder(product, request.getCount(), participantId))
                                 .thenReturn(product)
                 )
                 .flatMap(product -> createOrderAndUpdateProduct(product, request, participantId));
@@ -298,8 +305,9 @@ public class OrderServiceImpl implements OrderService {
         log.info("Order closure requested: orderId={}, participantId={}", request.getOrderId(), participantId);
         return orderRepository.findById(request.getOrderId())
                 .filter(order -> List.of(order.getSellerId(), order.getCustomerId()).contains(participantId))
-                .filter(order -> List.of(BOOKED, AWAITING_PAYMENT).contains(order.getStatus()))
+                .filter(order -> List.of(BOOKED, AWAITING_PREPAYMENT, AWAITING_PREPAYMENT_APPROVAL, AWAITING_PAYMENT).contains(order.getStatus()))
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями")))
+                .flatMap(order -> restoreStockIfNeeded(order).thenReturn(order))
                 .doOnNext(order -> order.setComment(request.getComment()))
                 .doOnNext(order -> order.setStatus(OrderStatus.FAILED))
                 .flatMap(order -> orderRepository.save(order).map(Order::getId))
@@ -392,40 +400,48 @@ public class OrderServiceImpl implements OrderService {
         var availability = product.getAvailability();
         var productCount = product.getCount();
 
-        if (nonNull(productCount) && productCount - count < 0) {
-            return Mono.error(new IllegalArgumentException("Товар закончился"));
+        if (isNull(count) || count <= 0) {
+            return Mono.error(ApiErrors.badRequest(COUNT_INVALID, "Количество товаров должно быть больше чем 0"));
         }
-        if(nonNull(count) && count <= 0) throw new IllegalArgumentException("Количество товаров должно быть больше чем 0");
+        if (nonNull(productCount) && productCount - count < 0) {
+            return Mono.error(ApiErrors.badRequest(OUT_OF_STOCK, "Недостаточно товара на складе"));
+        }
 
         if (EXTERNAL_ONLY.equals(availability)) {
-            return Mono.error(new IllegalArgumentException("Нельзя заказать товар из смежного магазина"));
+            return Mono.error(ApiErrors.badRequest(PRODUCT_NOT_PURCHASABLE, "Нельзя заказать товар из смежного магазина"));
         }
         if (Objects.equals(product.getParticipantId(), participantId)) {
-            return Mono.error(new IllegalArgumentException("Нельзя заказать свой товар"));
+            return Mono.error(ApiErrors.badRequest(OWN_PRODUCT_ORDER_FORBIDDEN, "Нельзя заказать свой товар"));
         }
         return Mono.empty();
     }
 
-    private Mono<Void> validateCreateOrderRequest(CreateOrderRequest request, Long participantId) {
+    private Mono<Void> validateCreateOrderRequest(CreateOrderRequest request, Long participantId, Product product) {
         return Mono.when(
                 addressService.findByParticipantId(participantId)
                         .filter(a -> a.getId().equals(request.getAddressId()))
-                        .switchIfEmpty(Mono.error(new IllegalStateException("Указан неверный адрес доставки")))
+                        .switchIfEmpty(Mono.error(ApiErrors.badRequest(INVALID_ADDRESS, "Указан неверный адрес доставки")))
                         .then(),
-
-                productService.findById(request.getProductId())
-                        .switchIfEmpty(Mono.error(new IllegalStateException("Товар не найден")))
-                        .flatMap(p -> {
-                            if (p.getParticipantId().equals(participantId)) {
-                                return Mono.error(new IllegalStateException("Нельзя оформить заказ на собственный товар"));
-                            }
-                            return transferService.findByParticipantId(p.getParticipantId())
-                                    .filter(t -> t.getId().equals(request.getTransferId()))
-                                    .next()
-                                    .switchIfEmpty(Mono.error(new IllegalStateException("Указан неверный способ доставки")))
-                                    .then();
-                        })
+                validateProductTransfer(request, participantId, product)
         );
     }
 
+    private Mono<Void> validateProductTransfer(CreateOrderRequest request, Long participantId, Product product) {
+        if (product.getParticipantId().equals(participantId)) {
+            return Mono.error(ApiErrors.badRequest(OWN_PRODUCT_ORDER_FORBIDDEN, "Нельзя оформить заказ на собственный товар"));
+        }
+
+        return transferService.findByParticipantId(product.getParticipantId())
+                .filter(t -> t.getId().equals(request.getTransferId()))
+                .next()
+                .switchIfEmpty(Mono.error(ApiErrors.badRequest(INVALID_TRANSFER, "Указан неверный способ доставки")))
+                .then();
+    }
+    private Mono<Void> restoreStockIfNeeded(Order order) {
+        return productService.findById(order.getProductId())
+                .filter(product -> PURCHASABLE.equals(product.getAvailability()))
+                .filter(product -> nonNull(product.getCount()))
+                .flatMap(product -> productService.incrementCountIfLimited(product.getId(), order.getCount()))
+                .then();
+    }
 }

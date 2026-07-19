@@ -204,6 +204,25 @@ public class ProductServiceImplTest extends IntegrationTest {
     }
 
     @Test
+    void extendExpirationDate_timeExpiredProduct_setsActiveAndExtendsDate() {
+        var result = newParticipant()
+                .flatMap(p -> createPurchasableProduct(ProductStatus.TIME_EXPIRED, p.getId())
+                        .flatMap(saved -> {
+                            Instant originalExpiry = saved.getExpirationDate();
+                            return productService.extendExpirationDate(saved.getId(), p.getId())
+                                    .then(productRepository.findById(saved.getId()))
+                                    .doOnNext(updated ->
+                                            assertThat(updated.getExpirationDate()).isAfterOrEqualTo(originalExpiry)
+                                    );
+                        })
+                );
+
+        StepVerifier.create(result)
+                .assertNext(updated -> assertThat(updated.getStatus()).isEqualTo(ProductStatus.ACTIVE))
+                .verifyComplete();
+    }
+
+    @Test
     void decrementCountIfSufficient_reducesCountByAmount() {
         var result = newParticipant()
                 .flatMap(p -> createPurchasableProduct(ProductStatus.ACTIVE, p.getId())

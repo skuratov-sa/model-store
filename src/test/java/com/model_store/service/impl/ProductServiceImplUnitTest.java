@@ -232,7 +232,7 @@ class ProductServiceImplUnitTest {
     @Test
     void extendExpirationDate_productBelongsToOtherParticipant_returnsNotFoundError() {
         Product product = Product.builder().id(1L).participantId(99L).status(ProductStatus.ACTIVE).build();
-        when(productRepository.findActualProduct(1L)).thenReturn(Mono.just(product));
+        when(productRepository.findProductForExtend(1L)).thenReturn(Mono.just(product));
 
         StepVerifier.create(productService.extendExpirationDate(1L, 1L))
                 .expectErrorMatches(e -> e instanceof ApiException
@@ -240,6 +240,15 @@ class ProductServiceImplUnitTest {
                 .verify();
     }
 
+    @Test
+    void extendExpirationDate_blockedOrDeletedProduct_returnsNotFoundError() {
+        when(productRepository.findProductForExtend(1L)).thenReturn(Mono.empty());
+
+        StepVerifier.create(productService.extendExpirationDate(1L, 1L))
+                .expectErrorMatches(e -> e instanceof ApiException
+                        && ((ApiException) e).getCode() == ErrorCode.PRODUCT_NOT_FOUND)
+                .verify();
+    }
     // --- helpers ---
 
     private CreateOrUpdateProductRequest validRequest() {

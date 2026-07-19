@@ -1,6 +1,7 @@
 package com.model_store.service.impl;
 
 import com.model_store.model.FindProductRequest;
+import com.model_store.model.FindMyProductRequest;
 import com.model_store.model.base.Participant;
 import com.model_store.model.base.Product;
 import com.model_store.model.constant.Currency;
@@ -201,6 +202,40 @@ class ProductServiceFilterTest extends IntegrationTest {
         assertThat(ids).hasSize(2);
     }
 
+    @Test
+    void findByParams_publicSearchIncludesUnlimitedAndExcludesEmptyOrExpired() {
+        Product unlimited = saveProductWithStatusAndCount("Unlimited", 100f, ProductStatus.ACTIVE, null);
+        Product empty = saveProductWithStatusAndCount("Empty", 100f, ProductStatus.ACTIVE, 0);
+        Product expired = saveProductWithStatusAndCount("Expired", 100f, ProductStatus.TIME_EXPIRED, 10);
+
+        List<Long> ids = productService.findByParams(baseRequest(), null).map(ProductDto::getId).collectList().block();
+
+        assertThat(ids).contains(unlimited.getId());
+        assertThat(ids).doesNotContain(empty.getId(), expired.getId());
+    }
+
+    @Test
+    void findMyByParams_includesEmptyAndTimeExpiredProducts() {
+        Product empty = saveProductWithStatusAndCount("Empty", 100f, ProductStatus.ACTIVE, 0);
+        Product expired = saveProductWithStatusAndCount("Expired", 100f, ProductStatus.TIME_EXPIRED, 10);
+
+        List<Long> ids = productService.findMyByParams(myRequest(), seller.getId()).map(ProductDto::getId).collectList().block();
+
+        assertThat(ids).contains(empty.getId(), expired.getId());
+    }
+
+    @Test
+    void findNamesBySearch_filtersUnavailableProductNamesButIncludesUnlimited() {
+        saveProductWithStatusAndCount("Visible Unlimited Search Name", 100f, ProductStatus.ACTIVE, null);
+        saveProductWithStatusAndCount("Hidden Empty Search Name", 100f, ProductStatus.ACTIVE, 0);
+        saveProductWithStatusAndCount("Hidden Expired Search Name", 100f, ProductStatus.TIME_EXPIRED, 10);
+
+        List<String> names = productService.findNamesBySearch("Search Name").collectList().block();
+
+        assertThat(names).contains("Visible Unlimited Search Name");
+        assertThat(names).doesNotContain("Hidden Empty Search Name", "Hidden Expired Search Name");
+    }
+
     // --- helpers ---
 
     private Product saveProduct(String name, float price) {
@@ -244,6 +279,10 @@ class ProductServiceFilterTest extends IntegrationTest {
     }
 
     private Product saveProductWithStatus(String name, float price, ProductStatus status) {
+        return saveProductWithStatusAndCount(name, price, status, 10);
+    }
+
+    private Product saveProductWithStatusAndCount(String name, float price, ProductStatus status, Integer count) {
         return productRepository.save(
                 Product.builder()
                         .name(name)
@@ -254,7 +293,7 @@ class ProductServiceFilterTest extends IntegrationTest {
                         .participantId(seller.getId())
                         .status(status)
                         .availability(ProductAvailabilityType.PURCHASABLE)
-                        .count(10)
+                        .count(count)
                         .expirationDate(Instant.now().plusSeconds(86400 * 30))
                         .createdAt(Instant.now())
                         .build()
@@ -265,6 +304,12 @@ class ProductServiceFilterTest extends IntegrationTest {
         FindProductRequest req = new FindProductRequest();
         req.setPageable(new Pageable(50, null, null, 0L, SortByType.DATE_DESC));
         req.setIncludeAdult(false);
+        return req;
+    }
+
+    private FindMyProductRequest myRequest() {
+        FindMyProductRequest req = new FindMyProductRequest();
+        req.setPageable(new Pageable(50, null, null, 0L, SortByType.DATE_DESC));
         return req;
     }
 }

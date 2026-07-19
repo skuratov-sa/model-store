@@ -51,4 +51,6 @@ public interface ProductService {
     Mono<Void> extendExpirationDate(Long id, Long participantId);
 
     Mono<Void> decrementCountIfSufficient(Long productId, Integer amount);
+
+    Mono<Void> incrementCountIfLimited(Long productId, Integer amount);
 }

@@ -381,12 +381,13 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public Mono<Void> extendExpirationDate(Long id, Long participantId) {
         log.info("Extend expiration date id: {}, participantId: {}", id, participantId);
-        return productRepository.findActualProduct(id)
+        return productRepository.findProductForExtend(id)
                 .filter(product -> Objects.equals(product.getParticipantId(), participantId))
                 .switchIfEmpty(Mono.error(
                         ApiErrors.notFound(ErrorCode.PRODUCT_NOT_FOUND, "Не удалось выполнить операцию: не достаточно прав или его не существует")
                 )).flatMap(product -> {
                     product.setExpirationDate(getExpirationDate());
+                    product.setStatus(ACTIVE);
                     return productRepository.save(product);
                 }).then();
 
@@ -415,6 +416,14 @@ public class ProductServiceImpl implements ProductService {
                 .flatMap(updated -> updated == 0
                         ? Mono.error(ApiErrors.badRequest(ErrorCode.OUT_OF_STOCK, "Недостаточно товара на складе"))
                         : Mono.empty());
+    }
+
+    @Override
+    public Mono<Void> incrementCountIfLimited(Long productId, Integer amount) {
+        if (isNull(amount) || amount <= 0) {
+            return Mono.empty();
+        }
+        return productRepository.incrementCountIfLimited(productId, amount).then();
     }
 
     private Instant getExpirationDate() {

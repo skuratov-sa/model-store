@@ -6,4 +6,6 @@ import lombok.Data;
 public class ProductBasketDto {
     private ProductDto product;
     private Integer count;
+    private Integer availableCount;
+    private Boolean enoughStock;
 }

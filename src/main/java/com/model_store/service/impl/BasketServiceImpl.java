@@ -61,13 +61,20 @@ public class BasketServiceImpl implements BasketService {
 
                     Long[] ids = countByProductId.keySet().toArray(Long[]::new);
 
-                    return productRepository.findByParams(searchParams, ids)
+                    return productRepository.findBasketByParams(searchParams, ids)
                             .collectList()
                             .flatMapMany(productService::buildProductDtos)
                             .map(dto -> {
                                 ProductBasketDto out = new ProductBasketDto();
+                                Integer basketCount = countByProductId.get(dto.getId());
+                                if (basketCount == null) {
+                                    throw ApiErrors.badRequest(BASKET_UPDATE_FAILED, "Не удалось получить данные корзины");
+                                }
+                                Integer availableCount = dto.getCount();
                                 out.setProduct(dto);
-                                out.setCount(countByProductId.getOrDefault(dto.getId(), 0));
+                                out.setCount(basketCount);
+                                out.setAvailableCount(availableCount);
+                                out.setEnoughStock(availableCount == null || basketCount <= availableCount);
                                 return out;
                             });
                 });

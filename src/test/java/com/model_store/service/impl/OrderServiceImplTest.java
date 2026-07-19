@@ -1,5 +1,8 @@
 package com.model_store.service.impl;
 
+import com.model_store.exception.ApiException;
+import com.model_store.exception.constant.ErrorCode;
+import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.Address;
 import com.model_store.model.base.Image;
 import com.model_store.model.base.Order;
@@ -18,13 +21,18 @@ import com.model_store.model.constant.ProductAvailabilityType;
 import com.model_store.model.constant.ProductStatus;
 import com.model_store.model.constant.SellerStatus;
 import com.model_store.model.constant.ShippingMethodsType;
+import com.model_store.model.constant.SortByType;
 import com.model_store.model.constant.TransferStatus;
 import com.model_store.model.dto.CreateOrderRequest;
+import com.model_store.model.dto.CloseOrderRequest;
+import com.model_store.model.page.Pageable;
 import com.model_store.repository.AddressRepository;
 import com.model_store.repository.ImageRepository;
 import com.model_store.repository.OrderRepository;
 import com.model_store.repository.ParticipantAddressRepository;
+import com.model_store.repository.ProductBasketRepository;
 import com.model_store.repository.TransferRepository;
+import com.model_store.service.BasketService;
 import com.model_store.service.IntegrationTest;
 import com.model_store.service.OrderService;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,7 +55,13 @@ class OrderServiceImplTest extends IntegrationTest {
     private OrderService orderService;
 
     @Autowired
+    private BasketService basketService;
+
+    @Autowired
     private OrderRepository orderRepository;
+
+    @Autowired
+    private ProductBasketRepository productBasketRepository;
 
     @Autowired
     private TransferRepository transferRepository;
@@ -72,7 +86,7 @@ class OrderServiceImplTest extends IntegrationTest {
     @BeforeEach
     void setUp() {
         databaseClient.sql("""
-                TRUNCATE TABLE product_category, "order", product,
+                TRUNCATE TABLE product_category, product_basket, "order", product,
                     participant_address, transfer, address, participant, image
                 RESTART IDENTITY CASCADE
                 """).fetch().rowsUpdated().block();
@@ -173,11 +187,102 @@ class OrderServiceImplTest extends IntegrationTest {
         );
 
         StepVerifier.create(result)
-                .expectError()
+                .expectErrorSatisfies(error -> assertApiException(error, ErrorCode.OUT_OF_STOCK, "Недостаточно товара на складе"))
                 .verify();
 
         Product unchanged = productRepository.findById(product.getId()).block();
         assertThat(unchanged.getCount()).isEqualTo(2);
+    }
+
+    @Test
+    void createOrders_nonActiveProduct_throwsErrorAndDoesNotCreateOrder() {
+        for (ProductStatus status : List.of(ProductStatus.TIME_EXPIRED, ProductStatus.BLOCKED, ProductStatus.DELETED)) {
+            Product product = savePurchasableProduct(10, status);
+
+            StepVerifier.create(orderService.createOrders(
+                            List.of(orderRequest(product.getId(), 1)),
+                            buyer.getId()
+                    ))
+                    .expectErrorSatisfies(error -> assertApiException(error, ErrorCode.PRODUCT_NOT_FOUND, "Товар не найден"))
+                    .verify();
+        }
+
+        assertThat(orderRepository.count().block()).isZero();
+    }
+
+    @Test
+    void createOrders_lastStockItem_decrementsToZeroAndRemovesBasketItem() {
+        Product product = savePurchasableProduct(1);
+        basketService.addToBasket(buyer.getId(), product.getId(), 1).block();
+
+        StepVerifier.create(orderService.createOrders(
+                        List.of(orderRequest(product.getId(), 1)),
+                        buyer.getId()
+                ))
+                .assertNext(ids -> assertThat(ids).hasSize(1))
+                .verifyComplete();
+
+        Product updated = productRepository.findById(product.getId()).block();
+        assertThat(updated.getCount()).isZero();
+        assertThat(productBasketRepository.findByParticipantIdAndProductId(buyer.getId(), product.getId()).hasElement().block())
+                .isFalse();
+    }
+
+    @Test
+    void createOrders_basketCountExceedsCurrentStock_throwsErrorAndKeepsStock() {
+        Product product = savePurchasableProduct(5);
+        basketService.addToBasket(buyer.getId(), product.getId(), 5).block();
+        updateProductCount(product.getId(), 2);
+
+        StepVerifier.create(orderService.createOrders(
+                        List.of(orderRequest(product.getId(), 5)),
+                        buyer.getId()
+                ))
+                .expectErrorSatisfies(error -> assertApiException(error, ErrorCode.OUT_OF_STOCK, "Недостаточно товара на складе"))
+                .verify();
+
+        Product unchanged = productRepository.findById(product.getId()).block();
+        assertThat(unchanged.getCount()).isEqualTo(2);
+        assertThat(orderRepository.count().block()).isZero();
+    }
+
+    @Test
+    void addToBasket_lastStockItem_doesNotDecrementStock() {
+        Product product = savePurchasableProduct(1);
+
+        basketService.addToBasket(buyer.getId(), product.getId(), 1).block();
+
+        Product unchanged = productRepository.findById(product.getId()).block();
+        assertThat(unchanged.getCount()).isEqualTo(1);
+    }
+
+    @Test
+    void findBasketProducts_stockLessThanBasketCount_returnsAvailabilityMetadata() {
+        Product product = savePurchasableProduct(5);
+        basketService.addToBasket(buyer.getId(), product.getId(), 5).block();
+        updateProductCount(product.getId(), 2);
+
+        var basketItem = basketService.findBasketProductsByParams(buyer.getId(), basketRequest())
+                .single()
+                .block();
+
+        assertThat(basketItem.getCount()).isEqualTo(5);
+        assertThat(basketItem.getAvailableCount()).isEqualTo(2);
+        assertThat(basketItem.getEnoughStock()).isFalse();
+    }
+
+    @Test
+    void findBasketProducts_unlimitedStock_returnsEnoughStock() {
+        Product product = savePurchasableProductWithNullableCount(null);
+        basketService.addToBasket(buyer.getId(), product.getId(), 5).block();
+
+        var basketItem = basketService.findBasketProductsByParams(buyer.getId(), basketRequest())
+                .single()
+                .block();
+
+        assertThat(basketItem.getCount()).isEqualTo(5);
+        assertThat(basketItem.getAvailableCount()).isNull();
+        assertThat(basketItem.getEnoughStock()).isTrue();
     }
 
     @Test
@@ -204,7 +309,7 @@ class OrderServiceImplTest extends IntegrationTest {
         );
 
         StepVerifier.create(result)
-                .expectError()
+                .expectErrorSatisfies(error -> assertApiException(error, ErrorCode.PRODUCT_NOT_PURCHASABLE, "Нельзя заказать товар из смежного магазина"))
                 .verify();
     }
 
@@ -249,7 +354,7 @@ class OrderServiceImplTest extends IntegrationTest {
         );
 
         StepVerifier.create(result)
-                .expectError()
+                .expectErrorSatisfies(error -> assertApiException(error, ErrorCode.OWN_PRODUCT_ORDER_FORBIDDEN, "Нельзя оформить заказ на собственный товар"))
                 .verify();
     }
 
@@ -281,12 +386,109 @@ class OrderServiceImplTest extends IntegrationTest {
                 .verifyComplete();
     }
 
+    @Test
+    void closureOrder_bookedPurchasableProduct_restoresStock() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().get(0);
+        assertThat(productRepository.findById(product.getId()).block().getCount()).isEqualTo(3);
+
+        orderService.closureOrder(closeRequest(orderId), buyer.getId()).block();
+
+        Product restored = productRepository.findById(product.getId()).block();
+        Order order = orderRepository.findById(orderId).block();
+        assertThat(restored.getCount()).isEqualTo(5);
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.FAILED);
+    }
+
+    @Test
+    void closureOrder_awaitingPaymentPurchasableProduct_restoresStock() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().get(0);
+        orderService.agreementOrder(orderId, "seller agrees", seller.getId()).block();
+
+        orderService.closureOrder(closeRequest(orderId), buyer.getId()).block();
+
+        Product restored = productRepository.findById(product.getId()).block();
+        assertThat(restored.getCount()).isEqualTo(5);
+    }
+
+    @Test
+    void closureOrder_preorderAwaitingPrepayment_doesNotRestoreUnchangedStock() {
+        Product product = savePreorderProduct(500f);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().get(0);
+        orderService.agreementOrder(orderId, "seller agrees", seller.getId()).block();
+
+        orderService.closureOrder(closeRequest(orderId), buyer.getId()).block();
+
+        Product unchanged = productRepository.findById(product.getId()).block();
+        assertThat(unchanged.getCount()).isNull();
+    }
+
+    @Test
+    void closureOrder_preorderAwaitingPrepaymentApproval_doesNotRestoreUnchangedStock() {
+        Product product = savePreorderProduct(500f);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().get(0);
+        orderService.agreementOrder(orderId, "seller agrees", seller.getId()).block();
+        orderService.prepaymentOrder(orderId, saveOrderImage().getId(), "prepaid", buyer.getId()).block();
+
+        orderService.closureOrder(closeRequest(orderId), buyer.getId()).block();
+
+        Product unchanged = productRepository.findById(product.getId()).block();
+        assertThat(unchanged.getCount()).isNull();
+    }
+
+    @Test
+    void closureOrder_assemblingOrder_throwsErrorAndDoesNotRestoreStock() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().get(0);
+        orderService.agreementOrder(orderId, "seller agrees", seller.getId()).block();
+        orderService.paymentOrder(orderId, saveOrderImage().getId(), "paid", buyer.getId()).block();
+
+        StepVerifier.create(orderService.closureOrder(closeRequest(orderId), buyer.getId()))
+                .expectError()
+                .verify();
+
+        Product unchanged = productRepository.findById(product.getId()).block();
+        Order order = orderRepository.findById(orderId).block();
+        assertThat(unchanged.getCount()).isEqualTo(3);
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.ASSEMBLING);
+    }
+
     // --- helpers ---
 
+    private void assertApiException(Throwable error, ErrorCode code, String message) {
+        assertThat(error).isInstanceOf(ApiException.class);
+        ApiException apiException = (ApiException) error;
+        assertThat(apiException.getCode()).isEqualTo(code);
+        assertThat(apiException.getMessage()).isEqualTo(message);
+    }
+
     private Product savePurchasableProduct(int count) {
+        return savePurchasableProduct(count, ProductStatus.ACTIVE);
+    }
+
+    private Product savePurchasableProduct(int count, ProductStatus status) {
         return productRepository.save(
                 Product.builder()
                         .name("Test Product")
+                        .description("desc")
+                        .price(500f)
+                        .currency(Currency.RUB)
+                        .originality("Original")
+                        .participantId(seller.getId())
+                        .status(status)
+                        .availability(ProductAvailabilityType.PURCHASABLE)
+                        .count(count)
+                        .expirationDate(Instant.now().plusSeconds(86400 * 30))
+                        .createdAt(Instant.now())
+                        .build()
+        ).block();
+    }
+
+    private Product savePurchasableProductWithNullableCount(Integer count) {
+        return productRepository.save(
+                Product.builder()
+                        .name("Unlimited Product")
                         .description("desc")
                         .price(500f)
                         .currency(Currency.RUB)
@@ -473,6 +675,29 @@ class OrderServiceImplTest extends IntegrationTest {
                 .addressId(buyerAddress.getId())
                 .transferId(sellerTransfer.getId())
                 .build();
+    }
+
+    private FindProductRequest basketRequest() {
+        FindProductRequest request = new FindProductRequest();
+        request.setPageable(new Pageable(50, null, null, 0L, SortByType.DATE_DESC));
+        request.setIncludeAdult(false);
+        return request;
+    }
+
+    private CloseOrderRequest closeRequest(Long orderId) {
+        CloseOrderRequest request = new CloseOrderRequest();
+        request.setOrderId(orderId);
+        request.setComment("cancelled");
+        return request;
+    }
+
+    private void updateProductCount(Long productId, int count) {
+        databaseClient.sql("UPDATE product SET count = :count WHERE id = :id")
+                .bind("count", count)
+                .bind("id", productId)
+                .fetch()
+                .rowsUpdated()
+                .block();
     }
 
     private Participant newParticipant(String prefix) {

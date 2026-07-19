@@ -90,8 +90,10 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
             FROM (
                      SELECT p.name
                      FROM product p
-                     WHERE p.name ILIKE '%' || :search || '%'
-                        OR similarity(p.name, :search) > 0.25
+                     WHERE (p.name ILIKE '%' || :search || '%'
+                        OR similarity(p.name, :search) > 0.25)
+                       AND p.status = 'ACTIVE'
+                       AND (p.count IS NULL OR p.count > 0)
                      UNION
                      SELECT c.name
                      FROM category c
@@ -128,6 +130,29 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
         );
     }
 
+    default Flux<Product> findBasketByParams(FindProductRequest searchParams, Long[] ids) {
+        int limit = Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSize).orElse(50); // limit
+
+        return findByParams(
+                true,
+                searchParams.getCategoryId(),
+                searchParams.getParticipantId(),
+                searchParams.getName(),
+                searchParams.getOriginality(),
+                Optional.ofNullable(searchParams.getPriceRange()).map(PriceRange::getMinPrice).orElse(null),
+                Optional.ofNullable(searchParams.getPriceRange()).map(PriceRange::getMaxPrice).orElse(null),
+                Optional.ofNullable(searchParams.getDateRange()).map(DateRange::getStart).orElse(null),
+                Optional.ofNullable(searchParams.getDateRange()).map(DateRange::getEnd).orElse(null),
+                ids,
+                new ProductStatus[]{ProductStatus.ACTIVE},
+                Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastCreatedAt).orElse(null),
+                Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastPrice).orElse(null),
+                Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastId).orElse(0L),
+                Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
+                searchParams.getIncludeAdult(),
+                limit
+        );
+    }
     default Flux<Product> findMyByParams(FindMyProductRequest searchParams, Long participantId) {
         int limit = Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSize).orElse(50); // limit
 
@@ -158,7 +183,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
     @Query("SELECT * FROM product WHERE status = 'ACTIVE' AND id = :productId")
     Mono<Product> findActualProduct(Long productId);
 
-    @Query("SELECT * FROM product WHERE status in ('ACTIVE', 'BLOCKED') AND id = :productId")
+    @Query("SELECT * FROM product WHERE status in ('ACTIVE', 'TIME_EXPIRED') AND id = :productId")
     Mono<Product> findProductForExtend(Long productId);
 
     @Query("SELECT id FROM product WHERE status = 'ACTIVE' AND expiration_date < CURRENT_TIMESTAMP")
@@ -167,4 +192,8 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
     @Modifying
     @Query("UPDATE product SET count = count - :amount WHERE id = :id AND count >= :amount")
     Mono<Integer> decrementCountIfSufficient(Long id, Integer amount);
+
+    @Modifying
+    @Query("UPDATE product SET count = count + :amount WHERE id = :id AND count IS NOT NULL")
+    Mono<Integer> incrementCountIfLimited(Long id, Integer amount);
 }
