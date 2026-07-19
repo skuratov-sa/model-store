@@ -36,5 +36,9 @@ out/
 ### VS Code ###
 .vscode/
 
+### Local environment ###
+.env
+.env.*
+
 ### Local JWT keys ###
 src/main/resources/keys/*.pem

@@ -16,6 +16,7 @@ public class ApplicationProperties {
     private String privateKeyPath;
     private String publicKeyPath;
     private String emailFrom;
+    private String emailReplyTo;
     private List<String> allowedOrigins;
     private boolean corsAllowAll;
     private String cdnBaseUrl;

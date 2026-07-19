@@ -13,6 +13,8 @@ spring:
     password: test
 
 app:
+  email-from: misterstes8@gmail.com
+  email-reply-to: figurzilla@mail.ru
   private-key-path: keys/test_private_key.pem
   public-key-path: keys/test_public_key.pem
   product-expiration-days: 30

@@ -2,6 +2,8 @@ server:
   port: 8081
 
 spring:
+  config:
+    import: optional:file:.env[.properties]
   application:
     name: model-store
   main:
@@ -25,16 +27,18 @@ spring:
     locations: classpath:/db/migration  # Путь к миграциям
     enabled: true
   mail:
-    host: smtp.mail.ru                      # Хост SMTP-сервера (например: smtp.gmail.com, smtp.mail.ru)
-    port: 587                               # Порт SMTP (587 для STARTTLS, 465 для SSL, 25 — редко)
-    username: figurzilla@mail.ru            # Имя пользователя для SMTP (обычно — ваш email)
-    password: password          # Пароль от почты или отдельный SMTP-пароль (например, app-password у Gmail)
+    host: ${SPRING_MAIL_HOST:smtp.gmail.com}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
     properties:
       mail:
         smtp:
-          auth: true                 # Требуется ли авторизация (обычно — да)
+          auth: true
           starttls:
-            enable: true            # Включить шифрование через STARTTLS (рекомендуется для порта 587)
+            enable: true
+          ssl:
+            trust: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST:smtp.gmail.com}
   servlet:
     multipart:
       enabled: true
@@ -62,7 +66,8 @@ app:
   product-expiration-days: 30
   private-key-path: keys/private_key.pem
   public-key-path: keys/public_key.pem
-  email-from: ${spring.mail.username}
+  email-from: ${APP_EMAIL_FROM:misterstes8@gmail.com}
+  email-reply-to: ${APP_EMAIL_REPLY_TO:figurzilla@mail.ru}
   cors-allow-all: false
   allowed-origins:
     - "http://localhost:3000"

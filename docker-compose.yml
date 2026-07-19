@@ -71,13 +71,13 @@ services:
       SPRING_FLYWAY_USER: root
       SPRING_FLYWAY_PASSWORD: root
 
-      SPRING_MAIL_HOST: smtp.mail.ru
-      SPRING_MAIL_PORT: 587
-      SPRING_MAIL_USERNAME: figurzilla@mail.ru
-      SPRING_MAIL_PASSWORD: password
+      SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-smtp.gmail.com}
+      SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-587}
+      SPRING_MAIL_USERNAME: "${SPRING_MAIL_USERNAME:?Set SPRING_MAIL_USERNAME in .env}"
+      SPRING_MAIL_PASSWORD: "${SPRING_MAIL_PASSWORD:?Set SPRING_MAIL_PASSWORD in .env}"
       SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "true"
       SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
-      SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST: "smtp.mail.ru"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST:-smtp.gmail.com}
 
       S3_ACCESS-KEY: minio_user
       S3_SECRET-KEY: minio_password
@@ -93,7 +93,8 @@ services:
       APP_PRODUCT-EXPIRATION-DAYS: 30
       APP_PRIVATE_KEY_PATH: /backend/keys/private_key.pem
       APP_PUBLIC_KEY_PATH: /backend/keys/public_key.pem
-      APP_EMAIL_FROM: figurzilla@mail.ru
+      APP_EMAIL_FROM: ${APP_EMAIL_FROM:-misterstes8@gmail.com}
+      APP_EMAIL_REPLY_TO: ${APP_EMAIL_REPLY_TO:-figurzilla@mail.ru}
       APP_CORS-ALLOW-ALL: "false"
       APP_ALLOWED-ORIGINS: "https://your-frontend.com" # CORS: разрешённые origins для продакшна
       # Базовый URL CDN для формирования ссылок на изображения в /images/metadata.

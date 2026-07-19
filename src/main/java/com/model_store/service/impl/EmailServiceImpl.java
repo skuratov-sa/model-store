@@ -92,6 +92,9 @@ public class EmailServiceImpl implements EmailService {
                     helper.setTo(to);
                     helper.setSubject(subject);
                     helper.setFrom(properties.getEmailFrom());
+                    if (properties.getEmailReplyTo() != null && !properties.getEmailReplyTo().isBlank()) {
+                        helper.setReplyTo(properties.getEmailReplyTo());
+                    }
                     helper.setText(htmlText, true);
                     mailSender.send(message);
                     return null; // обязательно
