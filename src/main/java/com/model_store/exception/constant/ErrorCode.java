@@ -3,6 +3,7 @@ package com.model_store.exception.constant;
 public enum ErrorCode {
     IMAGE_NOT_FOUND,
     PRODUCT_NOT_FOUND,
+    PRODUCT_NOT_PURCHASABLE,
     PARTICIPANT_NOT_FOUND,
     PRODUCT_ALREADY_IN_BASKET,
     NOT_ENOUGH_STOCK,
