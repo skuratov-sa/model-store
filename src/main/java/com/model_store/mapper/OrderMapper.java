@@ -34,7 +34,6 @@ public interface OrderMapper {
     @Mapping(target = "transfer.addressId", source = "addressId")
     FindOrderResponse toFindOrderResponseByCustomer(Order order);
 
-    @Mapping(target = "url", source = "externalUrl")
     ProductDto toProductDto(GetProductResponse response);
 
     @Mapping(target = "transferId", source = "transfer.id")

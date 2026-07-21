@@ -81,7 +81,7 @@ public class ProductServiceImplTest extends IntegrationTest {
     }
 
     @Test
-    void findByParams_externalProduct_returnsExternalUrlAndUrl() {
+    void findByParams_externalProduct_returnsExternalUrl() {
         FindProductRequest request = new FindProductRequest();
         request.setIncludeAdult(false);
 
@@ -90,10 +90,7 @@ public class ProductServiceImplTest extends IntegrationTest {
                 .thenMany(productService.findByParams(request, null));
 
         StepVerifier.create(result)
-                .assertNext(dto -> {
-                    assertThat(dto.getExternalUrl()).isEqualTo("https://example.com");
-                    assertThat(dto.getUrl()).isEqualTo("https://example.com");
-                })
+                .assertNext(dto -> assertThat(dto.getExternalUrl()).isEqualTo("https://example.com"))
                 .verifyComplete();
     }
 

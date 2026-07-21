@@ -25,7 +25,6 @@ public class ProductDto {
     private ProductStatus status;
     private ProductAvailabilityType availability;
     private String externalUrl;
-    private String url;
     private String sellerLogin;
     private Float sellerRating;
     private Integer totalReviews;
