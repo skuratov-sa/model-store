@@ -1,6 +1,7 @@
 package com.model_store.service.impl;
 
 import com.model_store.model.CreateOrUpdateProductRequest;
+import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.Participant;
 import com.model_store.model.base.Product;
 import com.model_store.model.constant.Currency;
@@ -75,6 +76,23 @@ public class ProductServiceImplTest extends IntegrationTest {
                 .assertNext(dto -> {
                     assertThat(dto.getName()).isEqualTo("Test Product");
                     assertThat(dto.getPrice()).isEqualTo(1500f);
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void findByParams_externalProduct_returnsExternalUrlAndUrl() {
+        FindProductRequest request = new FindProductRequest();
+        request.setIncludeAdult(false);
+
+        var result = newParticipant()
+                .flatMap(p -> createExternalProduct(ProductStatus.ACTIVE, p.getId()))
+                .thenMany(productService.findByParams(request, null));
+
+        StepVerifier.create(result)
+                .assertNext(dto -> {
+                    assertThat(dto.getExternalUrl()).isEqualTo("https://example.com");
+                    assertThat(dto.getUrl()).isEqualTo("https://example.com");
                 })
                 .verifyComplete();
     }

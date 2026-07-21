@@ -49,6 +49,8 @@ public interface ProductMapper {
     @Mapping(target = "id", source = "product.id")
     @Mapping(target = "name", source = "product.name")
     @Mapping(target = "sellerId", source = "product.participantId")
+    @Mapping(target = "externalUrl", source = "product.externalUrl")
+    @Mapping(target = "url", source = "product.externalUrl")
     ProductDto toProductDto(Product product, List<CategoryDto> categories, Long imageId, String sellerLogin, Float sellerRating, Integer totalReviews);
 
     @Mapping(target = "id", source = "product.id")
