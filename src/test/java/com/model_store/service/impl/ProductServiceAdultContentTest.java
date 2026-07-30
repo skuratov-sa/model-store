@@ -25,6 +25,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 class ProductServiceAdultContentTest extends IntegrationTest {
 
@@ -33,6 +34,7 @@ class ProductServiceAdultContentTest extends IntegrationTest {
 
     private Participant adultUser;
     private Participant minorUser;
+    private Participant userWithoutAge;
     private Product normalProduct;
     private Product adultProduct;
 
@@ -71,6 +73,20 @@ class ProductServiceAdultContentTest extends IntegrationTest {
                 .createdAt(Instant.now())
                 .build()).block();
 
+        userWithoutAge = participantRepository.save(Participant.builder()
+                .login("no_age_" + System.nanoTime())
+                .mail("no_age_" + System.nanoTime() + "@example.com")
+                .fullName("User Without Age")
+                .phoneNumber("+70000000003")
+                .status(ParticipantStatus.ACTIVE)
+                .password("pass")
+                .role(ParticipantRole.USER)
+                .deadlineSending(3)
+                .deadlinePayment(7)
+                .sellerStatus(SellerStatus.DEFAULT)
+                .createdAt(Instant.now())
+                .build()).block();
+
         normalProduct = saveProduct("Normal Product", adultUser.getId());
         adultProduct = saveProduct("Adult Product", adultUser.getId());
         linkToNsfwCategory(adultProduct.getId());
@@ -94,6 +110,19 @@ class ProductServiceAdultContentTest extends IntegrationTest {
         assertThatThrownBy(() -> productService.findByParams(req, minorUser.getId()).collectList().block())
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getCode()).isEqualTo(ErrorCode.ADULT_CONTENT_RESTRICTED));
+    }
+
+    @Test
+    void findByParams_userWithoutAge_includeAdultTrue_throwsSameForbiddenAsUnderageUser() {
+        FindProductRequest req = baseRequest();
+        req.setIncludeAdult(true);
+
+        ApiException underageError = adultContentError(req, minorUser.getId());
+        ApiException missingAgeError = adultContentError(req, userWithoutAge.getId());
+
+        assertThat(missingAgeError.getStatus()).isEqualTo(underageError.getStatus());
+        assertThat(missingAgeError.getCode()).isEqualTo(underageError.getCode());
+        assertThat(missingAgeError.getMessage()).isEqualTo(underageError.getMessage());
     }
 
     @Test
@@ -166,5 +195,11 @@ class ProductServiceAdultContentTest extends IntegrationTest {
         FindProductRequest req = new FindProductRequest();
         req.setPageable(new Pageable(50, null, null, 0L, SortByType.DATE_DESC));
         return req;
+    }
+
+    private ApiException adultContentError(FindProductRequest req, Long participantId) {
+        Throwable thrown = catchThrowable(() -> productService.findByParams(req, participantId).collectList().block());
+        assertThat(thrown).isInstanceOf(ApiException.class);
+        return (ApiException) thrown;
     }
 }

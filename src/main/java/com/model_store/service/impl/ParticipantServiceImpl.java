@@ -288,7 +288,8 @@ public class ParticipantServiceImpl implements ParticipantService {
 
     @Override
     public Mono<Integer> findAgeById(Long participantId) {
-        return participantRepository.findActualParticipant(participantId).map(Participant::getAge);
+        return participantRepository.findActualParticipant(participantId)
+                .flatMap(participant -> Mono.justOrEmpty(participant.getAge()));
     }
 
     private Mono<Void> updateImageStatus(Long imageId, Long entityId) {

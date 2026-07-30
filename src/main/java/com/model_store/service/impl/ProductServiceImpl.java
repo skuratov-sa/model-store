@@ -159,13 +159,10 @@ public class ProductServiceImpl implements ProductService {
                     "Для просмотра контента 18+ необходима авторизация"));
         }
         return participantService.findAgeById(participantId)
-                .flatMap(age -> {
-                    if (age == null || age < 18) {
-                        return Mono.error(ApiErrors.forbidden(ErrorCode.ADULT_CONTENT_RESTRICTED,
-                                "Контент 18+ доступен только пользователям от 18 лет"));
-                    }
-                    return Mono.<Void>empty();
-                });
+                .filter(age -> age >= 18)
+                .switchIfEmpty(Mono.defer(() -> Mono.error(ApiErrors.forbidden(ErrorCode.ADULT_CONTENT_RESTRICTED,
+                        "Контент 18+ доступен только пользователям от 18 лет"))))
+                .then();
     }
 
     @Override
