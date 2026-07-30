@@ -1,6 +1,7 @@
 package com.model_store.service.impl;
 
 import com.model_store.configuration.property.ApplicationProperties;
+import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.service.EmailService;
 import jakarta.annotation.PostConstruct;
 import jakarta.mail.internet.MimeMessage;
@@ -47,14 +48,18 @@ public class EmailServiceImpl implements EmailService {
     public Mono<Long> sendVerificationCode(String email) {
         return participantService.findByMail(email)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("Пользователя с такой почтой не существует")))
-                .flatMap(p ->
-                        verificationCodeService.enforceSendLimits(p.getId())
+                .flatMap(p -> {
+                    if (p.getStatus() != ParticipantStatus.WAITING_VERIFY) {
+                        return Mono.just(p.getId());
+                    }
+
+                    return verificationCodeService.enforceSendLimits(p.getId())
                                 .then(Mono.defer(() -> {
                                     String code = generateCode();
                                     return sendHtmlEmail(email, "Подтверждение почты", VERIFICATION_CODE_BODY.formatted(code))
                                             .then(verificationCodeService.addCode(p.getId(), code));
-                                })).thenReturn(p.getId())
-                );
+                                })).thenReturn(p.getId());
+                });
     }
 
     @Override

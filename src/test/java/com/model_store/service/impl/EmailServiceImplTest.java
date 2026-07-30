@@ -1,6 +1,7 @@
 package com.model_store.service.impl;
 
 import com.model_store.configuration.property.ApplicationProperties;
+import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.model.dto.FindParticipantByLoginDto;
 import jakarta.mail.BodyPart;
 import jakarta.mail.Message;
@@ -24,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -75,6 +77,44 @@ class EmailServiceImplTest {
         assertThat(((InternetAddress) sentMessage.getRecipients(Message.RecipientType.TO)[0]).getAddress()).isEqualTo("user@example.com");
         assertThat(sentMessage.getSubject()).isEqualTo("Подтверждение почты");
         assertThat(containsHtmlPart(sentMessage.getContent())).isTrue();
+    }
+
+    @Test
+    void sendVerificationCode_sendsCodeForWaitingVerifyParticipant() {
+        FindParticipantByLoginDto participant = FindParticipantByLoginDto.builder()
+                .id(42L)
+                .mail("user@example.com")
+                .status(ParticipantStatus.WAITING_VERIFY)
+                .build();
+
+        when(participantService.findByMail("user@example.com")).thenReturn(Mono.just(participant));
+        when(verificationCodeService.enforceSendLimits(participant.getId())).thenReturn(Mono.empty());
+        when(verificationCodeService.addCode(eq(participant.getId()), anyString())).thenReturn(Mono.empty());
+        when(mailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
+
+        StepVerifier.create(emailService.sendVerificationCode("user@example.com"))
+                .expectNext(participant.getId())
+                .verifyComplete();
+
+        verify(verificationCodeService).enforceSendLimits(participant.getId());
+        verify(mailSender).send(org.mockito.ArgumentMatchers.any(MimeMessage.class));
+    }
+
+    @Test
+    void sendVerificationCode_doesNotSendCodeForActiveParticipant() {
+        FindParticipantByLoginDto participant = FindParticipantByLoginDto.builder()
+                .id(42L)
+                .mail("user@example.com")
+                .status(ParticipantStatus.ACTIVE)
+                .build();
+
+        when(participantService.findByMail("user@example.com")).thenReturn(Mono.just(participant));
+
+        StepVerifier.create(emailService.sendVerificationCode("user@example.com"))
+                .expectNext(participant.getId())
+                .verifyComplete();
+
+        verifyNoInteractions(verificationCodeService, mailSender);
     }
 
     private boolean containsHtmlPart(Object content) throws Exception {

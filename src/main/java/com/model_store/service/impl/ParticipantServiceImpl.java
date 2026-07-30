@@ -252,6 +252,11 @@ public class ParticipantServiceImpl implements ParticipantService {
                     )).flatMap(p -> switch (p.getStatus()) {
                         case BLOCKED -> Mono.error(new IllegalStateException("Аккаунт заблокирован"));
                         case DELETED -> Mono.error(new IllegalStateException("Аккаунт удален"));
+                        case WAITING_VERIFY -> {
+                            p.setStatus(ACTIVE);
+                            p.setPassword(encoded);
+                            yield participantRepository.save(p);
+                        }
                         default -> {
                             p.setPassword(encoded);
                             yield participantRepository.save(p);
