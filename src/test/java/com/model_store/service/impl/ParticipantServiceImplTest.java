@@ -1,6 +1,7 @@
 package com.model_store.service.impl;
 
 import com.model_store.model.base.Participant;
+import com.model_store.model.UpdateParticipantRequest;
 import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.repository.AccountRepository;
 import com.model_store.repository.AddressRepository;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.ArgumentCaptor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -24,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class ParticipantServiceImplTest {
@@ -71,5 +74,31 @@ class ParticipantServiceImplTest {
 
         assertThat(participant.getStatus()).isEqualTo(ParticipantStatus.ACTIVE);
         assertThat(participant.getPassword()).isEqualTo("encoded-password");
+    }
+
+    @Test
+    void updateParticipant_preservesAgeWhenRequestDoesNotContainIt() {
+        Participant existingParticipant = Participant.builder()
+                .id(1L)
+                .status(ParticipantStatus.ACTIVE)
+                .age(25)
+                .build();
+        UpdateParticipantRequest request = new UpdateParticipantRequest();
+        Participant mappedParticipant = Participant.builder()
+                .status(ParticipantStatus.ACTIVE)
+                .build();
+
+        when(participantRepository.findById(existingParticipant.getId())).thenReturn(Mono.just(existingParticipant));
+        when(participantMapper.toParticipant(request, ParticipantStatus.ACTIVE)).thenReturn(mappedParticipant);
+        when(participantRepository.save(any(Participant.class)))
+                .thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
+
+        StepVerifier.create(participantService.updateParticipant(existingParticipant.getId(), request))
+                .expectNext(existingParticipant.getId())
+                .verifyComplete();
+
+        ArgumentCaptor<Participant> savedParticipant = ArgumentCaptor.forClass(Participant.class);
+        verify(participantRepository).save(savedParticipant.capture());
+        assertThat(savedParticipant.getValue().getAge()).isEqualTo(25);
     }
 }

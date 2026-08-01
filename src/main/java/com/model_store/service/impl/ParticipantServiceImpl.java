@@ -201,6 +201,7 @@ public class ParticipantServiceImpl implements ParticipantService {
                     updatedParticipant.setPassword(existingParticipant.getPassword());
                     updatedParticipant.setCreatedAt(existingParticipant.getCreatedAt());
                     updatedParticipant.setSellerStatus(existingParticipant.getSellerStatus());
+                    updatedParticipant.setAge(existingParticipant.getAge());
 
                     return updateImageStatus(request.getImageId(), id)
                             .then(participantRepository.save(updatedParticipant))
