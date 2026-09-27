@@ -5,7 +5,6 @@ import com.model_store.exception.constant.ErrorCode;
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.Product;
 import com.model_store.model.base.ProductBasket;
-import com.model_store.model.constant.ProductAvailabilityType;
 import com.model_store.model.dto.FullParticipantDto;
 import com.model_store.model.dto.ProductBasketDto;
 import com.model_store.repository.ProductBasketRepository;
@@ -29,13 +28,11 @@ import static com.model_store.exception.constant.ErrorCode.NOT_ENOUGH_STOCK;
 import static com.model_store.exception.constant.ErrorCode.PARTICIPANT_NOT_FOUND;
 import static com.model_store.exception.constant.ErrorCode.PRODUCT_ALREADY_IN_BASKET;
 import static com.model_store.exception.constant.ErrorCode.PRODUCT_NOT_FOUND;
-import static com.model_store.exception.constant.ErrorCode.PRODUCT_NOT_PURCHASABLE;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class BasketServiceImpl implements BasketService {
-    private static final String PRODUCT_NOT_PURCHASABLE_MESSAGE = "Товар доступен только на внешнем сайте и не может быть добавлен в корзину";
 
     private final ParticipantService participantService;
     private final ProductService productService;
@@ -95,7 +92,6 @@ public class BasketServiceImpl implements BasketService {
 
         Mono<Product> actualProductMono = productService.findActualProduct(productId)
                 .switchIfEmpty(Mono.error(ApiErrors.notFound(PRODUCT_NOT_FOUND, "Не удалось найти товар")))
-                .flatMap(this::ensureProductPurchasableInBasket)
                 .filter(p -> p.getCount() == null || p.getCount() >= qty)
                 .switchIfEmpty(Mono.error(ApiErrors.badRequest(NOT_ENOUGH_STOCK, "Нельзя добавить столько товаров")));
 
@@ -130,7 +126,6 @@ public class BasketServiceImpl implements BasketService {
 
         Mono<Product> actualProductMono = productService.findActualProduct(productId)
                 .switchIfEmpty(Mono.error(ApiErrors.notFound(PRODUCT_NOT_FOUND, "Не удалось найти товар")))
-                .flatMap(this::ensureProductPurchasableInBasket)
                 .filter(p -> p.getCount() == null || p.getCount() >= qty)
                 .switchIfEmpty(Mono.error(ApiErrors.badRequest(NOT_ENOUGH_STOCK, "Нельзя поставить столько товаров")));
 
@@ -158,11 +153,4 @@ public class BasketServiceImpl implements BasketService {
         return productBasketRepository.deleteByParticipantIdAndProductId(participantId, productId);
     }
 
-    private Mono<Product> ensureProductPurchasableInBasket(Product product) {
-        if (ProductAvailabilityType.EXTERNAL_ONLY.equals(product.getAvailability())) {
-            return Mono.error(ApiErrors.badRequest(PRODUCT_NOT_PURCHASABLE, PRODUCT_NOT_PURCHASABLE_MESSAGE));
-        }
-
-        return Mono.just(product);
-    }
 }

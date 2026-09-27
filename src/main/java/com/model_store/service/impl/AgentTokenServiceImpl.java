@@ -4,6 +4,7 @@ import com.model_store.exception.ApiErrors;
 import com.model_store.exception.constant.ErrorCode;
 import com.model_store.model.CustomUserDetails;
 import com.model_store.model.IssueAgentTokensResponse;
+import com.model_store.repository.ParticipantRepository;
 import com.model_store.service.AgentTokenService;
 import com.model_store.service.JwtService;
 import com.model_store.service.ParticipantService;
@@ -22,7 +23,7 @@ import java.time.temporal.TemporalAmount;
 @Service
 @RequiredArgsConstructor
 public class AgentTokenServiceImpl implements AgentTokenService {
-    private final ParticipantService participantService;
+    private final ParticipantRepository participantRepository;
     private final ReactiveUserDetailsService userDetailsService;
     private final JwtService jwtService;
 
@@ -31,8 +32,10 @@ public class AgentTokenServiceImpl implements AgentTokenService {
         log.info("Issuing agent tokens: participantId={}, accessTtl={}min, refreshTtl={}days",
                 participantId, accessTokenTtlMinutes, refreshTokenTtlDays);
         validateAgentTokenTtl(accessTokenTtlMinutes, refreshTokenTtlDays);
-        return participantService.findActualById(participantId)
-                .switchIfEmpty(Mono.error(ApiErrors.notFound(ErrorCode.PARTICIPANT_NOT_FOUND, "Пользователь не найден")))
+        return participantRepository.findByIdAndIsAgentTrue(participantId)
+                .switchIfEmpty(Mono.error(ApiErrors.notFound(ErrorCode.PARTICIPANT_NOT_FOUND, "Бот не найден")))
+                .filter(p -> p.getStatus() == com.model_store.model.constant.ParticipantStatus.ACTIVE)
+                .switchIfEmpty(Mono.error(ApiErrors.forbidden(ErrorCode.ACCESS_DENIED, "Бот не активен")))
                 .flatMap(p -> userDetailsService.findByUsername(p.getMail()))
                 .map(userDetails -> buildTokensResponse((CustomUserDetails) userDetails, accessTokenTtlMinutes, refreshTokenTtlDays))
                 .doOnSuccess(r -> log.info("Agent tokens issued: participantId={}, accessExpiresAt={}", participantId, r.getAccessTokenExpiresAt()));

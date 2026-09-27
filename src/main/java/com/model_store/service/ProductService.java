@@ -40,6 +40,8 @@ public interface ProductService {
 
     Mono<Void> updateProduct(Long id, CreateOrUpdateProductRequest request, Long participantId);
 
+    Mono<Void> updateAgentProduct(Long id, CreateOrUpdateProductRequest request, Long agentId);
+
     Mono<Void> deleteProduct(Long id, Long participantId);
 
     Mono<Product> findActualProduct(Long productId);

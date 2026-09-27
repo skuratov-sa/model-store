@@ -15,6 +15,17 @@ public interface OrderRepository extends ReactiveCrudRepository<Order, Long> {
 
     Flux<Order> findBySellerId(Long sellerId);
 
+    @Query("""
+            SELECT o.* FROM "order" o
+            JOIN participant p ON p.id = o.seller_id
+            WHERE p.is_agent = true
+              AND (:agentId IS NULL OR o.seller_id = :agentId)
+              AND (:status IS NULL OR o.status::text = :status)
+            ORDER BY o.created_at DESC, o.id DESC
+            LIMIT :limit OFFSET :offset
+            """)
+    Flux<Order> findAgentOrders(Long agentId, OrderStatus status, int limit, long offset);
+
     Flux<Order> findByCustomerId(Long customerId);
 
     @Query("SELECT COUNT(*) FROM \"order\" WHERE seller_id = :sellerId AND status = 'COMPLETED'")

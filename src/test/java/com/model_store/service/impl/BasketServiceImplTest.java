@@ -26,9 +26,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class BasketServiceImplTest extends IntegrationTest {
 
-    private static final String PRODUCT_NOT_PURCHASABLE_MESSAGE =
-            "Товар доступен только на внешнем сайте и не может быть добавлен в корзину";
-
     @Autowired
     private BasketService basketService;
 
@@ -79,20 +76,14 @@ class BasketServiceImplTest extends IntegrationTest {
     }
 
     @Test
-    void addToBasket_externalOnlyProduct_returnsUserErrorAndDoesNotSaveBasketItem() {
-        Product product = saveProduct(ProductAvailabilityType.EXTERNAL_ONLY, null);
+    void addToBasket_externalProduct_savesBasketItem() {
+        Product product = saveProduct(ProductAvailabilityType.EXTERNAL_PRODUCT, null);
 
         StepVerifier.create(basketService.addToBasket(participant.getId(), product.getId(), 1))
-                .expectErrorSatisfies(error -> {
-                    assertThat(error).isInstanceOf(ApiException.class);
-                    ApiException apiException = (ApiException) error;
-                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
-                    assertThat(apiException.getCode()).isEqualTo(ErrorCode.PRODUCT_NOT_PURCHASABLE);
-                    assertThat(apiException.getMessage()).isEqualTo(PRODUCT_NOT_PURCHASABLE_MESSAGE);
-                })
-                .verify();
+                .verifyComplete();
 
         StepVerifier.create(productBasketRepository.findByParticipantIdAndProductId(participant.getId(), product.getId()))
+                .assertNext(item -> assertThat(item.getCount()).isEqualTo(1))
                 .verifyComplete();
     }
 
@@ -125,18 +116,15 @@ class BasketServiceImplTest extends IntegrationTest {
     }
 
     @Test
-    void updateCount_externalOnlyProduct_returnsUserError() {
-        Product product = saveProduct(ProductAvailabilityType.EXTERNAL_ONLY, null);
+    void updateCount_externalProduct_updatesBasketItem() {
+        Product product = saveProduct(ProductAvailabilityType.EXTERNAL_PRODUCT, null);
+        basketService.addToBasket(participant.getId(), product.getId(), 1).block();
 
         StepVerifier.create(basketService.updateCount(participant.getId(), product.getId(), 2))
-                .expectErrorSatisfies(error -> {
-                    assertThat(error).isInstanceOf(ApiException.class);
-                    ApiException apiException = (ApiException) error;
-                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
-                    assertThat(apiException.getCode()).isEqualTo(ErrorCode.PRODUCT_NOT_PURCHASABLE);
-                    assertThat(apiException.getMessage()).isEqualTo(PRODUCT_NOT_PURCHASABLE_MESSAGE);
-                })
-                .verify();
+                .verifyComplete();
+        StepVerifier.create(productBasketRepository.findByParticipantIdAndProductId(participant.getId(), product.getId()))
+                .assertNext(item -> assertThat(item.getCount()).isEqualTo(2))
+                .verifyComplete();
     }
 
     private void assertApiException(Throwable error, HttpStatus status, ErrorCode code) {
@@ -164,7 +152,7 @@ class BasketServiceImplTest extends IntegrationTest {
             builder.prepaymentAmount(500f);
         }
 
-        if (ProductAvailabilityType.EXTERNAL_ONLY.equals(availability)) {
+        if (ProductAvailabilityType.EXTERNAL_PRODUCT.equals(availability)) {
             builder.externalUrl("https://example.com");
         }
 

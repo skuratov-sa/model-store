@@ -1,11 +1,14 @@
 package com.model_store.controller;
 
+import com.model_store.exception.ApiErrors;
+import com.model_store.exception.constant.ErrorCode;
 import com.model_store.model.dto.CloseOrderRequest;
 import com.model_store.model.dto.CreateOrderRequest;
 import com.model_store.model.dto.FindOrderResponse;
 import com.model_store.model.dto.GetRequiredODataOrderDto;
 import com.model_store.service.JwtService;
 import com.model_store.service.OrderService;
+import com.model_store.repository.ParticipantRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,6 +30,15 @@ import java.util.List;
 public class OrderController {
     private final OrderService orderService;
     private final JwtService jwtService;
+    private final ParticipantRepository participantRepository;
+
+    private Mono<Void> rejectBotSeller(Long participantId) {
+        return participantRepository.findByIdAndIsAgentTrue(participantId)
+                .hasElement()
+                .flatMap(isAgent -> isAgent
+                        ? Mono.error(ApiErrors.forbidden(ErrorCode.ACCESS_DENIED, "Заказами бота управляет администратор"))
+                        : Mono.empty());
+    }
 
     @Operation(summary = "Получить список заказов для продавца")
     @GetMapping("/seller")
@@ -61,7 +73,7 @@ public class OrderController {
     public Mono<Long> confirmOrder(@RequestHeader("Authorization") String authorizationHeader,
                                    @PathVariable Long orderId, @RequestParam(required = false) String comment) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        return orderService.agreementOrder(orderId, comment, participantId);
+        return rejectBotSeller(participantId).then(orderService.agreementOrder(orderId, comment, participantId));
     }
 
     @Operation(summary = "3.1.Покупатель подтверждает предоплату")
@@ -77,7 +89,7 @@ public class OrderController {
     public Mono<Long> sellerConfirmsPreorder(@RequestHeader("Authorization") String authorizationHeader,
                                              @PathVariable Long orderId, @RequestParam(required = false) String comment) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        return orderService.sellerConfirmsPreorder(orderId, comment, participantId);
+        return rejectBotSeller(participantId).then(orderService.sellerConfirmsPreorder(orderId, comment, participantId));
     }
 
     @Operation(summary = "3.3.Покупатель подтверждает оплату")
@@ -93,7 +105,7 @@ public class OrderController {
     public Mono<Long> shipOrder(@RequestHeader("Authorization") String authorizationHeader,
                                 @PathVariable Long orderId, @RequestParam String deliveryUrl, @RequestParam(required = false) String comment) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        return orderService.transferOrder(orderId, deliveryUrl, comment, participantId);
+        return rejectBotSeller(participantId).then(orderService.transferOrder(orderId, deliveryUrl, comment, participantId));
     }
 
     @Operation(summary = "5.Покупатель подтверждает получение")
@@ -122,8 +134,13 @@ public class OrderController {
 
     @Operation(summary = "Отменить заказ")
     @PostMapping("/{orderId}/FAILED")
-    public Mono<Long> closeOrder(@RequestHeader("Authorization") String authorizationHeader, @RequestBody CloseOrderRequest request) {
+    public Mono<Long> closeOrder(@RequestHeader("Authorization") String authorizationHeader,
+                                 @PathVariable Long orderId, @RequestBody CloseOrderRequest request) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        return orderService.closureOrder(request, participantId);
+        if (request.getOrderId() != null && !orderId.equals(request.getOrderId())) {
+            return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "ID заказа в пути и теле запроса не совпадают"));
+        }
+        request.setOrderId(orderId);
+        return rejectBotSeller(participantId).then(orderService.closureOrder(request, participantId));
     }
 }

@@ -5,9 +5,12 @@ import com.model_store.model.projection.ProductCategoryView;
 import org.springframework.data.r2dbc.repository.Query;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 public interface ProductCategoryRepository extends ReactiveCrudRepository<ProductCategory, Long> {
     Flux<ProductCategory> findByProductId(Long productId);
+
+    Mono<Void> deleteByProductId(Long productId);
 
     @Query("""
             SELECT pc.product_id, c.id AS category_id, c.name AS category_name

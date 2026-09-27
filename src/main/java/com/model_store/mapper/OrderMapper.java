@@ -18,6 +18,7 @@ public interface OrderMapper {
 
     @Mapping(target = "orderId", source = "id")
     @Mapping(target = "actualStatus", source = "status")
+    @Mapping(target = "sellerId", source = "sellerId")
     @Mapping(target = "userInfo.id", source = "customerId")
     @Mapping(target = "product.id", source = "productId")
     @Mapping(target = "product.count", source = "count")
@@ -27,6 +28,7 @@ public interface OrderMapper {
 
     @Mapping(target = "orderId", source = "id")
     @Mapping(target = "actualStatus", source = "status")
+    @Mapping(target = "sellerId", source = "sellerId")
     @Mapping(target = "userInfo.id", source = "sellerId")
     @Mapping(target = "product.id", source = "productId")
     @Mapping(target = "product.count", source = "count")

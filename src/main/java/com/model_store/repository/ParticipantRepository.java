@@ -14,6 +14,10 @@ import reactor.core.publisher.Mono;
 @Repository
 public interface ParticipantRepository extends ReactiveCrudRepository<Participant, Long> {
 
+    Flux<Participant> findByIsAgentTrueOrderByIdAsc();
+
+    Mono<Participant> findByIdAndIsAgentTrue(Long id);
+
     Mono<Participant> findByLogin(String login);
 
     Mono<Participant> findByMail(String mail);

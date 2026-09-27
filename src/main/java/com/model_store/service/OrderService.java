@@ -1,6 +1,7 @@
 package com.model_store.service;
 
 import com.model_store.model.base.Order;
+import com.model_store.model.constant.OrderStatus;
 import com.model_store.model.dto.CloseOrderRequest;
 import com.model_store.model.dto.CreateOrderRequest;
 import com.model_store.model.dto.FindOrderResponse;
@@ -29,6 +30,8 @@ public interface OrderService {
     Mono<Long> updateStatusOrder(UpdateOrderRequest request);
 
     Flux<FindOrderResponse> getOrdersBySeller(Long sellerId);
+
+    Flux<FindOrderResponse> getAgentOrders(Long agentId, OrderStatus status, int limit, long offset);
 
     Flux<FindOrderResponse> getOrdersByCustomer(Long customerId);
 

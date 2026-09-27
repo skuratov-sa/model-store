@@ -271,7 +271,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId) {
-        log.info("Create product request: {}, participantId: {}", request, participantId);
+        log.info("Create product: participantId={}", participantId);
 
         if (ProductAvailabilityType.PREORDER.equals(request.getAvailability())
                 && (isNull(request.getPrepaymentAmount()) || request.getPrepaymentAmount() <= 0)) {
@@ -282,8 +282,20 @@ public class ProductServiceImpl implements ProductService {
             return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Введено некорректное кол-во товаров"));
         }
 
+        if (request.getAvailability() == ProductAvailabilityType.EXTERNAL_PRODUCT
+                && (request.getExternalUrl() == null || request.getExternalUrl().isBlank())) {
+            return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Укажите ссылку на внешний товар"));
+        }
+        if (request.getPrepaymentAmount() != null
+                && (request.getPrepaymentAmount() < 0
+                    || request.getPrice() == null
+                    || request.getPrepaymentAmount() > request.getPrice())) {
+            return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Предоплата указана неверно"));
+        }
+
         Product product = productMapper.toProduct(request, participantId, ACTIVE, getExpirationDate());
-        if (request.getAvailability() == ProductAvailabilityType.EXTERNAL_ONLY) product.setCount(null);
+        if (request.getAvailability() == ProductAvailabilityType.EXTERNAL_PRODUCT) product.setCount(null);
+        if (request.getAvailability() == ProductAvailabilityType.PURCHASABLE) product.setPrepaymentAmount(null);
 
         return productRepository.save(product)
                 .flatMap(savedProduct ->
@@ -296,7 +308,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public Mono<Long> createAgentProduct(CreateAgentProductRequest request, Long participantId) {
-        log.info("Create agent product request: {}, participantId: {}", request, participantId);
+        log.info("Create agent product: participantId={}", participantId);
         Product product = Product.builder()
                 .name(request.getName())
                 .description(request.getDescription())
@@ -304,14 +316,18 @@ public class ProductServiceImpl implements ProductService {
                 .currency(request.getCurrency())
                 .originality(request.getOriginality())
                 .externalUrl(request.getExternalUrl())
-                .availability(ProductAvailabilityType.EXTERNAL_ONLY)
+                .availability(ProductAvailabilityType.EXTERNAL_PRODUCT)
                 .count(null)
                 .participantId(participantId)
                 .status(ACTIVE)
                 .expirationDate(getExpirationDate())
                 .build();
 
-        return productRepository.save(product)
+        return participantRepository.findByIdAndIsAgentTrue(participantId)
+                .switchIfEmpty(Mono.error(ApiErrors.forbidden(ErrorCode.ACCESS_DENIED, "Учетная запись не является ботом")))
+                .filter(p -> p.getStatus() == com.model_store.model.constant.ParticipantStatus.ACTIVE)
+                .switchIfEmpty(Mono.error(ApiErrors.forbidden(ErrorCode.ACCESS_DENIED, "Бот не активен")))
+                .then(productRepository.save(product))
                 .flatMap(savedProduct ->
                         updateImagesStatus(request.getImageIds(), savedProduct.getId())
                                 .then(addLinkProductAndCategories(request.getCategoryIds(), savedProduct.getId()))
@@ -321,17 +337,54 @@ public class ProductServiceImpl implements ProductService {
 
     @Transactional
     public Mono<Void> updateProduct(Long id, CreateOrUpdateProductRequest request, Long participantId) {
-        log.info("Update product request: {}, participantId: {}", request, participantId);
+        log.info("Update product: productId={}, participantId={}", id, participantId);
 
-        return productRepository.findActualProduct(id)
-                .doOnNext(product -> log.debug("Product found : {}", product))
+        return participantRepository.findByIdAndIsAgentTrue(participantId)
+                .hasElement()
+                .flatMap(isAgent -> isAgent
+                        ? Mono.error(ApiErrors.forbidden(ErrorCode.ACCESS_DENIED, "Товары бота редактирует администратор"))
+                        : updateOwnedProduct(id, request, participantId, false));
+    }
+
+    @Override
+    @Transactional
+    public Mono<Void> updateAgentProduct(Long id, CreateOrUpdateProductRequest request, Long agentId) {
+        if (request.getAvailability() != null
+                && request.getAvailability() != ProductAvailabilityType.EXTERNAL_PRODUCT) {
+            return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Тип товара бота должен оставаться EXTERNAL_PRODUCT"));
+        }
+        return participantRepository.findByIdAndIsAgentTrue(agentId)
+                .switchIfEmpty(Mono.error(ApiErrors.notFound(ErrorCode.PARTICIPANT_NOT_FOUND, "Бот не найден")))
+                .then(updateOwnedProduct(id, request, agentId, true));
+    }
+
+    private Mono<Void> updateOwnedProduct(Long id, CreateOrUpdateProductRequest request,
+                                          Long participantId, boolean includeInactive) {
+        Mono<Product> source = includeInactive
+                ? productRepository.findById(id).filter(p -> p.getStatus() != ProductStatus.DELETED)
+                : productRepository.findActualProduct(id);
+        return source
                 .filter(product -> Objects.equals(product.getParticipantId(), participantId))
                 .switchIfEmpty(Mono.error(
                         ApiErrors.notFound(ErrorCode.PRODUCT_NOT_FOUND, "Не удалось выполнить операцию: не достаточно прав или его не существует")
                 ))
                 .map(product -> productMapper.updateProduct(request, product))
+                .flatMap(product -> {
+                    if (product.getAvailability() == ProductAvailabilityType.EXTERNAL_PRODUCT
+                            && (product.getExternalUrl() == null || product.getExternalUrl().isBlank())) {
+                        return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Укажите ссылку на внешний товар"));
+                    }
+                    if (product.getPrepaymentAmount() != null
+                            && (product.getPrepaymentAmount() < 0
+                                || product.getPrice() == null
+                                || product.getPrepaymentAmount() > product.getPrice())) {
+                        return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Предоплата указана неверно"));
+                    }
+                    return Mono.just(product);
+                })
                 .flatMap(productRepository::save)
-                .flatMap(p -> updateImagesStatus(request.getImageIds(), id))
+                .flatMap(p -> updateImagesStatus(request.getImageIds(), id)
+                        .then(replaceCategories(request.getCategoryIds(), id)))
                 .then();
     }
 
@@ -391,10 +444,18 @@ public class ProductServiceImpl implements ProductService {
     private Mono<Void> addLinkProductAndCategories(List<Long> categoryIds, Long productId) {
         log.debug("Add a product and category link categoryIds: {}, productId: {}", categoryIds, productId);
 
-        if (isNull(productId) || categoryIds.isEmpty()) {
+        if (isNull(productId) || categoryIds == null || categoryIds.isEmpty()) {
             return Mono.empty();
         }
         return categoryService.addLinkProductAndCategories(categoryIds, productId);
+    }
+
+    private Mono<Void> replaceCategories(List<Long> categoryIds, Long productId) {
+        if (categoryIds == null) return Mono.empty();
+        return productCategoryRepository.deleteByProductId(productId)
+                .then(categoryIds.isEmpty()
+                        ? Mono.empty()
+                        : categoryService.addLinkProductAndCategories(categoryIds, productId));
     }
 
     @Override

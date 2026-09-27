@@ -12,6 +12,9 @@ public class FindOrderResponse {
     private Long orderId;
     private OrderStatus actualStatus;
     private Float totalPrice;
+    private Float prepaymentAmount;
+    private Long sellerId;
+    private String sellerLogin;
     private String createdAt;
     private UserInfoDto userInfo;
     private ProductDto product;

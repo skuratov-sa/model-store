@@ -194,6 +194,10 @@ public class ParticipantServiceImpl implements ParticipantService {
                         ApiErrors.notFound(ErrorCode.PARTICIPANT_NOT_FOUND, "Такого пользователя не существует или он был заблокирован")
                 ))
                 .flatMap(existingParticipant -> {
+                    if (Boolean.TRUE.equals(existingParticipant.getIsAgent())) {
+                        return Mono.error(ApiErrors.forbidden(ErrorCode.ACCESS_DENIED,
+                                "Профиль бота редактирует администратор"));
+                    }
                     Participant updatedParticipant = participantMapper.toParticipant(request, ACTIVE);
                     updatedParticipant.setId(existingParticipant.getId());
                     updatedParticipant.setRole(existingParticipant.getRole());
@@ -202,6 +206,7 @@ public class ParticipantServiceImpl implements ParticipantService {
                     updatedParticipant.setCreatedAt(existingParticipant.getCreatedAt());
                     updatedParticipant.setSellerStatus(existingParticipant.getSellerStatus());
                     updatedParticipant.setAge(existingParticipant.getAge());
+                    updatedParticipant.setIsAgent(existingParticipant.getIsAgent());
 
                     return updateImageStatus(request.getImageId(), id)
                             .then(participantRepository.save(updatedParticipant))

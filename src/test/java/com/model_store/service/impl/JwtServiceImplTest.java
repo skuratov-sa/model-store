@@ -4,6 +4,8 @@ import com.model_store.configuration.property.ApplicationProperties;
 import com.model_store.exception.ApiException;
 import com.model_store.exception.constant.ErrorCode;
 import com.model_store.model.CustomUserDetails;
+import com.model_store.model.base.Participant;
+import com.model_store.repository.ParticipantRepository;
 import com.model_store.model.constant.ParticipantRole;
 import com.model_store.model.constant.ParticipantStatus;
 import io.jsonwebtoken.Claims;
@@ -28,6 +30,7 @@ class JwtServiceImplTest {
 
     private JwtServiceImpl jwtService;
     private ReactiveUserDetailsService mockUserDetailsService;
+    private ParticipantRepository participantRepository;
     private CustomUserDetails testUser;
 
     @BeforeEach
@@ -53,7 +56,8 @@ class JwtServiceImplTest {
         props.setPublicKeyPath(publicKeyPath.toAbsolutePath().toString());
 
         mockUserDetailsService = mock(ReactiveUserDetailsService.class);
-        jwtService = new JwtServiceImpl(mockUserDetailsService, props);
+        participantRepository = mock(ParticipantRepository.class);
+        jwtService = new JwtServiceImpl(mockUserDetailsService, props, participantRepository);
 
         testUser = CustomUserDetails.builder()
                 .id(42L)
@@ -142,6 +146,10 @@ class JwtServiceImplTest {
     void refreshAccessToken_withAgentRefreshToken_returnsAgentToken() {
         String agentRefreshToken = jwtService.generateAgentRefreshToken(testUser, Duration.ofDays(30));
         when(mockUserDetailsService.findByUsername(testUser.getEmail())).thenReturn(Mono.just(testUser));
+        Participant agent = new Participant();
+        agent.setIsAgent(true);
+        agent.setStatus(ParticipantStatus.ACTIVE);
+        when(participantRepository.findByMail(testUser.getEmail())).thenReturn(Mono.just(agent));
 
         StepVerifier.create(jwtService.refreshAccessToken(agentRefreshToken))
                 .assertNext(token -> {

@@ -25,7 +25,8 @@ public interface ProductMapper {
     );
 
     default Product updateProduct(CreateOrUpdateProductRequest productRequest, Product product) {
-        var isPurchasable = productRequest.getAvailability().equals(ProductAvailabilityType.PURCHASABLE);
+        var availability = Optional.ofNullable(productRequest.getAvailability()).orElse(product.getAvailability());
+        var isPurchasable = availability.equals(ProductAvailabilityType.PURCHASABLE);
         var count = isPurchasable ? Optional.ofNullable(productRequest.getCount()).orElse(product.getCount()) : null;
 
         return Product.builder()
@@ -34,10 +35,11 @@ public interface ProductMapper {
                 .description(Optional.ofNullable(productRequest.getDescription()).orElse(product.getDescription()))
                 .count(count)
                 .price(Optional.ofNullable(productRequest.getPrice()).orElse(product.getPrice()))
-                .prepaymentAmount(Optional.ofNullable(productRequest.getPrepaymentAmount()).orElse(product.getPrepaymentAmount()))
+                .prepaymentAmount(isPurchasable ? null
+                        : Optional.ofNullable(productRequest.getPrepaymentAmount()).orElse(product.getPrepaymentAmount()))
                 .currency(Optional.ofNullable(productRequest.getCurrency()).orElse(product.getCurrency()))
                 .originality(Optional.ofNullable(productRequest.getOriginality()).orElse(product.getOriginality()))
-                .availability(Optional.ofNullable(productRequest.getAvailability()).orElse(product.getAvailability()))
+                .availability(availability)
                 .externalUrl(Optional.ofNullable(productRequest.getExternalUrl()).orElse(product.getExternalUrl()))
                 .participantId(product.getParticipantId())
                 .status(product.getStatus())
@@ -49,10 +51,11 @@ public interface ProductMapper {
     @Mapping(target = "id", source = "product.id")
     @Mapping(target = "name", source = "product.name")
     @Mapping(target = "sellerId", source = "product.participantId")
-    @Mapping(target = "externalUrl", source = "product.externalUrl")
+    @Mapping(target = "externalUrl", ignore = true)
     ProductDto toProductDto(Product product, List<CategoryDto> categories, Long imageId, String sellerLogin, Float sellerRating, Integer totalReviews);
 
     @Mapping(target = "id", source = "product.id")
     @Mapping(target = "name", source = "product.name")
+    @Mapping(target = "externalUrl", ignore = true)
     GetProductResponse toGetProductResponse(Product product, List<CategoryDto> categories, List<Long> imageIds, List<ReviewResponseDto> reviews, String sellerLogin, Float sellerRating, Integer totalReviews);
 }

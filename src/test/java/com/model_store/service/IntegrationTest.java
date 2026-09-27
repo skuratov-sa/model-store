@@ -95,7 +95,7 @@ public class IntegrationTest extends BaseIntegrationTest {
     }
 
     protected Mono<Product> createExternalProduct(ProductStatus status, Long participantId) {
-        return createProduct(status, participantId, ProductAvailabilityType.EXTERNAL_ONLY, null, "https://example.com");
+        return createProduct(status, participantId, ProductAvailabilityType.EXTERNAL_PRODUCT, null, "https://example.com");
     }
 
     protected Mono<Product> createPreorderProduct(ProductStatus status, Long participantId) {

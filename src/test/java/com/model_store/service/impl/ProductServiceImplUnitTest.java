@@ -75,6 +75,7 @@ class ProductServiceImplUnitTest {
                 productCategoryRepository, imageRepository, participantRepository, sellerRatingRepository
         );
         when(properties.getProductExpirationDays()).thenReturn(30);
+        when(participantRepository.findByIdAndIsAgentTrue(anyLong())).thenReturn(Mono.empty());
     }
 
     // --- createProduct: pre-checks ---
@@ -151,7 +152,8 @@ class ProductServiceImplUnitTest {
         when(socialNetworksService.findByParticipantId(1L)).thenReturn(Flux.just(new SocialNetwork()));
 
         CreateOrUpdateProductRequest req = validRequest();
-        req.setAvailability(ProductAvailabilityType.EXTERNAL_ONLY);
+        req.setAvailability(ProductAvailabilityType.EXTERNAL_PRODUCT);
+        req.setExternalUrl("https://t.me/source");
         req.setCount(5);
 
         Product mappedProduct = Product.builder().id(null).count(5).build();
@@ -178,6 +180,28 @@ class ProductServiceImplUnitTest {
                 .expectErrorMatches(e -> e instanceof ApiException
                         && ((ApiException) e).getCode() == ErrorCode.PRODUCT_NOT_FOUND)
                 .verify();
+    }
+
+    @Test
+    void updateAgentProduct_blockedProduct_canBeModeratedByAdmin() {
+        com.model_store.model.base.Participant agent = new com.model_store.model.base.Participant();
+        agent.setId(7L);
+        agent.setIsAgent(true);
+        Product product = Product.builder().id(5L).participantId(7L)
+                .status(ProductStatus.BLOCKED).price(100f)
+                .availability(ProductAvailabilityType.EXTERNAL_PRODUCT)
+                .externalUrl("https://t.me/source").build();
+        when(participantRepository.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(agent));
+        when(productRepository.findById(5L)).thenReturn(Mono.just(product));
+        when(productMapper.updateProduct(any(), any())).thenReturn(product);
+        when(productRepository.save(product)).thenReturn(Mono.just(product));
+
+        CreateOrUpdateProductRequest request = validRequest();
+        request.setAvailability(ProductAvailabilityType.EXTERNAL_PRODUCT);
+        request.setCategoryIds(null);
+        StepVerifier.create(productService.updateAgentProduct(5L, request, 7L))
+                .verifyComplete();
+        verify(productRepository).findById(5L);
     }
 
     // --- deleteProduct ---

@@ -43,13 +43,11 @@ import static com.model_store.exception.constant.ErrorCode.OUT_OF_STOCK;
 import static com.model_store.exception.constant.ErrorCode.OWN_PRODUCT_ORDER_FORBIDDEN;
 import static com.model_store.exception.constant.ErrorCode.PARTICIPANT_NOT_FOUND;
 import static com.model_store.exception.constant.ErrorCode.PRODUCT_NOT_FOUND;
-import static com.model_store.exception.constant.ErrorCode.PRODUCT_NOT_PURCHASABLE;
 import static com.model_store.exception.constant.ErrorCode.TRANSFER_NOT_FOUND;
 import static com.model_store.model.constant.OrderStatus.AWAITING_PAYMENT;
 import static com.model_store.model.constant.OrderStatus.AWAITING_PREPAYMENT;
 import static com.model_store.model.constant.OrderStatus.AWAITING_PREPAYMENT_APPROVAL;
 import static com.model_store.model.constant.OrderStatus.BOOKED;
-import static com.model_store.model.constant.ProductAvailabilityType.EXTERNAL_ONLY;
 import static com.model_store.model.constant.ProductAvailabilityType.PURCHASABLE;
 import static com.model_store.service.util.UtilService.getImageId;
 import static java.util.Collections.emptyList;
@@ -136,7 +134,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
     protected Mono<Long> createOrderAndUpdateProduct(Product product, CreateOrderRequest request, Long participantId) {
-        var prepayment = Optional.ofNullable(product.getPrepaymentAmount()).orElse(0F);
+        var prepayment = PURCHASABLE.equals(product.getAvailability())
+                ? 0F : Optional.ofNullable(product.getPrepaymentAmount()).orElse(0F);
 
         Order order = orderMapper.toOrder(request);
         order.setStatus(BOOKED);
@@ -224,6 +223,15 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public Flux<FindOrderResponse> getOrdersBySeller(Long sellerId) {
         return enrichOrders(findOrderByOrderSeller(sellerId));
+    }
+
+    @Override
+    public Flux<FindOrderResponse> getAgentOrders(Long agentId, OrderStatus status, int limit, long offset) {
+        return enrichOrders(orderRepository.findAgentOrders(agentId, status, limit, offset)
+                .map(orderMapper::toFindOrderResponseBySeller))
+                .concatMap(response -> participantService.findLoginById(response.getSellerId())
+                        .doOnNext(response::setSellerLogin)
+                        .thenReturn(response));
     }
 
     @Override
@@ -397,7 +405,6 @@ public class OrderServiceImpl implements OrderService {
 
 
     private Mono<Void> validateCreateOrder(Product product, Integer count, Long participantId) {
-        var availability = product.getAvailability();
         var productCount = product.getCount();
 
         if (isNull(count) || count <= 0) {
@@ -407,9 +414,6 @@ public class OrderServiceImpl implements OrderService {
             return Mono.error(ApiErrors.badRequest(OUT_OF_STOCK, "Недостаточно товара на складе"));
         }
 
-        if (EXTERNAL_ONLY.equals(availability)) {
-            return Mono.error(ApiErrors.badRequest(PRODUCT_NOT_PURCHASABLE, "Нельзя заказать товар из смежного магазина"));
-        }
         if (Objects.equals(product.getParticipantId(), participantId)) {
             return Mono.error(ApiErrors.badRequest(OWN_PRODUCT_ORDER_FORBIDDEN, "Нельзя заказать свой товар"));
         }

@@ -81,7 +81,7 @@ public class ProductServiceImplTest extends IntegrationTest {
     }
 
     @Test
-    void findByParams_externalProduct_returnsExternalUrl() {
+    void findByParams_externalProduct_hidesExternalUrl() {
         FindProductRequest request = new FindProductRequest();
 
         var result = newParticipant()
@@ -89,7 +89,18 @@ public class ProductServiceImplTest extends IntegrationTest {
                 .thenMany(productService.findByParams(request, null));
 
         StepVerifier.create(result)
-                .assertNext(dto -> assertThat(dto.getExternalUrl()).isEqualTo("https://example.com"))
+                .assertNext(dto -> assertThat(dto.getExternalUrl()).isNull())
+                .verifyComplete();
+    }
+
+    @Test
+    void getProductById_externalProduct_hidesExternalUrl() {
+        var result = newParticipant()
+                .flatMap(p -> createExternalProduct(ProductStatus.ACTIVE, p.getId()))
+                .flatMap(product -> productService.getProductById(product.getId()));
+
+        StepVerifier.create(result)
+                .assertNext(dto -> assertThat(dto.getExternalUrl()).isNull())
                 .verifyComplete();
     }
 

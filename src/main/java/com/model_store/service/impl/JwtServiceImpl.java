@@ -4,6 +4,7 @@ import com.model_store.configuration.property.ApplicationProperties;
 import com.model_store.exception.ApiErrors;
 import com.model_store.model.CustomUserDetails;
 import com.model_store.model.constant.ParticipantRole;
+import com.model_store.repository.ParticipantRepository;
 import com.model_store.service.JwtService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
@@ -38,12 +39,15 @@ import static com.model_store.exception.constant.ErrorCode.TOKEN_INVALID_OR_EXPI
 @Service
 public class JwtServiceImpl implements JwtService {
     private final ReactiveUserDetailsService userDetailsService;
+    private final ParticipantRepository participantRepository;
     private final PrivateKey privateKey;
     private final PublicKey publicKey;
 
     @Autowired
-    public JwtServiceImpl(@Lazy ReactiveUserDetailsService userDetailsService, ApplicationProperties applicationProperties) throws Exception {
+    public JwtServiceImpl(@Lazy ReactiveUserDetailsService userDetailsService, ApplicationProperties applicationProperties,
+                          ParticipantRepository participantRepository) throws Exception {
         this.userDetailsService = userDetailsService;
+        this.participantRepository = participantRepository;
 
         this.privateKey = loadPrivateKey(applicationProperties.getPrivateKeyPath());
         this.publicKey = loadPublicKey(applicationProperties.getPublicKeyPath());
@@ -134,7 +138,15 @@ public class JwtServiceImpl implements JwtService {
                     boolean isAgent = "admin".equals(claims.get("issuedBy", String.class));
                     log.debug("Refreshing token: username={}, isAgent={}", username, isAgent);
 
-                    return userDetailsService.findByUsername(username)
+                    Mono<Void> agentCheck = isAgent
+                            ? participantRepository.findByMail(username)
+                                .filter(p -> Boolean.TRUE.equals(p.getIsAgent())
+                                        && p.getStatus() == com.model_store.model.constant.ParticipantStatus.ACTIVE)
+                                .switchIfEmpty(Mono.error(ApiErrors.authException(TOKEN_INVALID_OR_EXPIRED,
+                                        "Бот не найден или не активен")))
+                                .then()
+                            : Mono.empty();
+                    return agentCheck.then(userDetailsService.findByUsername(username))
                             .map(userDetails -> isAgent
                                     ? generateAgentToken((CustomUserDetails) userDetails, Duration.ofHours(24))
                                     : generateAccessToken((CustomUserDetails) userDetails, Duration.ofMinutes(30)))

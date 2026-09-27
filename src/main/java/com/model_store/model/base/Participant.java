@@ -48,6 +48,8 @@ public class Participant {
     private SellerStatus sellerStatus = SellerStatus.DEFAULT;
 
     private Integer age;
+    @Builder.Default
+    private Boolean isAgent = false;
 
     @Override
     public boolean equals(Object o) {

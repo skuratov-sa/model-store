@@ -286,7 +286,7 @@ class OrderServiceImplTest extends IntegrationTest {
     }
 
     @Test
-    void createOrders_externalOnlyProduct_throwsError() {
+    void createOrders_externalProduct_createsOrderForSeller() {
         Product product = productRepository.save(
                 Product.builder()
                         .name("External Product")
@@ -296,7 +296,7 @@ class OrderServiceImplTest extends IntegrationTest {
                         .originality("Original")
                         .participantId(seller.getId())
                         .status(ProductStatus.ACTIVE)
-                        .availability(ProductAvailabilityType.EXTERNAL_ONLY)
+                        .availability(ProductAvailabilityType.EXTERNAL_PRODUCT)
                         .externalUrl("https://example.com")
                         .expirationDate(Instant.now().plusSeconds(86400 * 30))
                         .createdAt(Instant.now())
@@ -308,9 +308,74 @@ class OrderServiceImplTest extends IntegrationTest {
                 buyer.getId()
         );
 
-        StepVerifier.create(result)
-                .expectErrorSatisfies(error -> assertApiException(error, ErrorCode.PRODUCT_NOT_PURCHASABLE, "Нельзя заказать товар из смежного магазина"))
-                .verify();
+        StepVerifier.create(result.flatMap(ids -> {
+                    assertThat(ids).hasSize(1);
+                    return orderRepository.findById(ids.getFirst());
+                }))
+                .assertNext(order -> {
+                    assertThat(order.getSellerId()).isEqualTo(seller.getId());
+                    assertThat(order.getCustomerId()).isEqualTo(buyer.getId());
+                    assertThat(order.getStatus()).isEqualTo(OrderStatus.BOOKED);
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void createOrders_externalProductWithPrepayment_usesPreorderFlow() {
+        Product product = productRepository.save(Product.builder()
+                .name("External preorder")
+                .description("desc")
+                .price(500f)
+                .prepaymentAmount(100f)
+                .currency(Currency.RUB)
+                .originality("Original")
+                .participantId(seller.getId())
+                .status(ProductStatus.ACTIVE)
+                .availability(ProductAvailabilityType.EXTERNAL_PRODUCT)
+                .externalUrl("https://t.me/source")
+                .expirationDate(Instant.now().plusSeconds(86400 * 30))
+                .build()).block();
+        Long id = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId())
+                .block().getFirst();
+
+        StepVerifier.create(orderRepository.findById(id))
+                .assertNext(order -> {
+                    assertThat(order.getPrepaymentAmount()).isEqualTo(100f);
+                    assertThat(order.getTotalPrice()).isEqualTo(400f);
+                })
+                .verifyComplete();
+        StepVerifier.create(orderService.agreementOrder(id, null, seller.getId())
+                .then(orderRepository.findById(id)))
+                .assertNext(order -> assertThat(order.getStatus()).isEqualTo(AWAITING_PREPAYMENT))
+                .verifyComplete();
+    }
+
+    @Test
+    void getAgentOrders_returnsOnlyBotSellerOrders() {
+        seller.setIsAgent(true);
+        participantRepository.save(seller).block();
+        StepVerifier.create(participantRepository.findByIdAndIsAgentTrue(seller.getId()))
+                .expectNextMatches(p -> p.getId().equals(seller.getId()))
+                .verifyComplete();
+        StepVerifier.create(participantRepository.findByIsAgentTrueOrderByIdAsc())
+                .expectNextMatches(p -> p.getId().equals(seller.getId()))
+                .verifyComplete();
+        Product product = savePurchasableProduct(3);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId())
+                .block().getFirst();
+
+        StepVerifier.create(orderService.getAgentOrders(null, null, 50, 0))
+                .assertNext(order -> {
+                    assertThat(order.getOrderId()).isEqualTo(orderId);
+                    assertThat(order.getSellerId()).isEqualTo(seller.getId());
+                    assertThat(order.getSellerLogin()).isEqualTo(seller.getLogin());
+                })
+                .verifyComplete();
+        StepVerifier.create(orderService.getAgentOrders(seller.getId(), OrderStatus.BOOKED, 50, 0))
+                .expectNextCount(1)
+                .verifyComplete();
+        StepVerifier.create(orderService.getAgentOrders(seller.getId(), OrderStatus.COMPLETED, 50, 0))
+                .verifyComplete();
     }
 
     @Test

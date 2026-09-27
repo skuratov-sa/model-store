@@ -21,7 +21,7 @@ public class AgentController {
     private final ProductService productService;
     private final JwtService jwtService;
 
-    @Operation(summary = "Создать товар от имени агента (EXTERNAL_ONLY, сразу активен)")
+    @Operation(summary = "Создать товар от имени агента (EXTERNAL_PRODUCT, сразу активен)")
     @PostMapping("/products")
     public Mono<Long> createAgentProduct(
             @RequestHeader("Authorization") String authorizationHeader,
