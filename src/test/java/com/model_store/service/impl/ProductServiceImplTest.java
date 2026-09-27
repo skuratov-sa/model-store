@@ -187,6 +187,26 @@ public class ProductServiceImplTest extends IntegrationTest {
     }
 
     @Test
+    void updateProductStatus_reactivatesBlockedProductAndRenewsExpiredDate() {
+        var result = newParticipant()
+                .flatMap(p -> createPurchasableProduct(ProductStatus.BLOCKED, p.getId()))
+                .flatMap(saved -> productRepository.findById(saved.getId()))
+                .flatMap(stored -> {
+                    stored.setExpirationDate(Instant.now().minusSeconds(86400));
+                    return productRepository.save(stored)
+                            .then(productService.updateProductStatus(stored.getId(), ProductStatus.ACTIVE))
+                            .then(productRepository.findById(stored.getId()));
+                });
+
+        StepVerifier.create(result)
+                .assertNext(product -> {
+                    assertThat(product.getStatus()).isEqualTo(ProductStatus.ACTIVE);
+                    assertThat(product.getExpirationDate()).isAfter(Instant.now());
+                })
+                .verifyComplete();
+    }
+
+    @Test
     void save_persistsProductAndReturnsId() {
         var result = newParticipant()
                 .flatMap(p -> {

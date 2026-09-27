@@ -2,6 +2,7 @@ package com.model_store.service.impl;
 
 import com.model_store.configuration.AgentAccountAccessFilter;
 import com.model_store.model.base.Participant;
+import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.repository.ParticipantRepository;
 import com.model_store.service.JwtService;
 import org.junit.jupiter.api.Test;
@@ -22,10 +23,16 @@ class AgentAccountAccessFilterTest {
     private final ParticipantRepository participants = mock(ParticipantRepository.class);
     private final AgentAccountAccessFilter filter = new AgentAccountAccessFilter(jwt, participants);
 
+    private Participant bot(ParticipantStatus status) {
+        Participant participant = new Participant();
+        participant.setStatus(status);
+        return participant;
+    }
+
     @Test
     void botCannotUseOrdinaryOrderEndpoint() {
         when(jwt.getIdByAccessToken("Bearer token")).thenReturn(7L);
-        when(participants.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(new Participant()));
+        when(participants.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(bot(ParticipantStatus.ACTIVE)));
         var exchange = MockServerWebExchange.from(MockServerHttpRequest.post("/order/11/AWAITING_PAYMENT")
                 .header("Authorization", "Bearer token"));
         AtomicBoolean nextCalled = new AtomicBoolean();
@@ -42,7 +49,7 @@ class AgentAccountAccessFilterTest {
     @Test
     void botCanCallProductIngestion() {
         when(jwt.getIdByAccessToken("Bearer token")).thenReturn(7L);
-        when(participants.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(new Participant()));
+        when(participants.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(bot(ParticipantStatus.ACTIVE)));
         var exchange = MockServerWebExchange.from(MockServerHttpRequest.post("/agent/products")
                 .header("Authorization", "Bearer token"));
         AtomicBoolean nextCalled = new AtomicBoolean();
@@ -58,7 +65,7 @@ class AgentAccountAccessFilterTest {
     @Test
     void botCanUploadTemporaryProductImages() {
         when(jwt.getIdByAccessToken("Bearer token")).thenReturn(7L);
-        when(participants.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(new Participant()));
+        when(participants.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(bot(ParticipantStatus.ACTIVE)));
         var exchange = MockServerWebExchange.from(MockServerHttpRequest.post("/images?tag=PRODUCT")
                 .header("Authorization", "Bearer token"));
         AtomicBoolean nextCalled = new AtomicBoolean();
@@ -74,8 +81,25 @@ class AgentAccountAccessFilterTest {
     @Test
     void botCannotUploadImageForAnExistingEntity() {
         when(jwt.getIdByAccessToken("Bearer token")).thenReturn(7L);
-        when(participants.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(new Participant()));
+        when(participants.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(bot(ParticipantStatus.ACTIVE)));
         var exchange = MockServerWebExchange.from(MockServerHttpRequest.post("/images?tag=PRODUCT&entityId=8")
+                .header("Authorization", "Bearer token"));
+        AtomicBoolean nextCalled = new AtomicBoolean();
+
+        StepVerifier.create(filter.filter(exchange, ignored -> {
+            nextCalled.set(true);
+            return Mono.empty();
+        })).verifyComplete();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(nextCalled).isFalse();
+    }
+
+    @Test
+    void blockedBotCannotUploadTemporaryProductImages() {
+        when(jwt.getIdByAccessToken("Bearer token")).thenReturn(7L);
+        when(participants.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(bot(ParticipantStatus.BLOCKED)));
+        var exchange = MockServerWebExchange.from(MockServerHttpRequest.post("/images?tag=PRODUCT")
                 .header("Authorization", "Bearer token"));
         AtomicBoolean nextCalled = new AtomicBoolean();
 

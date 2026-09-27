@@ -407,10 +407,15 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public Mono<Void> updateProductStatus(Long id, ProductStatus status) {
         log.info("Update product id: {}, status: {}", id, status);
-        return productRepository.findActualProduct(id)
+        return productRepository.findById(id)
+                .filter(product -> product.getStatus() != ProductStatus.DELETED)
                 .switchIfEmpty(Mono.error(
                         ApiErrors.notFound(ErrorCode.PRODUCT_NOT_FOUND, "Не удалось выполнить операцию: не достаточно прав или его не существует")
                 )).flatMap(product -> {
+                    if (status == ACTIVE && (product.getExpirationDate() == null
+                            || !product.getExpirationDate().isAfter(Instant.now()))) {
+                        product.setExpirationDate(getExpirationDate());
+                    }
                     product.setStatus(status);
                     return productRepository.save(product).then();
                 });

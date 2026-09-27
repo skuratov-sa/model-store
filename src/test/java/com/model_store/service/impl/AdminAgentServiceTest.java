@@ -120,4 +120,17 @@ class AdminAgentServiceTest {
 
         verify(productService, never()).extendExpirationDate(any(), any());
     }
+
+    @Test
+    void adminProfileIncludesCurrentImageId() {
+        Participant bot = new Participant();
+        bot.setId(7L);
+        when(participants.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(bot));
+        when(imageService.findMainImage(7L, com.model_store.model.constant.ImageTag.PARTICIPANT))
+                .thenReturn(Mono.just(99L));
+
+        StepVerifier.create(service.profile(7L))
+                .assertNext(profile -> assertThat(profile.imageId()).isEqualTo(99L))
+                .verifyComplete();
+    }
 }

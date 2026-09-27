@@ -18,8 +18,10 @@ import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusReactiveJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
@@ -78,13 +80,13 @@ public class WebSecurityConfig {
         NimbusReactiveJwtDecoder decoder = NimbusReactiveJwtDecoder.withPublicKey(publicKey).build();
 
         // Добавляем проверку, чтобы токен с type="refresh" не прошёл валидацию
-        decoder.setJwtValidator(jwt -> {
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(JwtValidators.createDefault(), jwt -> {
             String tokenType = jwt.getClaimAsString("type");
             if ("refresh".equals(tokenType)) {
                 return OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Refresh token cannot be used for authorization", null));
             }
             return OAuth2TokenValidatorResult.success();
-        });
+        }));
 
         return decoder;
     }

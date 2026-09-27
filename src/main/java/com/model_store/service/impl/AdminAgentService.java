@@ -78,7 +78,13 @@ public class AdminAgentService {
     }
 
     public Mono<AgentProfileDto> profile(Long agentId) {
-        return requireAgent(agentId).map(AgentProfileDto::from);
+        return requireAgent(agentId).flatMap(this::toProfile);
+    }
+
+    private Mono<AgentProfileDto> toProfile(Participant participant) {
+        return imageService.findMainImage(participant.getId(), ImageTag.PARTICIPANT)
+                .map(imageId -> AgentProfileDto.from(participant, imageId))
+                .defaultIfEmpty(AgentProfileDto.from(participant, null));
     }
 
     @Transactional
@@ -91,7 +97,7 @@ public class AdminAgentService {
             Mono<Void> image = request.imageId() == null
                     ? Mono.empty()
                     : imageService.replaceForParticipant(request.imageId(), agentId, ImageTag.PARTICIPANT);
-            return image.then(participants.save(p)).map(AgentProfileDto::from);
+            return image.then(participants.save(p)).flatMap(this::toProfile);
         });
     }
 

@@ -8,13 +8,14 @@ public record AgentProfileDto(
         String login,
         String fullName,
         String phoneNumber,
+        Long imageId,
         Integer deadlineSending,
         Integer deadlinePayment,
         ParticipantStatus status
 ) {
-    public static AgentProfileDto from(Participant participant) {
+    public static AgentProfileDto from(Participant participant, Long imageId) {
         return new AgentProfileDto(participant.getId(), participant.getLogin(), participant.getFullName(),
-                participant.getPhoneNumber(), participant.getDeadlineSending(),
+                participant.getPhoneNumber(), imageId, participant.getDeadlineSending(),
                 participant.getDeadlinePayment(), participant.getStatus());
     }
 }

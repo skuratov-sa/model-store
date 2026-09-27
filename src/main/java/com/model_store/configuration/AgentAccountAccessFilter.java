@@ -1,5 +1,6 @@
 package com.model_store.configuration;
 
+import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.repository.ParticipantRepository;
 import com.model_store.service.JwtService;
 import lombok.RequiredArgsConstructor;
@@ -29,16 +30,18 @@ public class AgentAccountAccessFilter implements WebFilter {
         } catch (RuntimeException invalidToken) {
             return chain.filter(exchange);
         }
+        boolean createAgentProduct = HttpMethod.POST.equals(exchange.getRequest().getMethod())
+                && "/agent/products".equals(exchange.getRequest().getPath().value());
+        boolean uploadProductImage = HttpMethod.POST.equals(exchange.getRequest().getMethod())
+                && "/images".equals(exchange.getRequest().getPath().value())
+                && "PRODUCT".equals(exchange.getRequest().getQueryParams().getFirst("tag"))
+                && !exchange.getRequest().getQueryParams().containsKey("entityId");
         return participants.findByIdAndIsAgentTrue(participantId)
-                .hasElement()
-                .flatMap(isAgent -> {
-                    boolean createAgentProduct = HttpMethod.POST.equals(exchange.getRequest().getMethod())
-                            && "/agent/products".equals(exchange.getRequest().getPath().value());
-                    boolean uploadProductImage = HttpMethod.POST.equals(exchange.getRequest().getMethod())
-                            && "/images".equals(exchange.getRequest().getPath().value())
-                            && "PRODUCT".equals(exchange.getRequest().getQueryParams().getFirst("tag"))
-                            && !exchange.getRequest().getQueryParams().containsKey("entityId");
-                    if (isAgent && !createAgentProduct && !uploadProductImage) {
+                .map(agent -> agent.getStatus() == ParticipantStatus.ACTIVE
+                        && (createAgentProduct || uploadProductImage))
+                .defaultIfEmpty(true)
+                .flatMap(allowed -> {
+                    if (!allowed) {
                         exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
                         return exchange.getResponse().setComplete();
                     }
