@@ -34,7 +34,11 @@ public class AgentAccountAccessFilter implements WebFilter {
                 .flatMap(isAgent -> {
                     boolean createAgentProduct = HttpMethod.POST.equals(exchange.getRequest().getMethod())
                             && "/agent/products".equals(exchange.getRequest().getPath().value());
-                    if (isAgent && !createAgentProduct) {
+                    boolean uploadProductImage = HttpMethod.POST.equals(exchange.getRequest().getMethod())
+                            && "/images".equals(exchange.getRequest().getPath().value())
+                            && "PRODUCT".equals(exchange.getRequest().getQueryParams().getFirst("tag"))
+                            && !exchange.getRequest().getQueryParams().containsKey("entityId");
+                    if (isAgent && !createAgentProduct && !uploadProductImage) {
                         exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
                         return exchange.getResponse().setComplete();
                     }

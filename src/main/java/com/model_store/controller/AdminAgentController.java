@@ -82,6 +82,11 @@ public class AdminAgentController {
         return agents.updateProduct(agentId, productId, request);
     }
 
+    @PostMapping("/agents/{agentId}/products/{productId}/extend")
+    public Mono<Void> extendProduct(@PathVariable Long agentId, @PathVariable Long productId) {
+        return agents.extendProduct(agentId, productId);
+    }
+
     @GetMapping("/agents/{agentId}/profile")
     public Mono<AgentProfileDto> profile(@PathVariable Long agentId) {
         return agents.profile(agentId);

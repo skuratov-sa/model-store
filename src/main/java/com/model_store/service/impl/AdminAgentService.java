@@ -72,6 +72,11 @@ public class AdminAgentService {
                 .then(Mono.defer(() -> productService.updateAgentProduct(productId, request, agentId)));
     }
 
+    public Mono<Void> extendProduct(Long agentId, Long productId) {
+        return requireAgent(agentId)
+                .then(Mono.defer(() -> productService.extendExpirationDate(productId, agentId)));
+    }
+
     public Mono<AgentProfileDto> profile(Long agentId) {
         return requireAgent(agentId).map(AgentProfileDto::from);
     }

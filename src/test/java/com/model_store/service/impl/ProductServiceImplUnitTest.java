@@ -4,8 +4,10 @@ import com.model_store.configuration.property.ApplicationProperties;
 import com.model_store.exception.ApiException;
 import com.model_store.exception.constant.ErrorCode;
 import com.model_store.mapper.ProductMapper;
+import com.model_store.model.CreateAgentProductRequest;
 import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.base.Product;
+import com.model_store.model.base.Participant;
 import com.model_store.model.base.SocialNetwork;
 import com.model_store.model.base.Transfer;
 import com.model_store.model.constant.ImageTag;
@@ -169,6 +171,38 @@ class ProductServiceImplUnitTest {
         verify(productRepository).save(argThat(p -> p.getCount() == null));
     }
 
+    @Test
+    void createAgentProduct_withoutUrl_isRejectedBeforeSave() {
+        CreateAgentProductRequest request = new CreateAgentProductRequest();
+        request.setExternalUrl("   ");
+
+        StepVerifier.create(productService.createAgentProduct(request, 7L))
+                .expectErrorMatches(e -> e instanceof ApiException
+                        && ((ApiException) e).getCode() == ErrorCode.INVALID_REQUEST)
+                .verify();
+
+        verify(productRepository, never()).save(any());
+    }
+
+    @Test
+    void createAgentProduct_preservesUrlExactly() {
+        Participant bot = new Participant();
+        bot.setId(7L);
+        bot.setIsAgent(true);
+        bot.setStatus(com.model_store.model.constant.ParticipantStatus.ACTIVE);
+        when(participantRepository.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(bot));
+        Product saved = Product.builder().id(5L).build();
+        when(productRepository.save(any())).thenReturn(Mono.just(saved));
+
+        CreateAgentProductRequest request = new CreateAgentProductRequest();
+        request.setExternalUrl("https://t.me/example?start=42");
+        StepVerifier.create(productService.createAgentProduct(request, 7L))
+                .expectNext(5L)
+                .verifyComplete();
+
+        verify(productRepository).save(argThat(p -> request.getExternalUrl().equals(p.getExternalUrl())));
+    }
+
     // --- updateProduct ---
 
     @Test
@@ -272,6 +306,19 @@ class ProductServiceImplUnitTest {
                 .expectErrorMatches(e -> e instanceof ApiException
                         && ((ApiException) e).getCode() == ErrorCode.PRODUCT_NOT_FOUND)
                 .verify();
+    }
+
+    @Test
+    void extendExpirationDate_reactivatesExpiredProduct() {
+        Product product = Product.builder().id(5L).participantId(7L)
+                .status(ProductStatus.TIME_EXPIRED).build();
+        when(productRepository.findProductForExtend(5L)).thenReturn(Mono.just(product));
+        when(productRepository.save(any())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
+
+        StepVerifier.create(productService.extendExpirationDate(5L, 7L)).verifyComplete();
+
+        verify(productRepository).save(argThat(p -> p.getStatus() == ProductStatus.ACTIVE
+                && p.getExpirationDate() != null && p.getExpirationDate().isAfter(java.time.Instant.now())));
     }
     // --- helpers ---
 

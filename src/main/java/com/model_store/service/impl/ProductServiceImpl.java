@@ -309,6 +309,9 @@ public class ProductServiceImpl implements ProductService {
     @Transactional
     public Mono<Long> createAgentProduct(CreateAgentProductRequest request, Long participantId) {
         log.info("Create agent product: participantId={}", participantId);
+        if (request.getExternalUrl() == null || request.getExternalUrl().isBlank()) {
+            return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Укажите ссылку на внешний товар"));
+        }
         Product product = Product.builder()
                 .name(request.getName())
                 .description(request.getDescription())

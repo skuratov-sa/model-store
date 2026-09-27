@@ -96,4 +96,28 @@ class AdminAgentServiceTest {
                 .verify();
         verify(productService, never()).updateAgentProduct(any(), any(), any());
     }
+
+    @Test
+    void adminCanExtendBotProductAsItsOwner() {
+        Participant bot = new Participant();
+        bot.setId(7L);
+        bot.setIsAgent(true);
+        when(participants.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(bot));
+        when(productService.extendExpirationDate(5L, 7L)).thenReturn(Mono.empty());
+
+        StepVerifier.create(service.extendProduct(7L, 5L)).verifyComplete();
+
+        verify(productService).extendExpirationDate(5L, 7L);
+    }
+
+    @Test
+    void adminCannotExtendThroughAnOrdinarySellerId() {
+        when(participants.findByIdAndIsAgentTrue(8L)).thenReturn(Mono.empty());
+
+        StepVerifier.create(service.extendProduct(8L, 5L))
+                .expectError(ApiException.class)
+                .verify();
+
+        verify(productService, never()).extendExpirationDate(any(), any());
+    }
 }

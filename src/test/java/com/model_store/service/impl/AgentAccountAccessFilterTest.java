@@ -54,4 +54,37 @@ class AgentAccountAccessFilterTest {
 
         assertThat(nextCalled).isTrue();
     }
+
+    @Test
+    void botCanUploadTemporaryProductImages() {
+        when(jwt.getIdByAccessToken("Bearer token")).thenReturn(7L);
+        when(participants.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(new Participant()));
+        var exchange = MockServerWebExchange.from(MockServerHttpRequest.post("/images?tag=PRODUCT")
+                .header("Authorization", "Bearer token"));
+        AtomicBoolean nextCalled = new AtomicBoolean();
+
+        StepVerifier.create(filter.filter(exchange, ignored -> {
+            nextCalled.set(true);
+            return Mono.empty();
+        })).verifyComplete();
+
+        assertThat(nextCalled).isTrue();
+    }
+
+    @Test
+    void botCannotUploadImageForAnExistingEntity() {
+        when(jwt.getIdByAccessToken("Bearer token")).thenReturn(7L);
+        when(participants.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(new Participant()));
+        var exchange = MockServerWebExchange.from(MockServerHttpRequest.post("/images?tag=PRODUCT&entityId=8")
+                .header("Authorization", "Bearer token"));
+        AtomicBoolean nextCalled = new AtomicBoolean();
+
+        StepVerifier.create(filter.filter(exchange, ignored -> {
+            nextCalled.set(true);
+            return Mono.empty();
+        })).verifyComplete();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(nextCalled).isFalse();
+    }
 }
