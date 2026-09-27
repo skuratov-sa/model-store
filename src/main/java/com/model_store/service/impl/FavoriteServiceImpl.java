@@ -26,17 +26,20 @@ public class FavoriteServiceImpl implements FavoriteService {
 
     @Override
     public Flux<ProductDto> findFavoriteByParams(Long participantId, FindProductRequest searchParams) {
-        return productFavoriteRepository.findByParticipantId(participantId)
-                .map(ProductFavorite::getProductId)
-                .collectList()
-                .flatMapMany(ids -> {
-                    if (ids.isEmpty()) {
-                        return Flux.empty();
-                    }
-                    return productRepository.findByParams(searchParams, ids.toArray(Long[]::new))
-                            .collectList()
-                            .flatMapMany(productService::buildProductDtos);
-                });
+        return participantService.findAgeById(participantId)
+                .map(age -> age >= 18)
+                .defaultIfEmpty(false)
+                .flatMapMany(includeAdult -> productFavoriteRepository.findByParticipantId(participantId)
+                        .map(ProductFavorite::getProductId)
+                        .collectList()
+                        .flatMapMany(ids -> {
+                            if (ids.isEmpty()) {
+                                return Flux.empty();
+                            }
+                            return productRepository.findByParams(searchParams, ids.toArray(Long[]::new), includeAdult)
+                                    .collectList()
+                                    .flatMapMany(productService::buildProductDtos);
+                        }));
 
     }
 

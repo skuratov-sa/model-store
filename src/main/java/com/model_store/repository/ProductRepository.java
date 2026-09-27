@@ -106,7 +106,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
     Flux<String> findNamesBySearch(String search);
 
 
-    default Flux<Product> findByParams(FindProductRequest searchParams, Long[] ids) {
+    default Flux<Product> findByParams(FindProductRequest searchParams, Long[] ids, Boolean includeAdult) {
         int limit = Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSize).orElse(50); // limit
 
         return findByParams(
@@ -125,12 +125,12 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastPrice).orElse(null),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastId).orElse(0L),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
-                searchParams.getIncludeAdult(),
+                includeAdult,
                 limit
         );
     }
 
-    default Flux<Product> findBasketByParams(FindProductRequest searchParams, Long[] ids) {
+    default Flux<Product> findBasketByParams(FindProductRequest searchParams, Long[] ids, Boolean includeAdult) {
         int limit = Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSize).orElse(50); // limit
 
         return findByParams(
@@ -149,7 +149,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastPrice).orElse(null),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastId).orElse(0L),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
-                searchParams.getIncludeAdult(),
+                includeAdult,
                 limit
         );
     }

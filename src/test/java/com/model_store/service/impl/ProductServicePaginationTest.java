@@ -227,7 +227,6 @@ class ProductServicePaginationTest extends IntegrationTest {
         linkToNsfwCategory(nsfw.getId());
 
         FindProductRequest req = request(10, null, null, 0L, SortByType.DATE_DESC);
-        req.setIncludeAdult(false);
 
         List<Long> ids = productService.findByParams(req, null).map(ProductDto::getId).collectList().block();
 
@@ -236,14 +235,13 @@ class ProductServicePaginationTest extends IntegrationTest {
     }
 
     @Test
-    void findByParams_includesAdultProductsWhenFlagTrue() {
+    void findByParams_includesAdultProductsForAdultUser() {
         Instant base = Instant.now().minusSeconds(60);
         Product normal = saveProduct("Normal", 100f, base);
         Product nsfw = saveProduct("NSFW", 200f, base.plusSeconds(1));
         linkToNsfwCategory(nsfw.getId());
 
         FindProductRequest req = request(10, null, null, 0L, SortByType.DATE_DESC);
-        req.setIncludeAdult(true);
 
         List<Long> ids = productService.findByParams(req, participant.getId()).map(ProductDto::getId).collectList().block();
 
@@ -293,7 +291,6 @@ class ProductServicePaginationTest extends IntegrationTest {
     private FindProductRequest request(int size, Instant lastCreatedAt, Float lastPrice, Long lastId, SortByType sortBy) {
         FindProductRequest req = new FindProductRequest();
         req.setPageable(new Pageable(size, lastCreatedAt, lastPrice, lastId, sortBy));
-        req.setIncludeAdult(false);
         return req;
     }
 

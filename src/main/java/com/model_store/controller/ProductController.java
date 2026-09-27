@@ -41,9 +41,13 @@ public class ProductController {
     }
 
     private Long tryExtractParticipantId(String authorizationHeader) {
-        if (authorizationHeader == null || authorizationHeader.isBlank()) return null;
+        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) return null;
         try {
-            return jwtService.getIdByAccessToken(authorizationHeader);
+            var claims = jwtService.parseAccessToken(authorizationHeader);
+            String tokenType = claims.get("type", String.class);
+            if (!"access".equals(tokenType) && !"agent_access".equals(tokenType)) return null;
+            Object id = claims.get("id");
+            return id == null ? null : Long.valueOf(id.toString());
         } catch (Exception e) {
             return null;
         }

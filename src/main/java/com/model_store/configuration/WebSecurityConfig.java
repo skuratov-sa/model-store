@@ -7,6 +7,7 @@ import com.model_store.service.impl.KeyLoader;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
@@ -24,6 +25,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.oauth2.server.resource.authentication.ReactiveJwtAuthenticationConverterAdapter;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.security.web.server.util.matcher.PathPatternParserServerWebExchangeMatcher;
 import org.springframework.web.cors.reactive.CorsConfigurationSource;
 import reactor.core.publisher.Mono;
 
@@ -89,6 +91,20 @@ public class WebSecurityConfig {
 
 
     @Bean
+    @Order(0)
+    public SecurityWebFilterChain publicProductSearchSecurityWebFilterChain(ServerHttpSecurity http, CorsConfigurationSource corsConfigurationSource) {
+        return http
+                .securityMatcher(new PathPatternParserServerWebExchangeMatcher("/products/find", HttpMethod.POST))
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
+                .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
+                .authorizeExchange(exchanges -> exchanges.anyExchange().permitAll())
+                .build();
+    }
+
+    @Bean
+    @Order(1)
     public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http, NimbusReactiveJwtDecoder jwtDecoder, CorsConfigurationSource corsConfigurationSource) {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource)) // Явно указываем CORS-конфигурацию
@@ -100,7 +116,7 @@ public class WebSecurityConfig {
                         .pathMatchers("/swagger-ui.html", "/swagger-ui/**", "/webjars/**", "/v3/api-docs/**").permitAll()
                         .pathMatchers("/images", "/images/default", "/images/metadata", "/dictionary", "/regions").permitAll()
                         .pathMatchers(HttpMethod.GET, "/categories", "/product/*").permitAll()
-                        .pathMatchers(HttpMethod.POST, "/participant", "/products/find", "/products/names/find", "/participants/find").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/participant", "/products/names/find", "/participants/find").permitAll()
                         .pathMatchers("/admin/actions/**").hasAuthority("SCOPE_ADMIN")
                         .anyExchange().authenticated()
                 ).oauth2ResourceServer(oauth2 ->

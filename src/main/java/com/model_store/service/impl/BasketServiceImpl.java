@@ -44,40 +44,43 @@ public class BasketServiceImpl implements BasketService {
 
     @Override
     public Flux<ProductBasketDto> findBasketProductsByParams(Long participantId, FindProductRequest searchParams) {
-        return productBasketRepository.findByParticipantId(participantId)
-                .collectList()
-                .flatMapMany(baskets -> {
-                    if (baskets.isEmpty()) {
-                        return Flux.empty();
-                    }
+        return participantService.findAgeById(participantId)
+                .map(age -> age >= 18)
+                .defaultIfEmpty(false)
+                .flatMapMany(includeAdult -> productBasketRepository.findByParticipantId(participantId)
+                        .collectList()
+                        .flatMapMany(baskets -> {
+                            if (baskets.isEmpty()) {
+                                return Flux.empty();
+                            }
 
-                    // productId -> count
-                    Map<Long, Integer> countByProductId = baskets.stream()
-                            .collect(Collectors.toMap(
-                                    ProductBasket::getProductId,
-                                    ProductBasket::getCount,
-                                    Integer::sum // на случай дублей
-                            ));
+                            // productId -> count
+                            Map<Long, Integer> countByProductId = baskets.stream()
+                                    .collect(Collectors.toMap(
+                                            ProductBasket::getProductId,
+                                            ProductBasket::getCount,
+                                            Integer::sum // на случай дублей
+                                    ));
 
-                    Long[] ids = countByProductId.keySet().toArray(Long[]::new);
+                            Long[] ids = countByProductId.keySet().toArray(Long[]::new);
 
-                    return productRepository.findBasketByParams(searchParams, ids)
-                            .collectList()
-                            .flatMapMany(productService::buildProductDtos)
-                            .map(dto -> {
-                                ProductBasketDto out = new ProductBasketDto();
-                                Integer basketCount = countByProductId.get(dto.getId());
-                                if (basketCount == null) {
-                                    throw ApiErrors.badRequest(BASKET_UPDATE_FAILED, "Не удалось получить данные корзины");
-                                }
-                                Integer availableCount = dto.getCount();
-                                out.setProduct(dto);
-                                out.setCount(basketCount);
-                                out.setAvailableCount(availableCount);
-                                out.setEnoughStock(availableCount == null || basketCount <= availableCount);
-                                return out;
-                            });
-                });
+                            return productRepository.findBasketByParams(searchParams, ids, includeAdult)
+                                    .collectList()
+                                    .flatMapMany(productService::buildProductDtos)
+                                    .map(dto -> {
+                                        ProductBasketDto out = new ProductBasketDto();
+                                        Integer basketCount = countByProductId.get(dto.getId());
+                                        if (basketCount == null) {
+                                            throw ApiErrors.badRequest(BASKET_UPDATE_FAILED, "Не удалось получить данные корзины");
+                                        }
+                                        Integer availableCount = dto.getCount();
+                                        out.setProduct(dto);
+                                        out.setCount(basketCount);
+                                        out.setAvailableCount(availableCount);
+                                        out.setEnoughStock(availableCount == null || basketCount <= availableCount);
+                                        return out;
+                                    });
+                        }));
     }
 
 

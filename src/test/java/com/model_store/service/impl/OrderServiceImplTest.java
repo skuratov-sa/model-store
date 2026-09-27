@@ -680,7 +680,6 @@ class OrderServiceImplTest extends IntegrationTest {
     private FindProductRequest basketRequest() {
         FindProductRequest request = new FindProductRequest();
         request.setPageable(new Pageable(50, null, null, 0L, SortByType.DATE_DESC));
-        request.setIncludeAdult(false);
         return request;
     }
 

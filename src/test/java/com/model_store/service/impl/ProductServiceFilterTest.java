@@ -303,7 +303,6 @@ class ProductServiceFilterTest extends IntegrationTest {
     private FindProductRequest baseRequest() {
         FindProductRequest req = new FindProductRequest();
         req.setPageable(new Pageable(50, null, null, 0L, SortByType.DATE_DESC));
-        req.setIncludeAdult(false);
         return req;
     }
 

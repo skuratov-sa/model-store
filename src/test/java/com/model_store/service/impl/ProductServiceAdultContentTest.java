@@ -1,7 +1,5 @@
 package com.model_store.service.impl;
 
-import com.model_store.exception.ApiException;
-import com.model_store.exception.constant.ErrorCode;
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.Participant;
 import com.model_store.model.base.Product;
@@ -13,7 +11,10 @@ import com.model_store.model.constant.ProductStatus;
 import com.model_store.model.constant.SellerStatus;
 import com.model_store.model.constant.SortByType;
 import com.model_store.model.dto.ProductDto;
+import com.model_store.model.dto.ProductBasketDto;
 import com.model_store.model.page.Pageable;
+import com.model_store.service.BasketService;
+import com.model_store.service.FavoriteService;
 import com.model_store.service.IntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,13 +25,17 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.catchThrowable;
 
 class ProductServiceAdultContentTest extends IntegrationTest {
 
     @Autowired
     private DatabaseClient databaseClient;
+
+    @Autowired
+    private BasketService basketService;
+
+    @Autowired
+    private FavoriteService favoriteService;
 
     private Participant adultUser;
     private Participant minorUser;
@@ -54,7 +59,7 @@ class ProductServiceAdultContentTest extends IntegrationTest {
                 .deadlineSending(3)
                 .deadlinePayment(7)
                 .sellerStatus(SellerStatus.DEFAULT)
-                .age(20)
+                .age(18)
                 .createdAt(Instant.now())
                 .build()).block();
 
@@ -69,7 +74,7 @@ class ProductServiceAdultContentTest extends IntegrationTest {
                 .deadlineSending(3)
                 .deadlinePayment(7)
                 .sellerStatus(SellerStatus.DEFAULT)
-                .age(15)
+                .age(17)
                 .createdAt(Instant.now())
                 .build()).block();
 
@@ -93,71 +98,58 @@ class ProductServiceAdultContentTest extends IntegrationTest {
     }
 
     @Test
-    void findByParams_anonUser_includeAdultTrue_throwsForbidden() {
-        FindProductRequest req = baseRequest();
-        req.setIncludeAdult(true);
-
-        assertThatThrownBy(() -> productService.findByParams(req, null).collectList().block())
-                .isInstanceOf(ApiException.class)
-                .satisfies(ex -> assertThat(((ApiException) ex).getCode()).isEqualTo(ErrorCode.ADULT_CONTENT_RESTRICTED));
+    void findByParams_anonUser_excludesAdultContent() {
+        assertOnlyNormalProduct(baseRequest(), null);
     }
 
     @Test
-    void findByParams_underageUser_includeAdultTrue_throwsForbidden() {
-        FindProductRequest req = baseRequest();
-        req.setIncludeAdult(true);
-
-        assertThatThrownBy(() -> productService.findByParams(req, minorUser.getId()).collectList().block())
-                .isInstanceOf(ApiException.class)
-                .satisfies(ex -> assertThat(((ApiException) ex).getCode()).isEqualTo(ErrorCode.ADULT_CONTENT_RESTRICTED));
+    void findByParams_underageUser_excludesAdultContent() {
+        assertOnlyNormalProduct(baseRequest(), minorUser.getId());
     }
 
     @Test
-    void findByParams_userWithoutAge_includeAdultTrue_throwsSameForbiddenAsUnderageUser() {
-        FindProductRequest req = baseRequest();
-        req.setIncludeAdult(true);
-
-        ApiException underageError = adultContentError(req, minorUser.getId());
-        ApiException missingAgeError = adultContentError(req, userWithoutAge.getId());
-
-        assertThat(missingAgeError.getStatus()).isEqualTo(underageError.getStatus());
-        assertThat(missingAgeError.getCode()).isEqualTo(underageError.getCode());
-        assertThat(missingAgeError.getMessage()).isEqualTo(underageError.getMessage());
+    void findByParams_userWithoutAge_excludesAdultContent() {
+        assertOnlyNormalProduct(baseRequest(), userWithoutAge.getId());
     }
 
     @Test
-    void findByParams_adultUser_includeAdultTrue_returnsAllProducts() {
-        FindProductRequest req = baseRequest();
-        req.setIncludeAdult(true);
-
-        List<Long> ids = productService.findByParams(req, adultUser.getId())
+    void findByParams_adultUser_returnsAllProducts() {
+        List<Long> ids = productService.findByParams(baseRequest(), adultUser.getId())
                 .map(ProductDto::getId).collectList().block();
 
         assertThat(ids).contains(normalProduct.getId(), adultProduct.getId());
     }
 
     @Test
-    void findByParams_anonUser_includeAdultFalse_excludesAdultContent() {
-        FindProductRequest req = baseRequest();
-        req.setIncludeAdult(false);
+    void findByParams_inactiveUser_excludesAdultContent() {
+        adultUser.setStatus(ParticipantStatus.BLOCKED);
+        participantRepository.save(adultUser).block();
 
-        List<Long> ids = productService.findByParams(req, null)
-                .map(ProductDto::getId).collectList().block();
-
-        assertThat(ids).contains(normalProduct.getId());
-        assertThat(ids).doesNotContain(adultProduct.getId());
+        assertOnlyNormalProduct(baseRequest(), adultUser.getId());
     }
 
     @Test
-    void findByParams_underageUser_includeAdultFalse_excludesAdultContent() {
-        FindProductRequest req = baseRequest();
-        req.setIncludeAdult(false);
+    void basketAndFavorites_determineAdultContentFromAge() {
+        for (Participant user : List.of(adultUser, minorUser)) {
+            basketService.addToBasket(user.getId(), normalProduct.getId(), 1).block();
+            basketService.addToBasket(user.getId(), adultProduct.getId(), 1).block();
+            favoriteService.addToFavorites(user.getId(), normalProduct.getId()).block();
+            favoriteService.addToFavorites(user.getId(), adultProduct.getId()).block();
+        }
 
-        List<Long> ids = productService.findByParams(req, minorUser.getId())
+        List<Long> adultBasketIds = basketService.findBasketProductsByParams(adultUser.getId(), baseRequest())
+                .map(ProductBasketDto::getProduct).map(ProductDto::getId).collectList().block();
+        List<Long> minorBasketIds = basketService.findBasketProductsByParams(minorUser.getId(), baseRequest())
+                .map(ProductBasketDto::getProduct).map(ProductDto::getId).collectList().block();
+        List<Long> adultFavoriteIds = favoriteService.findFavoriteByParams(adultUser.getId(), baseRequest())
+                .map(ProductDto::getId).collectList().block();
+        List<Long> minorFavoriteIds = favoriteService.findFavoriteByParams(minorUser.getId(), baseRequest())
                 .map(ProductDto::getId).collectList().block();
 
-        assertThat(ids).contains(normalProduct.getId());
-        assertThat(ids).doesNotContain(adultProduct.getId());
+        assertThat(adultBasketIds).contains(normalProduct.getId(), adultProduct.getId());
+        assertThat(adultFavoriteIds).contains(normalProduct.getId(), adultProduct.getId());
+        assertThat(minorBasketIds).contains(normalProduct.getId()).doesNotContain(adultProduct.getId());
+        assertThat(minorFavoriteIds).contains(normalProduct.getId()).doesNotContain(adultProduct.getId());
     }
 
     // --- helpers ---
@@ -197,9 +189,11 @@ class ProductServiceAdultContentTest extends IntegrationTest {
         return req;
     }
 
-    private ApiException adultContentError(FindProductRequest req, Long participantId) {
-        Throwable thrown = catchThrowable(() -> productService.findByParams(req, participantId).collectList().block());
-        assertThat(thrown).isInstanceOf(ApiException.class);
-        return (ApiException) thrown;
+    private void assertOnlyNormalProduct(FindProductRequest req, Long participantId) {
+        List<Long> ids = productService.findByParams(req, participantId)
+                .map(ProductDto::getId).collectList().block();
+
+        assertThat(ids).contains(normalProduct.getId());
+        assertThat(ids).doesNotContain(adultProduct.getId());
     }
 }

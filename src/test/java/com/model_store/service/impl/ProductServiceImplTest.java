@@ -83,7 +83,6 @@ public class ProductServiceImplTest extends IntegrationTest {
     @Test
     void findByParams_externalProduct_returnsExternalUrl() {
         FindProductRequest request = new FindProductRequest();
-        request.setIncludeAdult(false);
 
         var result = newParticipant()
                 .flatMap(p -> createExternalProduct(ProductStatus.ACTIVE, p.getId()))

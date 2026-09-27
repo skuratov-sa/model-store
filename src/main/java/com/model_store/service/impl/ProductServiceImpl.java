@@ -146,23 +146,13 @@ public class ProductServiceImpl implements ProductService {
     }
 
     public Flux<ProductDto> findByParams(FindProductRequest searchParams, Long currentParticipantId) {
-        if (Boolean.TRUE.equals(searchParams.getIncludeAdult())) {
-            return checkAdultAccess(currentParticipantId)
-                    .thenMany(buildProductDtos(productRepository.findByParams(searchParams, null)));
-        }
-        return buildProductDtos(productRepository.findByParams(searchParams, null));
-    }
-
-    private Mono<Void> checkAdultAccess(Long participantId) {
-        if (participantId == null) {
-            return Mono.error(ApiErrors.forbidden(ErrorCode.ADULT_CONTENT_RESTRICTED,
-                    "Для просмотра контента 18+ необходима авторизация"));
-        }
-        return participantService.findAgeById(participantId)
-                .filter(age -> age >= 18)
-                .switchIfEmpty(Mono.defer(() -> Mono.error(ApiErrors.forbidden(ErrorCode.ADULT_CONTENT_RESTRICTED,
-                        "Контент 18+ доступен только пользователям от 18 лет"))))
-                .then();
+        Mono<Boolean> includeAdult = currentParticipantId == null
+                ? Mono.just(false)
+                : participantService.findAgeById(currentParticipantId)
+                        .map(age -> age >= 18)
+                        .defaultIfEmpty(false);
+        return includeAdult.flatMapMany(allowed ->
+                buildProductDtos(productRepository.findByParams(searchParams, null, allowed)));
     }
 
     @Override
