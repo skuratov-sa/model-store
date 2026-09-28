@@ -116,6 +116,16 @@ class ProductControllerWebTest extends IntegrationTest {
     }
 
     @Test
+    void findProducts_nonPreorderFlagIsAcceptedInJson() {
+        webTestClient.post()
+                .uri("/products/find")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("{\"catalogFlags\":[\"NON_PREORDER\"]}")
+                .exchange()
+                .expectStatus().isOk();
+    }
+
+    @Test
     void findProducts_determinesAdultContentFromValidAccessToken() {
         Participant adult = createParticipant(18, ParticipantStatus.ACTIVE);
         Participant minor = createParticipant(17, ParticipantStatus.ACTIVE);

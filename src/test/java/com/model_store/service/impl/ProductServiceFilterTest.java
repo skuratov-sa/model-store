@@ -265,6 +265,54 @@ class ProductServiceFilterTest extends IntegrationTest {
     }
 
     @Test
+    void findByParams_preorderFlagsSelectPreorderNonPreorderOrAll() {
+        Product preorder = saveProduct("Preorder", 100f);
+        preorder.setAvailability(ProductAvailabilityType.PREORDER);
+        productRepository.save(preorder).block();
+        Product purchasable = saveProduct("Purchasable", 100f);
+        Product external = saveProduct("External", 100f);
+        external.setAvailability(ProductAvailabilityType.EXTERNAL_PRODUCT);
+        productRepository.save(external).block();
+
+        FindProductRequest req = baseRequest();
+        req.setCatalogFlags(List.of(CatalogFilterFlag.PREORDER));
+        assertThat(productService.findByParams(req, null).map(ProductDto::getId).collectList().block())
+                .containsExactly(preorder.getId());
+
+        req.setCatalogFlags(List.of(CatalogFilterFlag.NON_PREORDER));
+        assertThat(productService.findByParams(req, null).map(ProductDto::getId).collectList().block())
+                .containsExactlyInAnyOrder(purchasable.getId(), external.getId());
+
+        req.setCatalogFlags(null);
+        assertThat(productService.findByParams(req, null).map(ProductDto::getId).collectList().block())
+                .containsExactlyInAnyOrder(preorder.getId(), purchasable.getId(), external.getId());
+
+        req.setCatalogFlags(List.of(CatalogFilterFlag.ALL));
+        assertThat(productService.findByParams(req, null).map(ProductDto::getId).collectList().block())
+                .containsExactlyInAnyOrder(preorder.getId(), purchasable.getId(), external.getId());
+
+        req.setCatalogFlags(List.of(CatalogFilterFlag.PREORDER, CatalogFilterFlag.NON_PREORDER));
+        assertThat(productService.findByParams(req, null).map(ProductDto::getId).collectList().block())
+                .containsExactlyInAnyOrder(preorder.getId(), purchasable.getId(), external.getId());
+    }
+
+    @Test
+    void findMyByParams_nonPreorderIncludesPurchasableAndExternalProducts() {
+        Product preorder = saveProduct("Preorder", 100f);
+        preorder.setAvailability(ProductAvailabilityType.PREORDER);
+        productRepository.save(preorder).block();
+        Product purchasable = saveProduct("Purchasable", 100f);
+        Product external = saveProduct("External", 100f);
+        external.setAvailability(ProductAvailabilityType.EXTERNAL_PRODUCT);
+        productRepository.save(external).block();
+
+        FindMyProductRequest req = myRequest();
+        req.setCatalogFlags(List.of(CatalogFilterFlag.NON_PREORDER));
+        assertThat(productService.findMyByParams(req, seller.getId()).map(ProductDto::getId).collectList().block())
+                .containsExactlyInAnyOrder(purchasable.getId(), external.getId());
+    }
+
+    @Test
     void findByParams_usedFiltersBothConditionsAndCanBeOmitted() {
         Product used = saveProduct("Used", 100f);
         used.setUsed(true);

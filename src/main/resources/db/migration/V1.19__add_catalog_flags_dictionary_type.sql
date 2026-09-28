@@ -1,0 +1,1 @@
+ALTER TYPE dictionary_type ADD VALUE 'CATALOG_FLAGS';

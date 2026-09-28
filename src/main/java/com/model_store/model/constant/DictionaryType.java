@@ -8,6 +8,7 @@ public enum DictionaryType {
     DEADLINE_SENDING,
     DEADLINE_PAYMENT,
     PRODUCT_AVAILABILITY,
+    CATALOG_FLAGS,
     SORT_BY,
     ORDER_STATUS
 }

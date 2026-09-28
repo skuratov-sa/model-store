@@ -49,7 +49,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                     SELECT 1 FROM product_category category_pc
                     WHERE category_pc.product_id = p.id AND category_pc.category_id = :categoryId
                 )) AND
-                (:preorderFilter IS NOT TRUE OR p.availability = 'PREORDER') AND
+                (:preorderFilter IS NULL OR (p.availability = 'PREORDER') = :preorderFilter) AND
                 (:usedFilter IS NULL OR p.used = :usedFilter) AND
                 (:includeAdult IS TRUE OR NOT EXISTS (
                     SELECT 1 FROM product_category pc2
@@ -137,7 +137,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastId).orElse(0L),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
                 includeAdult,
-                hasFlag(searchParams.getCatalogFlags(), CatalogFilterFlag.PREORDER),
+                preorderFilter(searchParams.getCatalogFlags()),
                 usedFilter(searchParams.getUsed(), searchParams.getCatalogFlags()),
                 limit
         );
@@ -163,7 +163,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastId).orElse(0L),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
                 includeAdult,
-                hasFlag(searchParams.getCatalogFlags(), CatalogFilterFlag.PREORDER),
+                preorderFilter(searchParams.getCatalogFlags()),
                 usedFilter(searchParams.getUsed(), searchParams.getCatalogFlags()),
                 limit
         );
@@ -188,7 +188,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastId).orElse(0L),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
                 true,
-                hasFlag(searchParams.getCatalogFlags(), CatalogFilterFlag.PREORDER),
+                preorderFilter(searchParams.getCatalogFlags()),
                 usedFilter(searchParams.getUsed(), searchParams.getCatalogFlags()),
                 limit
         );
@@ -196,6 +196,12 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
 
     private static boolean hasFlag(java.util.List<CatalogFilterFlag> flags, CatalogFilterFlag flag) {
         return flags != null && flags.contains(flag);
+    }
+
+    private static Boolean preorderFilter(java.util.List<CatalogFilterFlag> flags) {
+        boolean preorder = hasFlag(flags, CatalogFilterFlag.PREORDER);
+        boolean nonPreorder = hasFlag(flags, CatalogFilterFlag.NON_PREORDER);
+        return preorder == nonPreorder ? null : preorder;
     }
 
     private static Boolean usedFilter(Boolean used, java.util.List<CatalogFilterFlag> flags) {
