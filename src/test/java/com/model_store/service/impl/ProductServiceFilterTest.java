@@ -83,6 +83,28 @@ class ProductServiceFilterTest extends IntegrationTest {
     }
 
     @Test
+    void findByParams_nameAndCategoryMustMatchTheSameCategoryOrProductName() {
+        Product otherCategoryName = saveProduct("Plain figure", 100f);
+        Product matchingProductName = saveProduct("Nendoroid figure", 100f);
+        Long figmaId = categoryId("figma");
+        Long nendoroidId = categoryId("nendoroid");
+        linkCategory(otherCategoryName.getId(), figmaId);
+        linkCategory(otherCategoryName.getId(), nendoroidId);
+        linkCategory(matchingProductName.getId(), figmaId);
+        linkCategory(matchingProductName.getId(), nendoroidId);
+
+        FindProductRequest req = baseRequest();
+        req.setName("Nendoroid");
+        req.setCategoryId(figmaId);
+        assertThat(productService.findByParams(req, null).map(ProductDto::getId).collectList().block())
+                .containsExactly(matchingProductName.getId());
+
+        req.setCategoryId(null);
+        assertThat(productService.findByParams(req, null).map(ProductDto::getId).collectList().block())
+                .containsExactlyInAnyOrder(otherCategoryName.getId(), matchingProductName.getId());
+    }
+
+    @Test
     void findByParams_filterByParticipantId_returnsOnlyTheirProducts() {
         Participant other = participantRepository.save(
                 Participant.builder()
@@ -243,6 +265,45 @@ class ProductServiceFilterTest extends IntegrationTest {
     }
 
     @Test
+    void findByParams_usedFiltersBothConditionsAndCanBeOmitted() {
+        Product used = saveProduct("Used", 100f);
+        used.setUsed(true);
+        productRepository.save(used).block();
+        Product newProduct = saveProduct("New", 100f);
+
+        FindProductRequest req = baseRequest();
+        req.setUsed(true);
+        assertThat(productService.findByParams(req, null).map(ProductDto::getId).collectList().block())
+                .containsExactly(used.getId());
+
+        req.setUsed(false);
+        assertThat(productService.findByParams(req, null).map(ProductDto::getId).collectList().block())
+                .containsExactly(newProduct.getId());
+
+        req.setCatalogFlags(List.of(CatalogFilterFlag.USED));
+        assertThat(productService.findByParams(req, null).map(ProductDto::getId).collectList().block())
+                .containsExactly(newProduct.getId());
+
+        req.setUsed(null);
+        req.setCatalogFlags(null);
+        assertThat(productService.findByParams(req, null).map(ProductDto::getId).collectList().block())
+                .containsExactlyInAnyOrder(used.getId(), newProduct.getId());
+    }
+
+    @Test
+    void findMyByParams_usedFalseReturnsOnlyNewProducts() {
+        Product used = saveProduct("Used", 100f);
+        used.setUsed(true);
+        productRepository.save(used).block();
+        Product newProduct = saveProduct("New", 100f);
+
+        FindMyProductRequest req = myRequest();
+        req.setUsed(false);
+        assertThat(productService.findMyByParams(req, seller.getId()).map(ProductDto::getId).collectList().block())
+                .containsExactly(newProduct.getId());
+    }
+
+    @Test
     void findMyByParams_includesEmptyAndTimeExpiredProducts() {
         Product empty = saveProductWithStatusAndCount("Empty", 100f, ProductStatus.ACTIVE, 0);
         Product expired = saveProductWithStatusAndCount("Expired", 100f, ProductStatus.TIME_EXPIRED, 10);
@@ -265,6 +326,19 @@ class ProductServiceFilterTest extends IntegrationTest {
     }
 
     // --- helpers ---
+
+    private Long categoryId(String slug) {
+        return databaseClient.sql("SELECT id FROM category WHERE slug = :slug")
+                .bind("slug", slug)
+                .map(row -> row.get("id", Long.class)).one().block();
+    }
+
+    private void linkCategory(Long productId, Long categoryId) {
+        databaseClient.sql("INSERT INTO product_category (product_id, category_id) VALUES (:productId, :categoryId)")
+                .bind("productId", productId)
+                .bind("categoryId", categoryId)
+                .fetch().rowsUpdated().block();
+    }
 
     private Product saveProduct(String name, float price) {
         return saveProductWithOriginality(name, price, "Original");

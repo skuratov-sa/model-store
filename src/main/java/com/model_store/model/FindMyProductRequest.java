@@ -13,6 +13,7 @@ public class FindMyProductRequest {
     private String name;
     private Long categoryId;
     private List<CatalogFilterFlag> catalogFlags;
+    private Boolean used;
     private String originality;
     private @Valid PriceRange priceRange;
     private DateRange dateRange;

@@ -15,6 +15,7 @@ public class FindProductRequest {
     private String name;
     private Long categoryId;
     private List<CatalogFilterFlag> catalogFlags;
+    private Boolean used;
     private String originality;
     private Long participantId;
     private @Valid PriceRange priceRange;

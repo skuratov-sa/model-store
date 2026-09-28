@@ -28,11 +28,15 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
     @Query("""
             SELECT p.*
             FROM product p
-                LEFT JOIN public.product_category pc on p.id = pc.product_id
-                LEFT JOIN category c ON pc.category_id = c.id
             WHERE
                 (:includeCountEmpty IS TRUE OR p.count is NULL OR p.count > 0) AND
-                (:name IS NULL OR p.name ILIKE '%' || :name || '%' OR c.name ILIKE '%' || :name || '%') AND
+                (:name IS NULL OR p.name ILIKE '%' || :name || '%' OR EXISTS (
+                    SELECT 1 FROM product_category name_pc
+                    JOIN category name_c ON name_c.id = name_pc.category_id
+                    WHERE name_pc.product_id = p.id
+                      AND name_c.name ILIKE '%' || :name || '%'
+                      AND (:categoryId IS NULL OR name_pc.category_id = :categoryId)
+                )) AND
                 (:productIds IS NULL OR p.id = ANY(:productIds)) AND
                 (:originality IS NULL OR p.originality = :originality) AND
                 (:participantId IS NULL OR p.participant_id = :participantId) AND
@@ -41,9 +45,12 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 (:dateTimeFrom IS NULL OR p.created_at >= :dateTimeFrom) AND
                 (:dateTimeTo IS NULL OR p.created_at <= :dateTimeTo) AND
                 (:productStatuses IS NULL OR p.status::product_status = ANY(:productStatuses::product_status[])) AND
-                (:categoryId IS NULL OR c.id = :categoryId) AND
+                (:categoryId IS NULL OR EXISTS (
+                    SELECT 1 FROM product_category category_pc
+                    WHERE category_pc.product_id = p.id AND category_pc.category_id = :categoryId
+                )) AND
                 (:preorderFilter IS NOT TRUE OR p.availability = 'PREORDER') AND
-                (:usedFilter IS NOT TRUE OR p.used = TRUE) AND
+                (:usedFilter IS NULL OR p.used = :usedFilter) AND
                 (:includeAdult IS TRUE OR NOT EXISTS (
                     SELECT 1 FROM product_category pc2
                     JOIN category c2 ON pc2.category_id = c2.id
@@ -59,7 +66,6 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                         -- Условие пагинации для сортировки по убыванию цены
                     (:sortBy = 'PRICE_DESC' AND (:lastPrice IS NULL OR (p.price < :lastPrice OR (p.price = :lastPrice AND p.id < :lastId))))
                 )
-            GROUP BY p.id, p.created_at, p.price
             ORDER BY
                 CASE WHEN :sortBy = 'DATE_DESC' THEN p.created_at END DESC,
                 CASE WHEN :sortBy = 'PRICE_ASC' THEN p.price END ASC,
@@ -132,7 +138,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
                 includeAdult,
                 hasFlag(searchParams.getCatalogFlags(), CatalogFilterFlag.PREORDER),
-                hasFlag(searchParams.getCatalogFlags(), CatalogFilterFlag.USED),
+                usedFilter(searchParams.getUsed(), searchParams.getCatalogFlags()),
                 limit
         );
     }
@@ -158,7 +164,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
                 includeAdult,
                 hasFlag(searchParams.getCatalogFlags(), CatalogFilterFlag.PREORDER),
-                hasFlag(searchParams.getCatalogFlags(), CatalogFilterFlag.USED),
+                usedFilter(searchParams.getUsed(), searchParams.getCatalogFlags()),
                 limit
         );
     }
@@ -183,13 +189,17 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
                 true,
                 hasFlag(searchParams.getCatalogFlags(), CatalogFilterFlag.PREORDER),
-                hasFlag(searchParams.getCatalogFlags(), CatalogFilterFlag.USED),
+                usedFilter(searchParams.getUsed(), searchParams.getCatalogFlags()),
                 limit
         );
     }
 
     private static boolean hasFlag(java.util.List<CatalogFilterFlag> flags, CatalogFilterFlag flag) {
         return flags != null && flags.contains(flag);
+    }
+
+    private static Boolean usedFilter(Boolean used, java.util.List<CatalogFilterFlag> flags) {
+        return used != null ? used : hasFlag(flags, CatalogFilterFlag.USED) ? true : null;
     }
 
 
