@@ -4,6 +4,7 @@ import com.model_store.model.FindProductRequest;
 import com.model_store.model.FindMyProductRequest;
 import com.model_store.model.base.Participant;
 import com.model_store.model.base.Product;
+import com.model_store.model.constant.CatalogFilterFlag;
 import com.model_store.model.constant.Currency;
 import com.model_store.model.constant.ParticipantRole;
 import com.model_store.model.constant.ParticipantStatus;
@@ -212,6 +213,33 @@ class ProductServiceFilterTest extends IntegrationTest {
 
         assertThat(ids).contains(unlimited.getId());
         assertThat(ids).doesNotContain(empty.getId(), expired.getId());
+    }
+
+    @Test
+    void findByParams_catalogFlagsCombineWithAnd() {
+        Product preorderUsed = saveProduct("Preorder Used", 100f);
+        preorderUsed.setAvailability(ProductAvailabilityType.PREORDER);
+        preorderUsed.setUsed(true);
+        productRepository.save(preorderUsed).block();
+
+        Product preorderNew = saveProduct("Preorder New", 100f);
+        preorderNew.setAvailability(ProductAvailabilityType.PREORDER);
+        productRepository.save(preorderNew).block();
+
+        Product availableUsed = saveProduct("Available Used", 100f);
+        availableUsed.setUsed(true);
+        productRepository.save(availableUsed).block();
+
+        FindProductRequest req = baseRequest();
+        req.setCatalogFlags(List.of(CatalogFilterFlag.PREORDER, CatalogFilterFlag.USED));
+        List<ProductDto> matches = productService.findByParams(req, null).collectList().block();
+
+        assertThat(matches).extracting(ProductDto::getId).containsExactly(preorderUsed.getId());
+        assertThat(matches.getFirst().getUsed()).isTrue();
+
+        req.setCatalogFlags(List.of(CatalogFilterFlag.USED));
+        assertThat(productService.findByParams(req, null).map(ProductDto::getId).collectList().block())
+                .containsExactlyInAnyOrder(preorderUsed.getId(), availableUsed.getId());
     }
 
     @Test

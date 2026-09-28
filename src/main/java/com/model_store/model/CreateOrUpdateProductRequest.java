@@ -17,6 +17,7 @@ public class CreateOrUpdateProductRequest {
     private Currency currency;
     private String originality;
     private ProductAvailabilityType availability;
+    private Boolean used;
     private String externalUrl;
     private List<Long> imageIds;
 }

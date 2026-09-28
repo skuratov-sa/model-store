@@ -14,5 +14,6 @@ public class CreateAgentProductRequest {
     private String originality;
     private String externalUrl;
     private List<Long> categoryIds;
+    private Boolean used;
     private List<Long> imageIds;
 }

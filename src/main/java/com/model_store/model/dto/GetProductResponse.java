@@ -24,6 +24,7 @@ public class GetProductResponse {
     private ProductStatus status;
     private List<CategoryDto> categories;
     private ProductAvailabilityType availability;
+    private Boolean used;
     private String externalUrl;
     private List<Long> imageIds;
     private List<ReviewResponseDto> reviews;

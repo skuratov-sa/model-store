@@ -38,6 +38,8 @@ public class Product {
     private ProductStatus status;
     private Instant expirationDate;
     private ProductAvailabilityType availability;
+    @Builder.Default
+    private Boolean used = false;
     private String externalUrl;
 
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)

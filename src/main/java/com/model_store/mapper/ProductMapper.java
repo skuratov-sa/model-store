@@ -40,6 +40,7 @@ public interface ProductMapper {
                 .currency(Optional.ofNullable(productRequest.getCurrency()).orElse(product.getCurrency()))
                 .originality(Optional.ofNullable(productRequest.getOriginality()).orElse(product.getOriginality()))
                 .availability(availability)
+                .used(Optional.ofNullable(productRequest.getUsed()).orElse(product.getUsed()))
                 .externalUrl(Optional.ofNullable(productRequest.getExternalUrl()).orElse(product.getExternalUrl()))
                 .participantId(product.getParticipantId())
                 .status(product.getStatus())

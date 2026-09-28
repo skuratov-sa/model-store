@@ -294,6 +294,7 @@ public class ProductServiceImpl implements ProductService {
         }
 
         Product product = productMapper.toProduct(request, participantId, ACTIVE, getExpirationDate());
+        if (product.getUsed() == null) product.setUsed(false);
         if (request.getAvailability() == ProductAvailabilityType.EXTERNAL_PRODUCT) product.setCount(null);
         if (request.getAvailability() == ProductAvailabilityType.PURCHASABLE) product.setPrepaymentAmount(null);
 
@@ -320,6 +321,7 @@ public class ProductServiceImpl implements ProductService {
                 .originality(request.getOriginality())
                 .externalUrl(request.getExternalUrl())
                 .availability(ProductAvailabilityType.EXTERNAL_PRODUCT)
+                .used(Boolean.TRUE.equals(request.getUsed()))
                 .count(null)
                 .participantId(participantId)
                 .status(ACTIVE)

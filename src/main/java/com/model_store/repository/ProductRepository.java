@@ -3,6 +3,7 @@ package com.model_store.repository;
 import com.model_store.model.FindMyProductRequest;
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.Product;
+import com.model_store.model.constant.CatalogFilterFlag;
 import com.model_store.model.constant.ProductStatus;
 import com.model_store.model.constant.SortByType;
 import com.model_store.model.page.Pageable;
@@ -41,6 +42,8 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 (:dateTimeTo IS NULL OR p.created_at <= :dateTimeTo) AND
                 (:productStatuses IS NULL OR p.status::product_status = ANY(:productStatuses::product_status[])) AND
                 (:categoryId IS NULL OR c.id = :categoryId) AND
+                (:preorderFilter IS NOT TRUE OR p.availability = 'PREORDER') AND
+                (:usedFilter IS NOT TRUE OR p.used = TRUE) AND
                 (:includeAdult IS TRUE OR NOT EXISTS (
                     SELECT 1 FROM product_category pc2
                     JOIN category c2 ON pc2.category_id = c2.id
@@ -81,6 +84,8 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
             Long lastId,
             SortByType sortBy,
             Boolean includeAdult,
+            Boolean preorderFilter,
+            Boolean usedFilter,
             Integer limit
     );
 
@@ -126,6 +131,8 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastId).orElse(0L),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
                 includeAdult,
+                hasFlag(searchParams.getCatalogFlags(), CatalogFilterFlag.PREORDER),
+                hasFlag(searchParams.getCatalogFlags(), CatalogFilterFlag.USED),
                 limit
         );
     }
@@ -150,6 +157,8 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastId).orElse(0L),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
                 includeAdult,
+                hasFlag(searchParams.getCatalogFlags(), CatalogFilterFlag.PREORDER),
+                hasFlag(searchParams.getCatalogFlags(), CatalogFilterFlag.USED),
                 limit
         );
     }
@@ -173,8 +182,14 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastId).orElse(0L),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
                 true,
+                hasFlag(searchParams.getCatalogFlags(), CatalogFilterFlag.PREORDER),
+                hasFlag(searchParams.getCatalogFlags(), CatalogFilterFlag.USED),
                 limit
         );
+    }
+
+    private static boolean hasFlag(java.util.List<CatalogFilterFlag> flags, CatalogFilterFlag flag) {
+        return flags != null && flags.contains(flag);
     }
 
 
