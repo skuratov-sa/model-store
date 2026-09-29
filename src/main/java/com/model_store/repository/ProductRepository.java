@@ -220,6 +220,36 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
     @Query("SELECT id FROM product WHERE status = 'ACTIVE' AND expiration_date < CURRENT_TIMESTAMP")
     Flux<Long> findExpiredActiveProductIds();
 
+    @Query("""
+            SELECT p.id FROM product p
+            WHERE p.status = 'DELETED'
+              AND NOT EXISTS (SELECT 1 FROM image i WHERE i.tag = 'PRODUCT' AND i.entity_id = p.id)
+            ORDER BY p.id
+            LIMIT :limit
+            FOR UPDATE SKIP LOCKED
+            """)
+    Flux<Long> findDeletedWithoutImages(int limit);
+
+    @Modifying
+    @Query("DELETE FROM product_favorite WHERE product_id = ANY(:productIds)")
+    Mono<Integer> deleteFavoritesByProductIds(Long[] productIds);
+
+    @Modifying
+    @Query("DELETE FROM product_basket WHERE product_id = ANY(:productIds)")
+    Mono<Integer> deleteBasketByProductIds(Long[] productIds);
+
+    @Modifying
+    @Query("DELETE FROM product_cart WHERE product_id = ANY(:productIds)")
+    Mono<Integer> deleteCartByProductIds(Long[] productIds);
+
+    @Modifying
+    @Query("""
+            DELETE FROM product p
+            WHERE p.id = ANY(:productIds) AND p.status = 'DELETED'
+              AND NOT EXISTS (SELECT 1 FROM image i WHERE i.tag = 'PRODUCT' AND i.entity_id = p.id)
+            """)
+    Mono<Integer> deleteDeletedWithoutImages(Long[] productIds);
+
     @Modifying
     @Query("UPDATE product SET count = count - :amount WHERE id = :id AND count >= :amount")
     Mono<Integer> decrementCountIfSufficient(Long id, Integer amount);

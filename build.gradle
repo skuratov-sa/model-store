@@ -32,6 +32,10 @@ configurations {
     }
 }
 
+tasks.named('processResources') {
+    exclude 'keys/**'
+}
+
 flyway {
     url = 'jdbc:postgresql://localhost:5432/model_store'
     user = 'root'

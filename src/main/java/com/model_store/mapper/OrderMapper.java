@@ -22,6 +22,10 @@ public interface OrderMapper {
     @Mapping(target = "userInfo.id", source = "customerId")
     @Mapping(target = "product.id", source = "productId")
     @Mapping(target = "product.count", source = "count")
+    @Mapping(target = "product.name", source = "productName")
+    @Mapping(target = "product.price", source = "productUnitPrice")
+    @Mapping(target = "product.currency", source = "productCurrency")
+    @Mapping(target = "product.availability", source = "productAvailability")
     @Mapping(target = "transfer.transferId", source = "transferId")
     @Mapping(target = "transfer.addressId", source = "addressId")
     FindOrderResponse toFindOrderResponseBySeller(Order order);
@@ -32,6 +36,10 @@ public interface OrderMapper {
     @Mapping(target = "userInfo.id", source = "sellerId")
     @Mapping(target = "product.id", source = "productId")
     @Mapping(target = "product.count", source = "count")
+    @Mapping(target = "product.name", source = "productName")
+    @Mapping(target = "product.price", source = "productUnitPrice")
+    @Mapping(target = "product.currency", source = "productCurrency")
+    @Mapping(target = "product.availability", source = "productAvailability")
     @Mapping(target = "transfer.transferId", source = "transferId")
     @Mapping(target = "transfer.addressId", source = "addressId")
     FindOrderResponse toFindOrderResponseByCustomer(Order order);

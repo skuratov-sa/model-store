@@ -53,7 +53,14 @@ public interface ImageRepository extends ReactiveCrudRepository<Image, Long> {
             """)
     Flux<ImageMainView> findMainImageViewsByEntities(Long[] entityIds, ImageTag tag);
 
-    @Query("SELECT * FROM image WHERE status in ('DELETE', 'TEMPORARY') AND created_at <= NOW() - INTERVAL '24 HOURS'")
+    @Query("""
+            SELECT i.* FROM image i
+            WHERE (i.status IN ('DELETE', 'TEMPORARY')
+                   AND i.created_at <= NOW() - INTERVAL '24 HOURS')
+               OR (i.tag = 'PRODUCT' AND EXISTS (
+                   SELECT 1 FROM product p
+                   WHERE p.id = i.entity_id AND p.status = 'DELETED'))
+            """)
     Flux<Image> findImagesToDelete();
 
     @Modifying

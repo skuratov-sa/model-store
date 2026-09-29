@@ -239,8 +239,10 @@ WHERE buyer.login = 'test_catalog_seller_1'
 -- Один завершённый заказ и отзыв дают данные для проверки истории и рейтинга продавца.
 INSERT INTO "order"
     (seller_id, customer_id, count, status, product_id, address_id, transfer_id,
+     product_name, product_unit_price, product_currency, product_availability,
      total_price, prepayment_amount, comment)
 SELECT seller.id, buyer.id, 1, 'COMPLETED', product.id, address.id, transfer.id,
+       product.name, product.price, product.currency, product.availability,
        product.price, 0, 'Тестовый заказ каталога'
 FROM participant seller
 JOIN participant buyer ON buyer.login = 'test_catalog_seller_1'

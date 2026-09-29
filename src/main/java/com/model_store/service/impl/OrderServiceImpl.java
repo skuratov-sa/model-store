@@ -9,10 +9,12 @@ import com.model_store.model.base.Transfer;
 import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
 import com.model_store.model.constant.OrderStatus;
+import com.model_store.model.constant.ProductStatus;
 import com.model_store.model.dto.CloseOrderRequest;
 import com.model_store.model.dto.CreateOrderRequest;
 import com.model_store.model.dto.FindOrderResponse;
 import com.model_store.model.dto.GetRequiredODataOrderDto;
+import com.model_store.model.dto.ProductDto;
 import com.model_store.model.dto.UpdateOrderRequest;
 import com.model_store.repository.OrderRepository;
 import com.model_store.service.AddressService;
@@ -142,10 +144,13 @@ public class OrderServiceImpl implements OrderService {
         order.setSellerId(product.getParticipantId());
         order.setCustomerId(participantId);
         order.setTotalPrice((product.getPrice() - prepayment) * request.getCount());
+        order.setProductName(product.getName());
+        order.setProductUnitPrice(product.getPrice());
+        order.setProductCurrency(product.getCurrency());
+        order.setProductAvailability(product.getAvailability());
         Mono<Order> saveOrder = Mono.defer(() ->
                 basketService.removeFromBasket(participantId, product.getId())
-                        .then(orderRepository.save(order))
-        );
+                        .then(orderRepository.save(order)));
 
         if (product.getAvailability().equals(PURCHASABLE)) {
             if (nonNull(product.getCount())) {
@@ -365,7 +370,20 @@ public class OrderServiceImpl implements OrderService {
         }
 
         return productService.shortInfoById(response.getProduct().getId())
-                .doOnNext(e -> e.setCount(response.getProduct().getCount()))
+                .switchIfEmpty(Mono.fromSupplier(() -> {
+                    ProductDto product = response.getProduct();
+                    product.setSellerId(response.getSellerId());
+                    product.setStatus(ProductStatus.DELETED);
+                    return product;
+                }))
+                .doOnNext(product -> {
+                    ProductDto orderedProduct = response.getProduct();
+                    product.setName(orderedProduct.getName());
+                    product.setPrice(orderedProduct.getPrice());
+                    product.setCurrency(orderedProduct.getCurrency());
+                    product.setAvailability(orderedProduct.getAvailability());
+                    product.setCount(orderedProduct.getCount());
+                })
                 .doOnNext(response::setProduct)
                 .then(Mono.just(response));
     }

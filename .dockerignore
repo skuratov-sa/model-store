@@ -1,6 +1,7 @@
 # Исключаем директории и файлы IDE
 .idea/
 data/
+src/main/resources/keys/
 # Исключаем артефакты сборки
 build/
 target/

@@ -66,7 +66,7 @@ app:
   product-expiration-days: 30
   private-key-path: keys/private_key.pem
   public-key-path: keys/public_key.pem
-  email-from: ${APP_EMAIL_FROM:misterstes8@gmail.com}
+  email-from: ${APP_EMAIL_FROM:Figurzilla@gmail.com}
   email-reply-to: ${APP_EMAIL_REPLY_TO:figurzilla@mail.ru}
   cors-allow-all: false
   allowed-origins:

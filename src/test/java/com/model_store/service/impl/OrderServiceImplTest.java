@@ -452,6 +452,46 @@ class OrderServiceImplTest extends IntegrationTest {
     }
 
     @Test
+    void getOrdersByCustomer_usesSnapshotAfterProductIsDeleted() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(
+                List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().get(0);
+
+        Order storedOrder = orderRepository.findById(orderId).block();
+        assertThat(storedOrder.getProductName()).isEqualTo(product.getName());
+        assertThat(storedOrder.getProductUnitPrice()).isEqualTo(product.getPrice());
+        assertThat(storedOrder.getProductCurrency()).isEqualTo(product.getCurrency());
+        assertThat(storedOrder.getProductAvailability()).isEqualTo(product.getAvailability());
+
+        String originalName = product.getName();
+        Float originalPrice = product.getPrice();
+        product.setName("Изменённое название");
+        product.setPrice(999f);
+        productRepository.save(product).block();
+        var currentOrders = orderService.getOrdersByCustomer(buyer.getId()).collectList().block();
+        assertThat(currentOrders).hasSize(1);
+        assertThat(currentOrders.get(0).getProduct().getName()).isEqualTo(originalName);
+        assertThat(currentOrders.get(0).getProduct().getPrice()).isEqualTo(originalPrice);
+
+        productService.deleteProduct(product.getId(), seller.getId()).block();
+        databaseClient.sql("DELETE FROM product WHERE id = :id")
+                .bind("id", product.getId()).fetch().rowsUpdated().block();
+
+        var orders = orderService.getOrdersByCustomer(buyer.getId()).collectList().block();
+        assertThat(orders).hasSize(1);
+        assertThat(orders.get(0).getOrderId()).isEqualTo(orderId);
+        assertThat(orders.get(0).getProduct().getId()).isEqualTo(product.getId());
+        assertThat(orders.get(0).getProduct().getName()).isEqualTo(originalName);
+        assertThat(orders.get(0).getProduct().getPrice()).isEqualTo(originalPrice);
+        assertThat(orders.get(0).getProduct().getCurrency()).isEqualTo(product.getCurrency());
+        assertThat(orders.get(0).getProduct().getAvailability()).isEqualTo(product.getAvailability());
+        assertThat(orders.get(0).getProduct().getSellerId()).isEqualTo(seller.getId());
+        assertThat(orders.get(0).getProduct().getCount()).isEqualTo(2);
+        assertThat(orders.get(0).getProduct().getImageId()).isNull();
+        assertThat(orders.get(0).getProduct().getStatus()).isEqualTo(ProductStatus.DELETED);
+    }
+
+    @Test
     void closureOrder_bookedPurchasableProduct_restoresStock() {
         Product product = savePurchasableProduct(5);
         Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().get(0);

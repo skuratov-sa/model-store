@@ -1,10 +1,10 @@
 package com.model_store.service.impl;
 
-import com.amazonaws.auth.policy.Resource;
 import lombok.experimental.UtilityClass;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileSystemResource;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -15,8 +15,9 @@ import java.nio.file.Path;
 public class KeyLoader {
 
     public String loadKey(String keyPath) throws IOException {
-        InputStream inputStream = getInputStream(keyPath);
-        return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+        try (InputStream inputStream = getInputStream(keyPath)) {
+            return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 
     private InputStream getInputStream(String keyPath) throws IOException {
@@ -24,8 +25,10 @@ public class KeyLoader {
         Path filePath = Path.of(keyPath);
         if (Files.exists(filePath)) {
             return new FileSystemResource(keyPath).getInputStream();
-        } else {
-            return new ClassPathResource(keyPath).getInputStream(); // Если файл не найден в системе, ищем в classpath
         }
+        if (filePath.isAbsolute()) {
+            throw new FileNotFoundException("Key file does not exist: " + keyPath);
+        }
+        return new ClassPathResource(keyPath).getInputStream();
     }
 }

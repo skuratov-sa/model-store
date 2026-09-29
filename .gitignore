@@ -39,6 +39,7 @@ out/
 ### Local environment ###
 .env
 .env.*
+/data/
 
 ### Local JWT keys ###
-src/main/resources/keys/*.pem
+/src/main/resources/keys/

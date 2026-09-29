@@ -19,7 +19,6 @@ FROM eclipse-temurin:21-jre-jammy AS runtime
 
 WORKDIR /backend
 COPY --from=builder /backend/build/libs/model-store-0.0.1-SNAPSHOT.jar app.jar
-COPY --from=builder /backend/src/main/resources/keys /backend/keys
 
 EXPOSE 8081
 CMD ["java", "-jar", "/backend/app.jar"]

@@ -2,6 +2,8 @@ package com.model_store.model.base;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.model_store.model.constant.OrderStatus;
+import com.model_store.model.constant.Currency;
+import com.model_store.model.constant.ProductAvailabilityType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -42,6 +44,11 @@ public class Order {
      * Идентификатор товара
      */
     private Long productId;
+    /** Название и условия продажи товара на момент оформления заказа. */
+    private String productName;
+    private Float productUnitPrice;
+    private Currency productCurrency;
+    private ProductAvailabilityType productAvailability;
     /**
      * Идентификатор адреса получения
      */

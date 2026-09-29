@@ -46,7 +46,7 @@ services:
       retries: 5
       start_period: 10s
   backend:
-    image: ready555/model_store:v1.25
+    image: ready555/model_store:v1.34
     depends_on:
       db:
         condition: service_healthy
@@ -54,6 +54,8 @@ services:
         condition: service_healthy
     ports:
       - "8081:8081"
+    volumes:
+      - ${APP_KEYS_DIR:-./src/main/resources/keys}:/backend/keys:ro
     environment:
       SPRING_R2DBC_URL: r2dbc:postgresql://db:5432/model_store?tcpKeepAlive=true
       SPRING_R2DBC_USERNAME: root
@@ -93,7 +95,7 @@ services:
       APP_PRODUCT-EXPIRATION-DAYS: 30
       APP_PRIVATE_KEY_PATH: /backend/keys/private_key.pem
       APP_PUBLIC_KEY_PATH: /backend/keys/public_key.pem
-      APP_EMAIL_FROM: ${APP_EMAIL_FROM:-misterstes8@gmail.com}
+      APP_EMAIL_FROM: ${APP_EMAIL_FROM:-Figurzilla@gmail.com}
       APP_EMAIL_REPLY_TO: ${APP_EMAIL_REPLY_TO:-figurzilla@mail.ru}
       APP_CORS-ALLOW-ALL: "false"
       APP_ALLOWED-ORIGINS: "https://your-frontend.com" # CORS: разрешённые origins для продакшна
