@@ -4,9 +4,12 @@ import com.model_store.model.base.Order;
 import com.model_store.model.base.OrderCase;
 import com.model_store.model.constant.ImageTag;
 import com.model_store.model.constant.OrderStatus;
+import com.model_store.model.constant.OrderCaseOutcome;
+import com.model_store.model.constant.OrderCaseState;
 import com.model_store.model.constant.ProductAvailabilityType;
 import com.model_store.model.constant.ParticipantRole;
 import com.model_store.model.dto.OrderCaseDetail;
+import com.model_store.model.dto.OrderCaseSummary;
 import com.model_store.repository.ImageRepository;
 import com.model_store.repository.OrderCaseRepository;
 import com.model_store.repository.OrderRepository;
@@ -79,21 +82,27 @@ public class OrderCaseService {
                                                      String comment, List<Long> imageIds) {
         requireComment(comment);
         return orders.findByIdForUpdate(orderId)
-                .filter(order -> order.getCustomerId().equals(buyerId) && order.getStatus() == OrderStatus.CANCELLED)
+                .filter(order -> order.getCustomerId().equals(buyerId))
                 .switchIfEmpty(invalid())
                 .flatMap(order -> cases.findByOrderId(orderId)
                         .filter(c -> "PAYMENT_APPEAL".equals(c.getKind()))
                         .next()
                         .flatMap(existing -> OrderCaseService.<Long>conflict("Обращение по оплате уже создано"))
-                        .switchIfEmpty(cases.findOpenByOrderId(orderId)
+                        .switchIfEmpty(Mono.defer(() -> order.getStatus() == OrderStatus.CANCELLED
+                                ? cases.findOpenByOrderId(orderId)
                                 .flatMap(existing -> OrderCaseService.<Long>conflict("По заказу уже открыто обращение"))
-                                .switchIfEmpty(createCase(order, "PAYMENT_APPEAL", buyerId, comment, imageIds))));
+                                .switchIfEmpty(transition(order, OrderStatus.DISPUTED, comment)
+                                        .then(createCase(order, "PAYMENT_APPEAL", buyerId, comment, imageIds)))
+                                : invalid())));
     }
 
-    public Flux<OrderCaseDetail> list(String state, int limit, long offset) {
-        if (!Set.of("OPEN", "RESOLVED").contains(state) || limit < 1 || limit > 100 || offset < 0)
+    public Flux<OrderCaseSummary> list(OrderCaseState state, int limit, long offset) {
+        if (state == null || limit < 1 || limit > 100 || offset < 0)
             return Flux.error(new IllegalArgumentException("Некорректные параметры списка обращений"));
-        return cases.findQueue(state, limit, offset).concatMap(this::detail);
+        return cases.findQueue(state.name(), limit, offset)
+                .concatMap(c -> orders.findById(c.getOrderId()).switchIfEmpty(invalid())
+                        .map(order -> new OrderCaseSummary(c.getId(), c.getOrderId(), c.getKind(), c.getState(),
+                                c.getOpenedBy(), c.getOpeningComment(), c.getCreatedAt(), order.getStatus())));
     }
 
     public Mono<OrderCaseDetail> adminDetail(Long caseId) {
@@ -109,44 +118,46 @@ public class OrderCaseService {
     public Mono<Long> changeTelegramUrl(Long caseId, Long adminId, String url) {
         validateTelegramUrl(url);
         return requireAdmin(adminId).then(cases.findById(caseId))
-                .filter(c -> "OPEN".equals(c.getState()))
+                .filter(c -> c.getState() == OrderCaseState.OPEN)
                 .switchIfEmpty(invalid())
                 .flatMap(c -> cases.updateTelegramUrl(caseId, c.getVersion(), url)
                         .flatMap(updated -> updated == 1 ? Mono.just(caseId) : conflict("Обращение изменилось. Повторите операцию")));
     }
 
     @Transactional
-    public Mono<Long> resolve(Long caseId, Long adminId, String outcome, String comment) {
+    public Mono<Long> resolve(Long caseId, Long adminId, OrderCaseOutcome outcome, String comment) {
         requireComment(comment);
+        if (outcome == null || outcome == OrderCaseOutcome.LEGACY) return invalid();
         return requireAdmin(adminId).then(cases.findById(caseId))
-                .filter(c -> "OPEN".equals(c.getState()))
+                .filter(c -> c.getState() == OrderCaseState.OPEN)
                 .switchIfEmpty(invalid())
                 .flatMap(c -> orders.findByIdForUpdate(c.getOrderId()).switchIfEmpty(invalid())
                         .flatMap(order -> resolutionTransition(c, order, outcome, comment)
-                                .then(cases.resolve(caseId, c.getVersion(), adminId, outcome, comment))
+                                .then(cases.resolve(caseId, c.getVersion(), adminId, outcome.name(), comment))
                                 .flatMap(updated -> updated == 1 ? Mono.just(caseId)
                                         : conflict("Обращение изменилось. Повторите операцию"))));
     }
 
-    private Mono<Void> resolutionTransition(OrderCase c, Order order, String outcome, String comment) {
+    private Mono<Void> resolutionTransition(OrderCase c, Order order, OrderCaseOutcome outcome, String comment) {
         if ("DISPUTE".equals(c.getKind())) {
-            if ("SELLER".equals(outcome) && c.getPreviousOrderStatus() != OrderStatus.ON_THE_WAY)
+            if (outcome == OrderCaseOutcome.SELLER && c.getPreviousOrderStatus() != OrderStatus.ON_THE_WAY)
                 return invalid();
             OrderStatus target = switch (outcome) {
-                case "BUYER" -> OrderStatus.FAILED;
-                case "SELLER" -> OrderStatus.COMPLETED;
+                case BUYER -> OrderStatus.FAILED;
+                case SELLER -> OrderStatus.COMPLETED;
                 default -> throw new IllegalArgumentException("Неверный исход спора");
             };
             return transition(order, OrderStatus.DISPUTED, target, comment);
         }
         if ("PAYMENT_APPEAL".equals(c.getKind())) {
-            if (!Set.of("BUYER", "SELLER").contains(outcome) || order.getStatus() != OrderStatus.CANCELLED)
+            if ((outcome != OrderCaseOutcome.BUYER && outcome != OrderCaseOutcome.SELLER)
+                    || order.getStatus() != OrderStatus.DISPUTED)
                 return invalid();
-            return Mono.empty();
+            return transition(order, OrderStatus.DISPUTED, OrderStatus.CANCELLED, comment);
         }
         if ("CANCELLATION_REQUEST".equals(c.getKind())) {
-            if ("REJECTED".equals(outcome)) return Mono.empty();
-            if (!"CANCELLED".equals(outcome) || order.getStatus() != c.getPreviousOrderStatus())
+            if (outcome == OrderCaseOutcome.REJECTED) return Mono.empty();
+            if (outcome != OrderCaseOutcome.CANCELLED || order.getStatus() != c.getPreviousOrderStatus())
                 return invalid();
             return transition(order, OrderStatus.CANCELLED, comment)
                     .then(productService.findByIdForUpdate(order.getProductId())
@@ -172,7 +183,7 @@ public class OrderCaseService {
         OrderCase c = new OrderCase();
         c.setOrderId(order.getId());
         c.setKind(kind);
-        c.setState("OPEN");
+        c.setState(OrderCaseState.OPEN);
         c.setOpenedBy(participantId);
         c.setOpeningComment(comment.trim());
         c.setPreviousOrderStatus(order.getStatus());

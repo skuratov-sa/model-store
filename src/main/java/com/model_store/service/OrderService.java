@@ -24,7 +24,7 @@ public interface OrderService {
      */
     Mono<Long> sellerConfirmsPreorder(Long orderId, String comment, Long participantId);
 
-    Mono<Long> closureOrder(CloseOrderRequest request, Long participantId);
+    Mono<Long> closureOrder(Long orderId, CloseOrderRequest request, Long participantId);
 
 
     Flux<FindOrderResponse> getOrdersBySeller(Long sellerId);

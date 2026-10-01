@@ -87,6 +87,8 @@ class GiveawayIntegrationTest extends IntegrationTest {
                 .status(TransferStatus.ACTIVE).build()).block();
         Order order = orders.save(Order.builder().sellerId(admin.getId()).customerId(buyer.getId())
                 .productId(product.getId()).addressId(address.getId()).transferId(transfer.getId())
+                .productName(product.getName()).productUnitPrice(product.getPrice())
+                .productCurrency(product.getCurrency()).productAvailability(product.getAvailability())
                 .count(1).status(OrderStatus.BOOKED).totalPrice(100f).prepaymentAmount(0f).build()).block();
 
         CreateOrUpdateProductRequest request = giveawayRequest();
@@ -99,6 +101,19 @@ class GiveawayIntegrationTest extends IntegrationTest {
                 .bind("id", order.getId()).fetch().rowsUpdated().block();
         productService.updateProduct(product.getId(), request, admin.getId(), ParticipantRole.ADMIN).block();
         assertThat(productRepository.findById(product.getId()).block().getAvailability())
+                .isEqualTo(ProductAvailabilityType.GIVEAWAY);
+
+        Product cancelledProduct = ordinaryProduct(admin.getId(), ProductAvailabilityType.PURCHASABLE);
+        orders.save(Order.builder().sellerId(admin.getId()).customerId(buyer.getId())
+                .productId(cancelledProduct.getId()).addressId(address.getId()).transferId(transfer.getId())
+                .productName(cancelledProduct.getName()).productUnitPrice(cancelledProduct.getPrice())
+                .productCurrency(cancelledProduct.getCurrency()).productAvailability(cancelledProduct.getAvailability())
+                .count(1).status(OrderStatus.CANCELLED).totalPrice(100f).prepaymentAmount(0f).build()).block();
+        CreateOrUpdateProductRequest nextGiveaway = giveawayRequest();
+        nextGiveaway.getGiveaway().setStartAt(Instant.now().plusSeconds(7200));
+        nextGiveaway.getGiveaway().setEndAt(Instant.now().plusSeconds(10800));
+        productService.updateProduct(cancelledProduct.getId(), nextGiveaway, admin.getId(), ParticipantRole.ADMIN).block();
+        assertThat(productRepository.findById(cancelledProduct.getId()).block().getAvailability())
                 .isEqualTo(ProductAvailabilityType.GIVEAWAY);
     }
 
@@ -118,9 +133,10 @@ class GiveawayIntegrationTest extends IntegrationTest {
 
         databaseClient.sql("UPDATE product SET giveaway_start_at = CURRENT_TIMESTAMP - INTERVAL '1 minute' WHERE id = :id")
                 .bind("id", id).fetch().rowsUpdated().block();
-        assertThat(productRepository.startDueGiveaways().block()).isEqualTo(1);
-        assertThat(productRepository.findById(id).block().getStatus()).isEqualTo(ProductStatus.ACTIVE);
+        assertThat(productRepository.findById(id).block().getStatus()).isEqualTo(ProductStatus.AWAITING_GIVEAWAY);
         assertThat(productService.findActiveGiveaway().block().status()).isEqualTo(ProductStatus.ACTIVE);
+        assertThat(productService.findAdminGiveawayDetails(id, admin.getId()).block().product().getStatus())
+                .isEqualTo(ProductStatus.ACTIVE);
     }
 
     @Test
@@ -159,10 +175,13 @@ class GiveawayIntegrationTest extends IntegrationTest {
 
         GiveawaySettingsRequest activate = new GiveawaySettingsRequest();
         activate.setEnabled(true);
-        Mono.when(
-                productService.updateAdminGiveaway(firstId, activate, admin.getId()),
+        var results = Mono.zip(
+                productService.updateAdminGiveaway(firstId, activate, admin.getId())
+                        .thenReturn(true).onErrorReturn(ApiException.class, false),
                 productService.updateAdminGiveaway(secondId, activate, admin.getId())
+                        .thenReturn(true).onErrorReturn(ApiException.class, false)
         ).block(Duration.ofSeconds(10));
+        assertThat(results.getT1()).isNotEqualTo(results.getT2());
 
         Long enabledCount = databaseClient.sql("SELECT count(*) AS count FROM product WHERE availability = 'GIVEAWAY' AND giveaway_enabled")
                 .map(row -> row.get("count", Long.class)).one().block();
@@ -179,8 +198,8 @@ class GiveawayIntegrationTest extends IntegrationTest {
                 """).bind("id", id).fetch().rowsUpdated().block();
 
         assertThat(productService.findActiveGiveaway().block()).isNull();
-        assertThat(productRepository.expireDueGiveaways().block()).isEqualTo(1);
-        assertThat(productRepository.findById(id).block().getStatus()).isEqualTo(ProductStatus.TIME_EXPIRED);
+        assertThat(productService.findAdminGiveawayDetails(id, admin.getId()).block().product().getStatus())
+                .isEqualTo(ProductStatus.TIME_EXPIRED);
 
         GiveawaySettingsRequest update = new GiveawaySettingsRequest();
         update.setEndAt(Instant.now().plusSeconds(3600));
@@ -192,15 +211,48 @@ class GiveawayIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    void enablingAnotherGiveawayHidesThePreviousPrize() {
+    void upcomingGiveawayDoesNotStopCurrentAndStartsAfterItEnds() {
         Long firstId = productService.createProduct(giveawayRequest(), admin.getId(), ParticipantRole.ADMIN).block();
-        Long secondId = productService.createProduct(giveawayRequest(), admin.getId(), ParticipantRole.ADMIN).block();
+        CreateOrUpdateProductRequest upcoming = giveawayRequest();
+        upcoming.getGiveaway().setStartAt(Instant.now().plusSeconds(7200));
+        upcoming.getGiveaway().setEndAt(Instant.now().plusSeconds(10800));
+        Long secondId = productService.createProduct(upcoming, admin.getId(), ParticipantRole.ADMIN).block();
 
+        assertThat(productService.findActiveGiveaway().block().productId()).isEqualTo(firstId);
+        assertThat(productService.findPublicGiveawayById(firstId).block()).isNotNull();
+        assertThat(productRepository.findById(firstId).block().getGiveawayEnabled()).isTrue();
+        assertThat(productRepository.findById(secondId).block().getStatus())
+                .isEqualTo(ProductStatus.AWAITING_GIVEAWAY);
+
+        databaseClient.sql("""
+                UPDATE product SET giveaway_start_at = CURRENT_TIMESTAMP - INTERVAL '2 hours',
+                                   giveaway_end_at = CURRENT_TIMESTAMP - INTERVAL '1 hour'
+                WHERE id = :id
+                """)
+                .bind("id", firstId).fetch().rowsUpdated().block();
+        databaseClient.sql("UPDATE product SET giveaway_start_at = CURRENT_TIMESTAMP - INTERVAL '1 minute' WHERE id = :id")
+                .bind("id", secondId).fetch().rowsUpdated().block();
         assertThat(productService.findActiveGiveaway().block().productId()).isEqualTo(secondId);
-        assertThat(productService.findPublicGiveawayById(firstId).block()).isNull();
-        assertThat(productRepository.findById(firstId).block().getGiveawayEnabled()).isFalse();
+        assertThat(productService.findActiveGiveaway().block().status()).isEqualTo(ProductStatus.ACTIVE);
+        assertThat(productService.findAdminGiveawayDetails(firstId, admin.getId()).block().product().getStatus())
+                .isEqualTo(ProductStatus.TIME_EXPIRED);
+        assertThat(productService.findAdminGiveawayDetails(secondId, admin.getId()).block().product().getStatus())
+                .isEqualTo(ProductStatus.ACTIVE);
         assertThat(productService.findGiveawayHistory(admin.getId(), 0, 50).map(Product::getId).collectList().block())
                 .containsExactly(secondId, firstId);
+    }
+
+    @Test
+    void overlappingGiveawayScheduleIsRejectedWithoutChangingCurrentGiveaway() {
+        Long firstId = productService.createProduct(giveawayRequest(), admin.getId(), ParticipantRole.ADMIN).block();
+        CreateOrUpdateProductRequest overlapping = giveawayRequest();
+        overlapping.getGiveaway().setStartAt(Instant.now().plusSeconds(1800));
+        overlapping.getGiveaway().setEndAt(Instant.now().plusSeconds(5400));
+
+        StepVerifier.create(productService.createProduct(overlapping, admin.getId(), ParticipantRole.ADMIN))
+                .expectError(ApiException.class).verify();
+        assertThat(productService.findActiveGiveaway().block().productId()).isEqualTo(firstId);
+        assertThat(productRepository.findById(firstId).block().getGiveawayEnabled()).isTrue();
     }
 
     @Test

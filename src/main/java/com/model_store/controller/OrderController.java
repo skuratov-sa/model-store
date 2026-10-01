@@ -158,10 +158,6 @@ public class OrderController {
     public Mono<Long> closeOrder(@RequestHeader("Authorization") String authorizationHeader,
                                  @PathVariable Long orderId, @RequestBody CloseOrderRequest request) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        if (request.getOrderId() != null && !orderId.equals(request.getOrderId())) {
-            return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "ID заказа в пути и теле запроса не совпадают"));
-        }
-        request.setOrderId(orderId);
-        return rejectBotSeller(participantId).then(orderService.closureOrder(request, participantId));
+        return rejectBotSeller(participantId).then(orderService.closureOrder(orderId, request, participantId));
     }
 }

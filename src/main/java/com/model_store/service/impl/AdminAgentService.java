@@ -115,9 +115,8 @@ public class AdminAgentService {
                         case "SHIP" -> orderService.transferOrder(orderId, deliveryUrl, comment, agentId);
                         case "CANCEL" -> {
                             CloseOrderRequest close = new CloseOrderRequest();
-                            close.setOrderId(orderId);
                             close.setComment(comment);
-                            yield orderService.closureOrder(close, agentId);
+                            yield orderService.closureOrder(orderId, close, agentId);
                         }
                         default -> Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Неизвестное действие с заказом"));
                     };

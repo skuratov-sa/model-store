@@ -292,9 +292,9 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public Mono<Long> closureOrder(CloseOrderRequest request, Long participantId) {
-        log.info("Order closure requested: orderId={}, participantId={}", request.getOrderId(), participantId);
-        return orderRepository.findById(request.getOrderId())
+    public Mono<Long> closureOrder(Long orderId, CloseOrderRequest request, Long participantId) {
+        log.info("Order closure requested: orderId={}, participantId={}", orderId, participantId);
+        return orderRepository.findById(orderId)
                 .filter(order -> List.of(order.getSellerId(), order.getCustomerId()).contains(participantId))
                 .filter(order -> order.getStatus() == BOOKED)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями")))

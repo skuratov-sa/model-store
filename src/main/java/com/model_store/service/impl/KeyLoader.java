@@ -2,7 +2,6 @@ package com.model_store.service.impl;
 
 import lombok.experimental.UtilityClass;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.core.io.FileSystemResource;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -21,14 +20,21 @@ public class KeyLoader {
     }
 
     private InputStream getInputStream(String keyPath) throws IOException {
-        // Попробуем сначала загрузить как файл из файловой системы
         Path filePath = Path.of(keyPath);
-        if (Files.exists(filePath)) {
-            return new FileSystemResource(keyPath).getInputStream();
+        if (Files.isRegularFile(filePath)) {
+            return Files.newInputStream(filePath);
         }
         if (filePath.isAbsolute()) {
             throw new FileNotFoundException("Key file does not exist: " + keyPath);
         }
-        return new ClassPathResource(keyPath).getInputStream();
+        ClassPathResource classPathResource = new ClassPathResource(keyPath);
+        if (classPathResource.exists()) {
+            return classPathResource.getInputStream();
+        }
+        Path localResourcePath = Path.of("src", "main", "resources").resolve(filePath);
+        if (Files.isRegularFile(localResourcePath)) {
+            return Files.newInputStream(localResourcePath);
+        }
+        throw new FileNotFoundException("Key file does not exist: " + keyPath);
     }
 }

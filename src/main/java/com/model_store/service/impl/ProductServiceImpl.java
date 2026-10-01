@@ -238,7 +238,7 @@ public class ProductServiceImpl implements ProductService {
                 .flatMapMany(tuple -> Flux.fromIterable(products).map(product -> {
                     SellerRating rating = tuple.getT4().get(product.getParticipantId());
                     return productMapper.toProductDto(
-                        product,
+                        withEffectiveGiveawayStatus(product),
                         tuple.getT1().getOrDefault(product.getId(), List.of()),
                         tuple.getT2().get(product.getId()),
                         tuple.getT3().getOrDefault(product.getParticipantId(), "unknown"),
@@ -307,7 +307,8 @@ public class ProductServiceImpl implements ProductService {
         if (page < 0 || size < 1 || size > 100) {
             return Flux.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Некорректная страница истории"));
         }
-        return productRepository.findGiveawayHistory(adminId, size, (long) page * size);
+        return productRepository.findGiveawayHistory(adminId, size, (long) page * size)
+                .map(this::withEffectiveGiveawayStatus);
     }
 
     @Override
@@ -328,7 +329,19 @@ public class ProductServiceImpl implements ProductService {
                 .flatMap(product -> Mono.zip(
                         imageService.findActualImages(productId, ImageTag.PRODUCT).collectList(),
                         categoryService.findByProductId(productId).collectList()
-                ).map(details -> new AdminGiveawayProductResponse(product, details.getT1(), details.getT2())));
+                ).map(details -> new AdminGiveawayProductResponse(
+                        withEffectiveGiveawayStatus(product), details.getT1(), details.getT2())));
+    }
+
+    private Product withEffectiveGiveawayStatus(Product product) {
+        if (product.getAvailability() == ProductAvailabilityType.GIVEAWAY
+                && Boolean.TRUE.equals(product.getGiveawayEnabled())
+                && (product.getStatus() == ACTIVE || product.getStatus() == ProductStatus.AWAITING_GIVEAWAY)) {
+            Instant now = Instant.now();
+            product.setStatus(!product.getGiveawayEndAt().isAfter(now) ? ProductStatus.TIME_EXPIRED
+                    : product.getGiveawayStartAt().isAfter(now) ? ProductStatus.AWAITING_GIVEAWAY : ACTIVE);
+        }
+        return product;
     }
 
     @Override
@@ -459,10 +472,10 @@ public class ProductServiceImpl implements ProductService {
             applyGiveawaySettings(product, request.getGiveaway(), true);
         }
 
-        Mono<Void> deactivatePrevious = Boolean.TRUE.equals(product.getGiveawayEnabled())
-                ? lockGiveawayActivation().then(productRepository.deactivateOtherGiveaways(-1L)).then()
+        Mono<Void> validateGiveawayWindow = Boolean.TRUE.equals(product.getGiveawayEnabled())
+                ? lockGiveawayActivation().then(ensureGiveawayWindowAvailable(product))
                 : Mono.empty();
-        return deactivatePrevious.then(productRepository.save(product))
+        return validateGiveawayWindow.then(productRepository.save(product))
                 .flatMap(savedProduct ->
                         updateImagesStatus(request.getImageIds(), savedProduct.getId())
                                 .then(addLinkProductAndCategories(request.getCategoryIds(), savedProduct.getId()))
@@ -592,10 +605,10 @@ public class ProductServiceImpl implements ProductService {
                                     ? Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Товар с незавершёнными заказами нельзя перевести в розыгрыш"))
                                     : Mono.empty())
                             : Mono.empty();
-                    Mono<Void> deactivatePrevious = Boolean.TRUE.equals(product.getGiveawayEnabled())
-                            ? productRepository.deactivateOtherGiveaways(id).then()
+                    Mono<Void> validateGiveawayWindow = Boolean.TRUE.equals(product.getGiveawayEnabled())
+                            ? ensureGiveawayWindowAvailable(product)
                             : Mono.empty();
-                    return noOrders.then(deactivatePrevious).thenReturn(product);
+                    return noOrders.then(validateGiveawayWindow).thenReturn(product);
                 })
                 .flatMap(productRepository::save)
                 .flatMap(p -> updateImagesStatus(request.getImageIds(), id)
@@ -607,6 +620,16 @@ public class ProductServiceImpl implements ProductService {
         return productRepository.lockGiveawayActivation()
                 .switchIfEmpty(Mono.error(new IllegalStateException("Не найдена запись блокировки розыгрыша")))
                 .then();
+    }
+
+    private Mono<Void> ensureGiveawayWindowAvailable(Product product) {
+        return productRepository.existsOverlappingGiveaway(
+                        product.getId() == null ? -1L : product.getId(),
+                        product.getGiveawayStartAt(), product.getGiveawayEndAt())
+                .flatMap(overlaps -> overlaps
+                        ? Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST,
+                                "Период розыгрыша пересекается с другим запланированным розыгрышем"))
+                        : Mono.empty());
     }
 
     @Transactional

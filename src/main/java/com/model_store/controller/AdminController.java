@@ -3,7 +3,10 @@ package com.model_store.controller;
 import com.model_store.model.IssueAgentTokensResponse;
 import com.model_store.model.constant.ParticipantStatus;
 import com.model_store.model.constant.ProductStatus;
+import com.model_store.model.constant.OrderCaseOutcome;
+import com.model_store.model.constant.OrderCaseState;
 import com.model_store.model.dto.OrderCaseDetail;
+import com.model_store.model.dto.OrderCaseSummary;
 import com.model_store.service.AgentTokenService;
 import com.model_store.service.CategoryService;
 import com.model_store.service.ParticipantService;
@@ -35,7 +38,7 @@ public class AdminController {
 
     @Operation(summary = "Открытые или завершённые обращения по заказам")
     @GetMapping("/order-cases")
-    public Flux<OrderCaseDetail> listOrderCases(@RequestParam(defaultValue = "OPEN") String state,
+    public Flux<OrderCaseSummary> listOrderCases(@RequestParam(defaultValue = "OPEN") OrderCaseState state,
                                                  @RequestParam(defaultValue = "50") int limit,
                                                  @RequestParam(defaultValue = "0") long offset) {
         return orderCaseService.list(state, limit, offset);
@@ -57,7 +60,7 @@ public class AdminController {
     @Operation(summary = "Завершить спор или обращение")
     @PostMapping("/order-cases/{caseId}/resolve")
     public Mono<Long> resolveOrderCase(@RequestHeader("Authorization") String authorizationHeader,
-                                        @PathVariable Long caseId, @RequestParam String outcome,
+                                        @PathVariable Long caseId, @RequestParam OrderCaseOutcome outcome,
                                         @RequestParam String comment) {
         return orderCaseService.resolve(caseId, jwtService.getIdByAccessToken(authorizationHeader), outcome, comment);
     }

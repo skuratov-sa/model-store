@@ -50,7 +50,7 @@ public interface OrderRepository extends ReactiveCrudRepository<Order, Long> {
     @Query("SELECT * FROM \"order\" WHERE id = :orderId FOR UPDATE")
     Mono<Order> findByIdForUpdate(Long orderId);
 
-    @Query("SELECT EXISTS (SELECT 1 FROM \"order\" WHERE product_id = :productId AND status NOT IN ('COMPLETED', 'FAILED'))")
+    @Query("SELECT EXISTS (SELECT 1 FROM \"order\" WHERE product_id = :productId AND status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED'))")
     Mono<Boolean> existsActiveOrderForProduct(Long productId);
 
     Flux<Order> findBySellerId(Long sellerId);

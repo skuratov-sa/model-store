@@ -233,10 +233,23 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
     Mono<String> lockGiveawayActivation();
 
     @Query("""
+            SELECT EXISTS (
+                SELECT 1 FROM product
+                WHERE availability = 'GIVEAWAY' AND giveaway_enabled
+                  AND status IN ('ACTIVE', 'AWAITING_GIVEAWAY')
+                  AND id <> :productId
+                  AND giveaway_start_at < :endAt AND giveaway_end_at > :startAt
+            )
+            """)
+    Mono<Boolean> existsOverlappingGiveaway(Long productId, Instant startAt, Instant endAt);
+
+    @Query("""
             SELECT * FROM product
             WHERE availability = 'GIVEAWAY' AND status IN ('ACTIVE', 'AWAITING_GIVEAWAY')
               AND giveaway_enabled AND giveaway_end_at > CURRENT_TIMESTAMP
-            ORDER BY id DESC LIMIT 1
+            ORDER BY CASE WHEN giveaway_start_at <= CURRENT_TIMESTAMP THEN 0 ELSE 1 END,
+                     giveaway_start_at, id
+            LIMIT 1
             """)
     Mono<Product> findActiveGiveaway();
 
@@ -257,30 +270,6 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
             LIMIT :limit OFFSET :offset
             """)
     Flux<Product> findGiveawayHistory(Long adminId, int limit, long offset);
-
-    @Modifying
-    @Query("""
-            UPDATE product SET giveaway_enabled = false, status = 'TIME_EXPIRED'
-            WHERE availability = 'GIVEAWAY' AND giveaway_enabled AND id <> :productId
-            """)
-    Mono<Integer> deactivateOtherGiveaways(Long productId);
-
-    @Modifying
-    @Query("""
-            UPDATE product SET status = 'ACTIVE'
-            WHERE availability = 'GIVEAWAY' AND status = 'AWAITING_GIVEAWAY'
-              AND giveaway_enabled AND giveaway_start_at <= CURRENT_TIMESTAMP
-              AND giveaway_end_at > CURRENT_TIMESTAMP
-            """)
-    Mono<Integer> startDueGiveaways();
-
-    @Modifying
-    @Query("""
-            UPDATE product SET giveaway_enabled = false, status = 'TIME_EXPIRED'
-            WHERE availability = 'GIVEAWAY' AND status IN ('ACTIVE', 'AWAITING_GIVEAWAY')
-              AND giveaway_end_at <= CURRENT_TIMESTAMP
-            """)
-    Mono<Integer> expireDueGiveaways();
 
     @Modifying
     @Query("""
