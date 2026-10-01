@@ -3,6 +3,7 @@ package com.model_store.model.base;
 import com.model_store.model.constant.OrderStatus;
 import lombok.Data;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Version;
 import org.springframework.data.relational.core.mapping.Table;
 
 import java.time.Instant;
@@ -11,6 +12,7 @@ import java.time.Instant;
 @Table("order_case")
 public class OrderCase {
     @Id private Long id;
+    @Version private Long version;
     private Long orderId;
     private String kind;
     private String state;

@@ -59,6 +59,10 @@ public class GlobalExceptionHandler {
             return build(HttpStatus.CONFLICT, "PRODUCT_ALREADY_EXISTS", "Товар с такими параметрами уже существует", null);
         }
 
+        if (msg != null && msg.contains("uq_open_order_case")) {
+            return build(HttpStatus.CONFLICT, "ORDER_CASE_ALREADY_OPEN", "По заказу уже открыто обращение", null);
+        }
+
         if (msg != null && msg.contains("review")) {
             return build(HttpStatus.CONFLICT, "REVIEW_ALREADY_EXISTS", "Отзыв уже существует. Нельзя создать повторный отзыв.", null);
         }

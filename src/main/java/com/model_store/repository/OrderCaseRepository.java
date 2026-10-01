@@ -18,21 +18,21 @@ public interface OrderCaseRepository extends ReactiveCrudRepository<OrderCase, L
     Mono<OrderCase> findOpenByOrderId(Long orderId);
 
     @Modifying
-    @Query("UPDATE order_case SET telegram_url = :url WHERE id = :caseId AND state = 'OPEN'")
-    Mono<Integer> updateTelegramUrl(Long caseId, String url);
+    @Query("UPDATE order_case SET telegram_url = :url, version = version + 1 WHERE id = :caseId AND state = 'OPEN' AND version = :version")
+    Mono<Integer> updateTelegramUrl(Long caseId, Long version, String url);
 
     @Modifying
     @Query("""
             UPDATE order_case SET state = 'RESOLVED', resolved_by = :adminId,
-                outcome = :outcome, resolution_comment = :comment, resolved_at = now()
-            WHERE id = :caseId AND state = 'OPEN'
+                outcome = :outcome, resolution_comment = :comment, resolved_at = now(), version = version + 1
+            WHERE id = :caseId AND state = 'OPEN' AND version = :version
             """)
-    Mono<Integer> resolve(Long caseId, Long adminId, String outcome, String comment);
+    Mono<Integer> resolve(Long caseId, Long version, Long adminId, String outcome, String comment);
 
     @Modifying
     @Query("""
             UPDATE order_case SET state = 'RESOLVED', outcome = 'REJECTED',
-                resolution_comment = 'Получено подтверждение оплаты', resolved_at = now()
+                resolution_comment = 'Получено подтверждение оплаты', resolved_at = now(), version = version + 1
             WHERE order_id = :orderId AND kind = 'CANCELLATION_REQUEST' AND state = 'OPEN'
             """)
     Mono<Integer> dismissCancellationAfterPayment(Long orderId);

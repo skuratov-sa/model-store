@@ -42,6 +42,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.r2dbc.core.DatabaseClient;
 import org.springframework.transaction.reactive.TransactionalOperator;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.test.StepVerifier;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Signal;
@@ -595,6 +596,7 @@ class OrderServiceImplTest extends IntegrationTest {
         Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
         orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
         orderService.paymentOrder(orderId, saveOrderImage().getId(), "paid", buyer.getId()).block();
+        orderService.transferOrder(orderId, "https://example.com/track", "shipped", seller.getId()).block();
         Long caseId = orderCaseService.openDispute(orderId, seller.getId(), "Покупатель сообщил об оплате", List.of()).block();
 
         assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.DISPUTED);
@@ -624,6 +626,41 @@ class OrderServiceImplTest extends IntegrationTest {
         assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.FAILED);
         assertThat(productRepository.findById(product.getId()).block().getCount()).isEqualTo(4);
         assertThat(orderCaseRepository.findById(caseId).block().getOutcome()).isEqualTo("BUYER");
+    }
+
+    @Test
+    void sellerCannotWinDisputeBeforeShipping() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        orderService.paymentOrder(orderId, saveOrderImage().getId(), "paid", buyer.getId()).block();
+        Long caseId = orderCaseService.openDispute(orderId, seller.getId(), "Спор до отправки", List.of()).block();
+
+        StepVerifier.create(orderCaseService.resolve(caseId, admin.getId(), "SELLER", "В пользу продавца"))
+                .expectError(IllegalArgumentException.class).verify();
+
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.DISPUTED);
+        assertThat(orderCaseRepository.findById(caseId).block().getState()).isEqualTo("OPEN");
+        orderCaseService.resolve(caseId, admin.getId(), "BUYER", "Возврат покупателю").block();
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.FAILED);
+    }
+
+    @Test
+    void staleCaseVersionCannotOverwriteAdminChanges() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        orderService.paymentOrder(orderId, saveOrderImage().getId(), "paid", buyer.getId()).block();
+        Long caseId = orderCaseService.openDispute(orderId, buyer.getId(), "Спор", List.of()).block();
+        Long originalVersion = orderCaseRepository.findById(caseId).block().getVersion();
+
+        orderCaseService.changeTelegramUrl(caseId, admin.getId(), "https://t.me/order_case").block();
+
+        assertThat(orderCaseRepository.resolve(caseId, originalVersion, admin.getId(), "BUYER", "Старое решение")
+                .block()).isZero();
+        assertThat(orderCaseRepository.findById(caseId).block().getVersion()).isEqualTo(originalVersion + 1);
+        assertThat(orderCaseRepository.findById(caseId).block().getState()).isEqualTo("OPEN");
+        assertThat(orderCaseRepository.findById(caseId).block().getTelegramUrl()).isEqualTo("https://t.me/order_case");
     }
 
     @Test
@@ -673,6 +710,9 @@ class OrderServiceImplTest extends IntegrationTest {
         orderService.prepaymentOrder(orderId, proof.getId(), "prepaid", buyer.getId()).block();
         Long caseId = orderCaseService.openDispute(orderId, seller.getId(), "Предоплата внесена", List.of()).block();
 
+        StepVerifier.create(orderCaseService.resolve(caseId, admin.getId(), "SELLER", "В пользу продавца"))
+                .expectError(IllegalArgumentException.class).verify();
+
         StepVerifier.create(orderCaseService.requestCancellation(orderId, buyer.getId(), "Отменить"))
                 .expectError(IllegalArgumentException.class).verify();
 
@@ -712,6 +752,40 @@ class OrderServiceImplTest extends IntegrationTest {
         assertThat(results.stream().filter(Signal::isOnError).count()).isEqualTo(1);
         assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.CANCELLED);
         assertThat(productRepository.findById(product.getId()).block().getCount()).isEqualTo(5);
+    }
+
+    @Test
+    void concurrentCancellationRequests_returnConflictAndCreateOneCase() throws Exception {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+
+        List<Signal<Long>> results = raceWhileOrderRowLocked(orderId,
+                orderCaseService.requestCancellation(orderId, buyer.getId(), "Отменить"),
+                orderCaseService.requestCancellation(orderId, seller.getId(), "Отменить"));
+
+        assertThat(results.stream().filter(Signal::isOnNext).count()).isEqualTo(1);
+        assertThat(results.stream().filter(Signal::isOnError).count()).isEqualTo(1);
+        assertThat(results.stream().filter(Signal::isOnError).findFirst().orElseThrow().getThrowable())
+                .isInstanceOf(ResponseStatusException.class);
+        assertThat(orderCaseRepository.findByOrderId(orderId).collectList().block()).hasSize(1);
+    }
+
+    @Test
+    void concurrentPaymentAppeals_returnConflictAndCreateOneCase() throws Exception {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.closureOrder(closeRequest(orderId), seller.getId()).block();
+
+        List<Signal<Long>> results = raceWhileOrderRowLocked(orderId,
+                orderCaseService.reportPaymentAfterCancellation(orderId, buyer.getId(), "Оплатил", List.of()),
+                orderCaseService.reportPaymentAfterCancellation(orderId, buyer.getId(), "Оплатил", List.of()));
+
+        assertThat(results.stream().filter(Signal::isOnNext).count()).isEqualTo(1);
+        assertThat(results.stream().filter(Signal::isOnError).count()).isEqualTo(1);
+        assertThat(results.stream().filter(Signal::isOnError).findFirst().orElseThrow().getThrowable())
+                .isInstanceOf(ResponseStatusException.class);
+        assertThat(orderCaseRepository.findByOrderId(orderId).collectList().block()).hasSize(1);
     }
 
     @Test

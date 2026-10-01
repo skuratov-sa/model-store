@@ -15,8 +15,10 @@ import com.model_store.service.ImageService;
 import com.model_store.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.r2dbc.core.DatabaseClient;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -67,21 +69,25 @@ public class OrderCaseService {
                         && (order.getPrepaymentAmount() == null || order.getPrepaymentAmount() == 0
                             || order.getStatus() == OrderStatus.AWAITING_PREPAYMENT))
                 .switchIfEmpty(invalid())
-                .flatMap(order -> createCase(order, "CANCELLATION_REQUEST", participantId, comment, List.of()));
+                .flatMap(order -> cases.findOpenByOrderId(orderId)
+                        .flatMap(existing -> OrderCaseService.<Long>conflict("По заказу уже открыто обращение"))
+                        .switchIfEmpty(createCase(order, "CANCELLATION_REQUEST", participantId, comment, List.of())));
     }
 
     @Transactional
     public Mono<Long> reportPaymentAfterCancellation(Long orderId, Long buyerId,
                                                      String comment, List<Long> imageIds) {
         requireComment(comment);
-        return orders.findById(orderId)
+        return orders.findByIdForUpdate(orderId)
                 .filter(order -> order.getCustomerId().equals(buyerId) && order.getStatus() == OrderStatus.CANCELLED)
                 .switchIfEmpty(invalid())
                 .flatMap(order -> cases.findByOrderId(orderId)
                         .filter(c -> "PAYMENT_APPEAL".equals(c.getKind()))
-                        .hasElements()
-                        .flatMap(exists -> exists ? Mono.error(new IllegalArgumentException("Обращение по оплате уже создано"))
-                                : createCase(order, "PAYMENT_APPEAL", buyerId, comment, imageIds)));
+                        .next()
+                        .flatMap(existing -> OrderCaseService.<Long>conflict("Обращение по оплате уже создано"))
+                        .switchIfEmpty(cases.findOpenByOrderId(orderId)
+                                .flatMap(existing -> OrderCaseService.<Long>conflict("По заказу уже открыто обращение"))
+                                .switchIfEmpty(createCase(order, "PAYMENT_APPEAL", buyerId, comment, imageIds))));
     }
 
     public Flux<OrderCaseDetail> list(String state, int limit, long offset) {
@@ -102,8 +108,11 @@ public class OrderCaseService {
     @Transactional
     public Mono<Long> changeTelegramUrl(Long caseId, Long adminId, String url) {
         validateTelegramUrl(url);
-        return requireAdmin(adminId).then(cases.updateTelegramUrl(caseId, url))
-                .flatMap(updated -> updated == 1 ? Mono.just(caseId) : invalid());
+        return requireAdmin(adminId).then(cases.findById(caseId))
+                .filter(c -> "OPEN".equals(c.getState()))
+                .switchIfEmpty(invalid())
+                .flatMap(c -> cases.updateTelegramUrl(caseId, c.getVersion(), url)
+                        .flatMap(updated -> updated == 1 ? Mono.just(caseId) : conflict("Обращение изменилось. Повторите операцию")));
     }
 
     @Transactional
@@ -114,12 +123,15 @@ public class OrderCaseService {
                 .switchIfEmpty(invalid())
                 .flatMap(c -> orders.findByIdForUpdate(c.getOrderId()).switchIfEmpty(invalid())
                         .flatMap(order -> resolutionTransition(c, order, outcome, comment)
-                                .then(cases.resolve(caseId, adminId, outcome, comment))
-                                .flatMap(updated -> updated == 1 ? Mono.just(caseId) : invalid())));
+                                .then(cases.resolve(caseId, c.getVersion(), adminId, outcome, comment))
+                                .flatMap(updated -> updated == 1 ? Mono.just(caseId)
+                                        : conflict("Обращение изменилось. Повторите операцию"))));
     }
 
     private Mono<Void> resolutionTransition(OrderCase c, Order order, String outcome, String comment) {
         if ("DISPUTE".equals(c.getKind())) {
+            if ("SELLER".equals(outcome) && c.getPreviousOrderStatus() != OrderStatus.ON_THE_WAY)
+                return invalid();
             OrderStatus target = switch (outcome) {
                 case "BUYER" -> OrderStatus.FAILED;
                 case "SELLER" -> OrderStatus.COMPLETED;
@@ -224,5 +236,9 @@ public class OrderCaseService {
 
     private static <T> Mono<T> invalid() {
         return Mono.error(new IllegalArgumentException("Операция недоступна для текущего состояния заказа или обращения"));
+    }
+
+    private static <T> Mono<T> conflict(String message) {
+        return Mono.error(new ResponseStatusException(HttpStatus.CONFLICT, message));
     }
 }
