@@ -256,6 +256,16 @@ public class ProductServiceImpl implements ProductService {
         return productRepository.findActualProduct(productId);
     }
 
+    @Override
+    public Mono<Product> findActualProductForUpdate(Long productId) {
+        return productRepository.findActualProductForUpdate(productId);
+    }
+
+    @Override
+    public Mono<Product> findByIdForUpdate(Long productId) {
+        return productRepository.findByIdForUpdate(productId);
+    }
+
     @Transactional
     public Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId, ParticipantRole role) {
         return Mono.zip(
@@ -366,8 +376,8 @@ public class ProductServiceImpl implements ProductService {
     private Mono<Void> updateOwnedProduct(Long id, CreateOrUpdateProductRequest request,
                                           Long participantId, boolean includeInactive) {
         Mono<Product> source = includeInactive
-                ? productRepository.findById(id).filter(p -> p.getStatus() != ProductStatus.DELETED)
-                : productRepository.findActualProduct(id);
+                ? productRepository.findByIdForUpdate(id).filter(p -> p.getStatus() != ProductStatus.DELETED)
+                : productRepository.findActualProductForUpdate(id);
         return source
                 .filter(product -> Objects.equals(product.getParticipantId(), participantId))
                 .switchIfEmpty(Mono.error(
@@ -393,9 +403,10 @@ public class ProductServiceImpl implements ProductService {
                 .then();
     }
 
+    @Transactional
     public Mono<Void> deleteProduct(Long id, Long participantId) {
         log.info("Delete product id: {}, participantId: {}", id, participantId);
-        return productRepository.findActualProduct(id)
+        return productRepository.findActualProductForUpdate(id)
                 .filter(product -> Objects.equals(product.getParticipantId(), participantId))
                 .switchIfEmpty(Mono.error(
                         ApiErrors.notFound(ErrorCode.PRODUCT_NOT_FOUND, "Не удалось обновить товар: не достаточно прав или его не существует")
@@ -407,9 +418,10 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional
     public Mono<Void> updateProductStatus(Long id, ProductStatus status) {
         log.info("Update product id: {}, status: {}", id, status);
-        return productRepository.findById(id)
+        return productRepository.findByIdForUpdate(id)
                 .filter(product -> product.getStatus() != ProductStatus.DELETED)
                 .switchIfEmpty(Mono.error(
                         ApiErrors.notFound(ErrorCode.PRODUCT_NOT_FOUND, "Не удалось выполнить операцию: не достаточно прав или его не существует")
@@ -429,9 +441,10 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional
     public Mono<Void> extendExpirationDate(Long id, Long participantId) {
         log.info("Extend expiration date id: {}, participantId: {}", id, participantId);
-        return productRepository.findProductForExtend(id)
+        return productRepository.findProductForExtendForUpdate(id)
                 .filter(product -> Objects.equals(product.getParticipantId(), participantId))
                 .switchIfEmpty(Mono.error(
                         ApiErrors.notFound(ErrorCode.PRODUCT_NOT_FOUND, "Не удалось выполнить операцию: не достаточно прав или его не существует")
@@ -481,7 +494,9 @@ public class ProductServiceImpl implements ProductService {
         if (isNull(amount) || amount <= 0) {
             return Mono.empty();
         }
-        return productRepository.incrementCountIfLimited(productId, amount).then();
+        return productRepository.incrementCountIfLimited(productId, amount)
+                .flatMap(updated -> updated == 1 ? Mono.<Void>empty()
+                        : Mono.error(new IllegalStateException("Не удалось восстановить остаток товара")));
     }
 
     private Instant getExpirationDate() {

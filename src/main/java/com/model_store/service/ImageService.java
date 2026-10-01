@@ -14,7 +14,15 @@ import java.util.List;
 public interface ImageService {
     Flux<Long> saveImages(ImageTag tag, Long entityId, List<FilePart> files);
 
+    Flux<Long> saveImages(ImageTag tag, Long entityId, List<FilePart> files, Long uploadedBy);
+
     Flux<ImageResponse> findImagesByIds(List<Long> imageIds);
+
+    Flux<ImageResponse> findVisibleImagesByIds(List<Long> imageIds, Long viewerId);
+
+    Flux<ImageResponse> findOrderImagesByIds(List<Long> imageIds, Long viewerId);
+
+    Mono<Void> activateOrderProof(Long imageId, Long orderId, Long participantId);
 
     Flux<ImageMetadataDto> findImageMetadataByIds(List<Long> imageIds);
 
@@ -27,13 +35,13 @@ public interface ImageService {
 
     Mono<Boolean> isActualEntity(Long entityId, ImageTag tag, Long participantId);
 
-    Flux<Image> findTemporaryImages();
+    Flux<Image> prepareExpiredImagesForDeletion();
+
+    Mono<Void> deleteMarkedImage(Long imageId);
 
     Mono<Void> deleteImagesByEntityId(Long entityId, ImageTag tag);
 
     Mono<Void> deleteById(Long id);
-
-    Mono<Void> deleteAllByIds(List<Long> ids);
 
     Mono<Void> deleteImages(List<Long> imageIds, ImageTag tag, Long participantId);
 

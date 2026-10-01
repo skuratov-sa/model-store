@@ -3,6 +3,7 @@ package com.model_store.service.impl;
 import com.model_store.exception.ApiException;
 import com.model_store.exception.constant.ErrorCode;
 import com.model_store.model.FindProductRequest;
+import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.base.Address;
 import com.model_store.model.base.Image;
 import com.model_store.model.base.Order;
@@ -29,6 +30,7 @@ import com.model_store.model.page.Pageable;
 import com.model_store.repository.AddressRepository;
 import com.model_store.repository.ImageRepository;
 import com.model_store.repository.OrderRepository;
+import com.model_store.repository.OrderCaseRepository;
 import com.model_store.repository.ParticipantAddressRepository;
 import com.model_store.repository.ProductBasketRepository;
 import com.model_store.repository.TransferRepository;
@@ -39,10 +41,22 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.r2dbc.core.DatabaseClient;
+import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.test.StepVerifier;
+import reactor.core.publisher.Mono;
+import reactor.core.publisher.Signal;
+import reactor.core.publisher.Sinks;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.model_store.model.constant.OrderStatus.AWAITING_PAYMENT;
 import static com.model_store.model.constant.OrderStatus.AWAITING_PREPAYMENT;
@@ -59,6 +73,12 @@ class OrderServiceImplTest extends IntegrationTest {
 
     @Autowired
     private OrderRepository orderRepository;
+
+    @Autowired
+    private OrderCaseRepository orderCaseRepository;
+
+    @Autowired
+    private OrderCaseService orderCaseService;
 
     @Autowired
     private ProductBasketRepository productBasketRepository;
@@ -78,8 +98,12 @@ class OrderServiceImplTest extends IntegrationTest {
     @Autowired
     private DatabaseClient databaseClient;
 
+    @Autowired
+    private TransactionalOperator transactionalOperator;
+
     private Participant seller;
     private Participant buyer;
+    private Participant admin;
     private Transfer sellerTransfer;
     private Address buyerAddress;
 
@@ -93,6 +117,9 @@ class OrderServiceImplTest extends IntegrationTest {
 
         seller = participantRepository.save(newParticipant("seller")).block();
         buyer = participantRepository.save(newParticipant("buyer")).block();
+        admin = newParticipant("admin");
+        admin.setRole(ParticipantRole.ADMIN);
+        admin = participantRepository.save(admin).block();
 
         sellerTransfer = transferRepository.save(
                 Transfer.builder()
@@ -502,41 +529,44 @@ class OrderServiceImplTest extends IntegrationTest {
         Product restored = productRepository.findById(product.getId()).block();
         Order order = orderRepository.findById(orderId).block();
         assertThat(restored.getCount()).isEqualTo(5);
-        assertThat(order.getStatus()).isEqualTo(OrderStatus.FAILED);
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED);
     }
 
     @Test
-    void closureOrder_awaitingPaymentPurchasableProduct_restoresStock() {
+    void closureOrder_awaitingPaymentPurchasableProduct_isRejected() {
         Product product = savePurchasableProduct(5);
         Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().get(0);
         orderService.agreementOrder(orderId, "seller agrees", seller.getId()).block();
 
-        orderService.closureOrder(closeRequest(orderId), buyer.getId()).block();
+        StepVerifier.create(orderService.closureOrder(closeRequest(orderId), buyer.getId()))
+                .expectError(IllegalArgumentException.class).verify();
 
         Product restored = productRepository.findById(product.getId()).block();
-        assertThat(restored.getCount()).isEqualTo(5);
+        assertThat(restored.getCount()).isEqualTo(3);
     }
 
     @Test
-    void closureOrder_preorderAwaitingPrepayment_doesNotRestoreUnchangedStock() {
+    void closureOrder_preorderAwaitingPrepayment_isRejected() {
         Product product = savePreorderProduct(500f);
         Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().get(0);
         orderService.agreementOrder(orderId, "seller agrees", seller.getId()).block();
 
-        orderService.closureOrder(closeRequest(orderId), buyer.getId()).block();
+        StepVerifier.create(orderService.closureOrder(closeRequest(orderId), buyer.getId()))
+                .expectError(IllegalArgumentException.class).verify();
 
         Product unchanged = productRepository.findById(product.getId()).block();
         assertThat(unchanged.getCount()).isNull();
     }
 
     @Test
-    void closureOrder_preorderAwaitingPrepaymentApproval_doesNotRestoreUnchangedStock() {
+    void closureOrder_preorderAwaitingPrepaymentApproval_isRejected() {
         Product product = savePreorderProduct(500f);
         Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().get(0);
         orderService.agreementOrder(orderId, "seller agrees", seller.getId()).block();
         orderService.prepaymentOrder(orderId, saveOrderImage().getId(), "prepaid", buyer.getId()).block();
 
-        orderService.closureOrder(closeRequest(orderId), buyer.getId()).block();
+        StepVerifier.create(orderService.closureOrder(closeRequest(orderId), buyer.getId()))
+                .expectError(IllegalArgumentException.class).verify();
 
         Product unchanged = productRepository.findById(product.getId()).block();
         assertThat(unchanged.getCount()).isNull();
@@ -559,7 +589,389 @@ class OrderServiceImplTest extends IntegrationTest {
         assertThat(order.getStatus()).isEqualTo(OrderStatus.ASSEMBLING);
     }
 
+    @Test
+    void disputeAfterPayment_sellerCanOpen_adminCompletesAndArchivesCase() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        orderService.paymentOrder(orderId, saveOrderImage().getId(), "paid", buyer.getId()).block();
+        Long caseId = orderCaseService.openDispute(orderId, seller.getId(), "Покупатель сообщил об оплате", List.of()).block();
+
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.DISPUTED);
+        orderCaseService.changeTelegramUrl(caseId, admin.getId(), "https://t.me/order_dispute").block();
+        orderCaseService.resolve(caseId, admin.getId(), "SELLER", "Решение в пользу продавца").block();
+
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.COMPLETED);
+        assertThat(orderCaseService.adminDetail(caseId).block().orderCase().getTelegramUrl())
+                .isEqualTo("https://t.me/order_dispute");
+        assertThat(orderCaseService.list("RESOLVED", 10, 0).map(d -> d.orderCase().getId()).collectList().block())
+                .contains(caseId);
+        assertThat(productRepository.findById(product.getId()).block().getCount()).isEqualTo(4);
+        StepVerifier.create(orderCaseService.changeTelegramUrl(caseId, admin.getId(), "https://t.me/changed"))
+                .expectError(IllegalArgumentException.class).verify();
+    }
+
+    @Test
+    void buyerWinsDispute_stockIsNotRestored() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        orderService.paymentOrder(orderId, saveOrderImage().getId(), "paid", buyer.getId()).block();
+        Long caseId = orderCaseService.openDispute(orderId, buyer.getId(), "Оплатил заказ", List.of()).block();
+
+        orderCaseService.resolve(caseId, admin.getId(), "BUYER", "Возврат вручную").block();
+
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.FAILED);
+        assertThat(productRepository.findById(product.getId()).block().getCount()).isEqualTo(4);
+        assertThat(orderCaseRepository.findById(caseId).block().getOutcome()).isEqualTo("BUYER");
+    }
+
+    @Test
+    void paymentAppealAfterBookedCancellation_keepsCancelledOrderAndDecision() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.closureOrder(closeRequest(orderId), seller.getId()).block();
+        Long caseId = orderCaseService.reportPaymentAfterCancellation(orderId, buyer.getId(),
+                "Деньги отправлены до отмены", List.of()).block();
+
+        orderCaseService.resolve(caseId, admin.getId(), "BUYER", "Возврат вручную").block();
+
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.CANCELLED);
+        assertThat(orderCaseRepository.findById(caseId).block().getState()).isEqualTo("RESOLVED");
+        assertThat(productRepository.findById(product.getId()).block().getCount()).isEqualTo(5);
+    }
+
+    @Test
+    void disputeWithSomeoneElsesEvidence_rollsBackStatusAndCase() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        orderService.paymentOrder(orderId, saveOrderImage().getId(), "paid", buyer.getId()).block();
+        Image image = saveOrderImage();
+
+        StepVerifier.create(orderCaseService.openDispute(orderId, seller.getId(),
+                        "Есть оплата", List.of(image.getId())))
+                .expectError().verify();
+
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.ASSEMBLING);
+        assertThat(orderCaseRepository.findByOrderId(orderId).collectList().block()).isEmpty();
+        assertThat(imageRepository.findById(image.getId()).block().getStatus()).isEqualTo(ImageStatus.TEMPORARY);
+    }
+
+    @Test
+    void disputeRequiresPaymentProof_butSellerCanOpenAfterPrepayment() {
+        Product product = savePreorderProduct(500f);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        StepVerifier.create(orderCaseService.openDispute(orderId, buyer.getId(), "Нет оплаты", List.of()))
+                .expectError(IllegalArgumentException.class).verify();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+
+        StepVerifier.create(orderCaseService.openDispute(orderId, seller.getId(), "Нет оплаты", List.of()))
+                .expectError(IllegalArgumentException.class).verify();
+
+        Image proof = saveOrderImage();
+        orderService.prepaymentOrder(orderId, proof.getId(), "prepaid", buyer.getId()).block();
+        Long caseId = orderCaseService.openDispute(orderId, seller.getId(), "Предоплата внесена", List.of()).block();
+
+        StepVerifier.create(orderCaseService.requestCancellation(orderId, buyer.getId(), "Отменить"))
+                .expectError(IllegalArgumentException.class).verify();
+
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.DISPUTED);
+        assertThat(orderCaseRepository.findById(caseId).block().getOpenedBy()).isEqualTo(seller.getId());
+        assertThat(imageRepository.findById(proof.getId()).block().getStatus()).isEqualTo(ImageStatus.ACTIVE);
+    }
+
+    @Test
+    void paymentProofFailure_rollsBackOrderStatusAndImage() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        Image image = saveOrderImage();
+        image.setUploadedBy(seller.getId());
+        imageRepository.save(image).block();
+
+        StepVerifier.create(orderService.paymentOrder(orderId, image.getId(), "paid", buyer.getId()))
+                .expectError().verify();
+
+        Order order = orderRepository.findById(orderId).block();
+        assertThat(order.getStatus()).isEqualTo(AWAITING_PAYMENT);
+        assertThat(order.getImagePaymentProofId()).isNull();
+        assertThat(imageRepository.findById(image.getId()).block().getStatus()).isEqualTo(ImageStatus.TEMPORARY);
+    }
+
+    @Test
+    void concurrentBookedCancellation_restoresStockExactlyOnce() throws Exception {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().getFirst();
+
+        List<Signal<Long>> results = raceWhileOrderRowLocked(orderId,
+                orderService.closureOrder(closeRequest(orderId), buyer.getId()),
+                orderService.closureOrder(closeRequest(orderId), seller.getId()));
+
+        assertThat(results.stream().filter(Signal::isOnNext).count()).isEqualTo(1);
+        assertThat(results.stream().filter(Signal::isOnError).count()).isEqualTo(1);
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.CANCELLED);
+        assertThat(productRepository.findById(product.getId()).block().getCount()).isEqualTo(5);
+    }
+
+    @Test
+    void expiredBookedOrder_restoresStockOnlyOnce() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().getFirst();
+        databaseClient.sql("UPDATE \"order\" SET created_at = now() - interval '2 days' WHERE id = :id")
+                .bind("id", orderId).fetch().rowsUpdated().block();
+
+        databaseClient.sql("SELECT process_expired_booked_orders()").fetch().all().collectList().block();
+        databaseClient.sql("SELECT process_expired_booked_orders()").fetch().all().collectList().block();
+
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.CANCELLED);
+        assertThat(productRepository.findById(product.getId()).block().getCount()).isEqualTo(5);
+    }
+
+    @Test
+    void concurrentPaymentAndCancellationRequest_leavesNoOpenCancellationCase() throws Exception {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        Image proof = saveOrderImage();
+
+        raceWhileOrderRowLocked(orderId,
+                orderService.paymentOrder(orderId, proof.getId(), "paid", buyer.getId()),
+                orderCaseService.requestCancellation(orderId, seller.getId(), "Отменить до оплаты"));
+
+        Order order = orderRepository.findById(orderId).block();
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.ASSEMBLING);
+        assertThat(order.getImagePaymentProofId()).isEqualTo(proof.getId());
+        assertThat(orderCaseRepository.findOpenByOrderId(orderId).block()).isNull();
+        assertThat(productRepository.findById(product.getId()).block().getCount()).isEqualTo(4);
+    }
+
+    @Test
+    void concurrentDisputes_createOneCase() throws Exception {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        orderService.paymentOrder(orderId, saveOrderImage().getId(), "paid", buyer.getId()).block();
+
+        List<Signal<Long>> results = raceWhileOrderRowLocked(orderId,
+                orderCaseService.openDispute(orderId, buyer.getId(), "Спор покупателя", List.of()),
+                orderCaseService.openDispute(orderId, seller.getId(), "Спор продавца", List.of()));
+
+        assertThat(results.stream().filter(Signal::isOnNext).count()).isEqualTo(1);
+        assertThat(results.stream().filter(Signal::isOnError).count()).isEqualTo(1);
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.DISPUTED);
+        assertThat(orderCaseRepository.findByOrderId(orderId).collectList().block()).hasSize(1);
+    }
+
+    @Test
+    void concurrentPaymentAndAdminCancellation_keepPaymentAndStockConsistent() throws Exception {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        Long caseId = orderCaseService.requestCancellation(orderId, seller.getId(), "Отменить до оплаты").block();
+        Image proof = saveOrderImage();
+
+        List<Signal<Long>> results = raceWhileOrderRowLocked(orderId,
+                orderService.paymentOrder(orderId, proof.getId(), "paid", buyer.getId()),
+                orderCaseService.resolve(caseId, admin.getId(), "CANCELLED", "Отмена одобрена"));
+
+        assertThat(results.stream().filter(Signal::isOnNext).count()).isEqualTo(1);
+        assertThat(results.stream().filter(Signal::isOnError).count()).isEqualTo(1);
+        Order order = orderRepository.findById(orderId).block();
+        if (order.getStatus() == OrderStatus.ASSEMBLING) {
+            assertThat(order.getImagePaymentProofId()).isEqualTo(proof.getId());
+            assertThat(productRepository.findById(product.getId()).block().getCount()).isEqualTo(4);
+            assertThat(orderCaseRepository.findById(caseId).block().getOutcome()).isEqualTo("REJECTED");
+            assertThat(imageRepository.findById(proof.getId()).block().getStatus()).isEqualTo(ImageStatus.ACTIVE);
+        } else {
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED);
+            assertThat(order.getImagePaymentProofId()).isNull();
+            assertThat(productRepository.findById(product.getId()).block().getCount()).isEqualTo(5);
+            assertThat(orderCaseRepository.findById(caseId).block().getOutcome()).isEqualTo("CANCELLED");
+            assertThat(imageRepository.findById(proof.getId()).block().getStatus()).isEqualTo(ImageStatus.TEMPORARY);
+        }
+    }
+
+    @Test
+    void concurrentFullPaymentAndSellerDispute_preservesPaymentEvidence() throws Exception {
+        Product product = savePreorderProduct(500f);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        Image prepaymentProof = saveOrderImage();
+        orderService.prepaymentOrder(orderId, prepaymentProof.getId(), "prepaid", buyer.getId()).block();
+        orderService.sellerConfirmsPreorder(orderId, "approved", seller.getId()).block();
+        Image fullPaymentProof = saveOrderImage();
+
+        List<Signal<Long>> results = raceWhileOrderRowLocked(orderId,
+                orderService.paymentOrder(orderId, fullPaymentProof.getId(), "paid", buyer.getId()),
+                orderCaseService.openDispute(orderId, seller.getId(), "Спор продавца", List.of()));
+
+        assertThat(results.stream().filter(Signal::isOnNext).count()).isEqualTo(2);
+        Order order = orderRepository.findById(orderId).block();
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.DISPUTED);
+        assertThat(order.getImagePaymentProofId()).isEqualTo(fullPaymentProof.getId());
+        assertThat(imageRepository.findById(prepaymentProof.getId()).block().getStatus()).isEqualTo(ImageStatus.ACTIVE);
+        assertThat(imageRepository.findById(fullPaymentProof.getId()).block().getStatus()).isEqualTo(ImageStatus.ACTIVE);
+        assertThat(orderCaseRepository.findByOrderId(orderId).collectList().block()).hasSize(1);
+    }
+
+    @Test
+    void fullPaymentAfterPrepaymentDispute_isAttachedToOpenCase() {
+        Product product = savePreorderProduct(500f);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        orderService.prepaymentOrder(orderId, saveOrderImage().getId(), "prepaid", buyer.getId()).block();
+        orderService.sellerConfirmsPreorder(orderId, "approved", seller.getId()).block();
+        Long caseId = orderCaseService.openDispute(orderId, seller.getId(), "Спор", List.of()).block();
+        Image fullPaymentProof = saveOrderImage();
+
+        orderService.paymentOrder(orderId, fullPaymentProof.getId(), "paid", buyer.getId()).block();
+
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.DISPUTED);
+        assertThat(orderRepository.findById(orderId).block().getImagePaymentProofId()).isEqualTo(fullPaymentProof.getId());
+        assertThat(imageRepository.findById(fullPaymentProof.getId()).block().getStatus()).isEqualTo(ImageStatus.ACTIVE);
+        Long evidenceCount = databaseClient.sql("SELECT count(*) AS n FROM order_case_image WHERE case_id = :caseId AND image_id = :imageId")
+                .bind("caseId", caseId).bind("imageId", fullPaymentProof.getId())
+                .map((row, metadata) -> row.get("n", Long.class)).one().block();
+        assertThat(evidenceCount).isEqualTo(1L);
+    }
+
+    @Test
+    void concurrentProductEditAndBooking_preservesReservedStock() throws Exception {
+        Product product = savePurchasableProduct(5);
+        CreateOrUpdateProductRequest edit = new CreateOrUpdateProductRequest();
+        edit.setName("Updated product");
+
+        List<Signal<Long>> results = raceWhileProductRowLocked(product.getId(),
+                productService.updateProduct(product.getId(), edit, seller.getId()).thenReturn(-1L),
+                orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId())
+                        .map(List::getFirst));
+
+        assertThat(results.stream().filter(Signal::isOnNext).count()).isEqualTo(2);
+        Product updated = productRepository.findById(product.getId()).block();
+        assertThat(updated.getName()).isEqualTo("Updated product");
+        assertThat(updated.getCount()).isEqualTo(3);
+    }
+
+    @Test
+    void cleanupDoesNotDeleteActivatedPaymentProof() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        Image proof = saveOrderImage();
+        databaseClient.sql("UPDATE image SET created_at = now() - interval '2 days' WHERE id = :id")
+                .bind("id", proof.getId()).fetch().rowsUpdated().block();
+        orderService.paymentOrder(orderId, proof.getId(), "paid", buyer.getId()).block();
+
+        imageService.prepareExpiredImagesForDeletion().collectList().block();
+
+        assertThat(imageRepository.findById(proof.getId()).block().getStatus()).isEqualTo(ImageStatus.ACTIVE);
+        assertThat(orderRepository.findById(orderId).block().getImagePaymentProofId()).isEqualTo(proof.getId());
+    }
+
+    @Test
+    void cleanupKeepsDeletionRecordUntilFileRemovalSucceeds() {
+        Image image = saveOrderImage();
+        databaseClient.sql("UPDATE image SET created_at = now() - interval '2 days' WHERE id = :id")
+                .bind("id", image.getId()).fetch().rowsUpdated().block();
+
+        assertThat(imageService.prepareExpiredImagesForDeletion().collectList().block())
+                .extracting(Image::getId).contains(image.getId());
+        assertThat(imageRepository.findById(image.getId()).block().getStatus()).isEqualTo(ImageStatus.DELETE);
+
+        imageService.deleteMarkedImage(image.getId()).block();
+        assertThat(imageRepository.findById(image.getId()).block()).isNull();
+    }
+
+    @Test
+    void markedForDeletionProof_cannotBeUsedForPayment() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        Image proof = saveOrderImage();
+        databaseClient.sql("UPDATE image SET created_at = now() - interval '2 days' WHERE id = :id")
+                .bind("id", proof.getId()).fetch().rowsUpdated().block();
+        imageService.prepareExpiredImagesForDeletion().collectList().block();
+
+        StepVerifier.create(orderService.paymentOrder(orderId, proof.getId(), "paid", buyer.getId()))
+                .expectError().verify();
+
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(AWAITING_PAYMENT);
+        assertThat(orderRepository.findById(orderId).block().getImagePaymentProofId()).isNull();
+        assertThat(imageRepository.findById(proof.getId()).block().getStatus()).isEqualTo(ImageStatus.DELETE);
+    }
+
     // --- helpers ---
+
+    private List<Signal<Long>> raceWhileOrderRowLocked(Long orderId, Mono<Long> first, Mono<Long> second)
+            throws Exception {
+        return raceWhileRowLocked(orderRepository.findByIdForUpdate(orderId), "%\"order\"%", first, second);
+    }
+
+    private List<Signal<Long>> raceWhileProductRowLocked(Long productId, Mono<Long> first, Mono<Long> second)
+            throws Exception {
+        return raceWhileRowLocked(productRepository.findByIdForUpdate(productId), "%product%", first, second);
+    }
+
+    private List<Signal<Long>> raceWhileRowLocked(Mono<?> rowLock, String blockedQueryPattern,
+                                                   Mono<Long> first, Mono<Long> second) throws Exception {
+        Sinks.One<Void> releaseLock = Sinks.one();
+        CountDownLatch lockAcquired = new CountDownLatch(1);
+        CountDownLatch lockReleased = new CountDownLatch(1);
+        AtomicReference<Throwable> lockError = new AtomicReference<>();
+        rowLock
+                .doOnNext(ignored -> lockAcquired.countDown())
+                .then(releaseLock.asMono())
+                .as(transactionalOperator::transactional)
+                .subscribe(ignored -> {}, error -> {
+                    lockError.set(error);
+                    lockReleased.countDown();
+                }, lockReleased::countDown);
+
+        ExecutorService workers = Executors.newFixedThreadPool(2);
+        try {
+            assertThat(lockAcquired.await(10, TimeUnit.SECONDS)).isTrue();
+            CyclicBarrier start = new CyclicBarrier(3);
+            Future<Signal<Long>> firstResult = workers.submit(() -> {
+                start.await();
+                return first.materialize().block(Duration.ofSeconds(15));
+            });
+            Future<Signal<Long>> secondResult = workers.submit(() -> {
+                start.await();
+                return second.materialize().block(Duration.ofSeconds(15));
+            });
+            start.await(10, TimeUnit.SECONDS);
+            awaitTwoBlockedOperations(blockedQueryPattern);
+            releaseLock.tryEmitEmpty();
+            List<Signal<Long>> results = List.of(
+                    firstResult.get(15, TimeUnit.SECONDS), secondResult.get(15, TimeUnit.SECONDS));
+            assertThat(lockReleased.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(lockError.get()).isNull();
+            return results;
+        } finally {
+            releaseLock.tryEmitEmpty();
+            workers.shutdownNow();
+        }
+    }
+
+    private void awaitTwoBlockedOperations(String queryPattern) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        int blocked = 0;
+        while (System.nanoTime() < deadline) {
+            blocked = databaseClient.sql("""
+                    SELECT count(*) AS blocked FROM pg_stat_activity
+                    WHERE wait_event_type = 'Lock'
+                      AND query ILIKE :queryPattern
+                    """)
+                    .bind("queryPattern", queryPattern)
+                    .map((row, metadata) -> row.get("blocked", Long.class))
+                    .one().block(Duration.ofSeconds(2)).intValue();
+            if (blocked >= 2) return;
+            Thread.sleep(25);
+        }
+        assertThat(blocked).as("Обе операции должны ждать блокировку строки в PostgreSQL")
+                .isGreaterThanOrEqualTo(2);
+    }
 
     private void assertApiException(Throwable error, ErrorCode code, String message) {
         assertThat(error).isInstanceOf(ApiException.class);
@@ -768,6 +1180,7 @@ class OrderServiceImplTest extends IntegrationTest {
                         .filename("proof_" + System.nanoTime() + ".jpg")
                         .tag(ImageTag.ORDER)
                         .status(ImageStatus.TEMPORARY)
+                        .uploadedBy(buyer.getId())
                         .contentType("image/jpeg")
                         .build()
         ).block();

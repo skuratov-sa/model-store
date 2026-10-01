@@ -20,6 +20,8 @@ public interface ProductService {
 
     Mono<Product> findById(Long productId);
 
+    Mono<Product> findByIdForUpdate(Long productId);
+
     Mono<ProductDto> shortInfoById(Long productId);
 
     Flux<String> findNamesBySearch(String search);
@@ -45,6 +47,8 @@ public interface ProductService {
     Mono<Void> deleteProduct(Long id, Long participantId);
 
     Mono<Product> findActualProduct(Long productId);
+
+    Mono<Product> findActualProductForUpdate(Long productId);
 
     Mono<Void> updateProductStatus(Long id, ProductStatus status);
 

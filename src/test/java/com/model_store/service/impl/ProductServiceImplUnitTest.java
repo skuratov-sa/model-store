@@ -208,7 +208,7 @@ class ProductServiceImplUnitTest {
     @Test
     void updateProduct_productBelongsToOtherParticipant_returnsNotFoundError() {
         Product product = Product.builder().id(1L).participantId(99L).status(ProductStatus.ACTIVE).build();
-        when(productRepository.findActualProduct(1L)).thenReturn(Mono.just(product));
+        when(productRepository.findActualProductForUpdate(1L)).thenReturn(Mono.just(product));
 
         StepVerifier.create(productService.updateProduct(1L, validRequest(), 1L))
                 .expectErrorMatches(e -> e instanceof ApiException
@@ -226,7 +226,7 @@ class ProductServiceImplUnitTest {
                 .availability(ProductAvailabilityType.EXTERNAL_PRODUCT)
                 .externalUrl("https://t.me/source").build();
         when(participantRepository.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(agent));
-        when(productRepository.findById(5L)).thenReturn(Mono.just(product));
+        when(productRepository.findByIdForUpdate(5L)).thenReturn(Mono.just(product));
         when(productMapper.updateProduct(any(), any())).thenReturn(product);
         when(productRepository.save(product)).thenReturn(Mono.just(product));
 
@@ -235,7 +235,7 @@ class ProductServiceImplUnitTest {
         request.setCategoryIds(null);
         StepVerifier.create(productService.updateAgentProduct(5L, request, 7L))
                 .verifyComplete();
-        verify(productRepository).findById(5L);
+        verify(productRepository).findByIdForUpdate(5L);
     }
 
     // --- deleteProduct ---
@@ -243,7 +243,7 @@ class ProductServiceImplUnitTest {
     @Test
     void deleteProduct_productBelongsToOtherParticipant_returnsNotFoundError() {
         Product product = Product.builder().id(1L).participantId(99L).status(ProductStatus.ACTIVE).build();
-        when(productRepository.findActualProduct(1L)).thenReturn(Mono.just(product));
+        when(productRepository.findActualProductForUpdate(1L)).thenReturn(Mono.just(product));
 
         StepVerifier.create(productService.deleteProduct(1L, 1L))
                 .expectErrorMatches(e -> e instanceof ApiException
@@ -254,7 +254,7 @@ class ProductServiceImplUnitTest {
     @Test
     void deleteProduct_usesProductIdForImageDeletion_notParticipantId() {
         Product product = Product.builder().id(42L).participantId(1L).status(ProductStatus.ACTIVE).build();
-        when(productRepository.findActualProduct(42L)).thenReturn(Mono.just(product));
+        when(productRepository.findActualProductForUpdate(42L)).thenReturn(Mono.just(product));
         when(productRepository.save(any())).thenReturn(Mono.just(product));
         when(imageService.deleteImagesByEntityId(42L, ImageTag.PRODUCT)).thenReturn(Mono.empty());
 
@@ -290,7 +290,7 @@ class ProductServiceImplUnitTest {
     @Test
     void extendExpirationDate_productBelongsToOtherParticipant_returnsNotFoundError() {
         Product product = Product.builder().id(1L).participantId(99L).status(ProductStatus.ACTIVE).build();
-        when(productRepository.findProductForExtend(1L)).thenReturn(Mono.just(product));
+        when(productRepository.findProductForExtendForUpdate(1L)).thenReturn(Mono.just(product));
 
         StepVerifier.create(productService.extendExpirationDate(1L, 1L))
                 .expectErrorMatches(e -> e instanceof ApiException
@@ -300,7 +300,7 @@ class ProductServiceImplUnitTest {
 
     @Test
     void extendExpirationDate_blockedOrDeletedProduct_returnsNotFoundError() {
-        when(productRepository.findProductForExtend(1L)).thenReturn(Mono.empty());
+        when(productRepository.findProductForExtendForUpdate(1L)).thenReturn(Mono.empty());
 
         StepVerifier.create(productService.extendExpirationDate(1L, 1L))
                 .expectErrorMatches(e -> e instanceof ApiException
@@ -312,7 +312,7 @@ class ProductServiceImplUnitTest {
     void extendExpirationDate_reactivatesExpiredProduct() {
         Product product = Product.builder().id(5L).participantId(7L)
                 .status(ProductStatus.TIME_EXPIRED).build();
-        when(productRepository.findProductForExtend(5L)).thenReturn(Mono.just(product));
+        when(productRepository.findProductForExtendForUpdate(5L)).thenReturn(Mono.just(product));
         when(productRepository.save(any())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
 
         StepVerifier.create(productService.extendExpirationDate(5L, 7L)).verifyComplete();

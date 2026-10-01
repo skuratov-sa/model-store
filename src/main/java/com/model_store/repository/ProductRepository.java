@@ -214,6 +214,15 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
     @Query("SELECT * FROM product WHERE status = 'ACTIVE' AND id = :productId")
     Mono<Product> findActualProduct(Long productId);
 
+    @Query("SELECT * FROM product WHERE status = 'ACTIVE' AND id = :productId FOR UPDATE")
+    Mono<Product> findActualProductForUpdate(Long productId);
+
+    @Query("SELECT * FROM product WHERE id = :productId FOR UPDATE")
+    Mono<Product> findByIdForUpdate(Long productId);
+
+    @Query("SELECT * FROM product WHERE status in ('ACTIVE', 'TIME_EXPIRED') AND id = :productId FOR UPDATE")
+    Mono<Product> findProductForExtendForUpdate(Long productId);
+
     @Query("SELECT * FROM product WHERE status in ('ACTIVE', 'TIME_EXPIRED') AND id = :productId")
     Mono<Product> findProductForExtend(Long productId);
 

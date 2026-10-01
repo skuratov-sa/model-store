@@ -10,6 +10,8 @@ import com.model_store.model.base.Image;
 import com.model_store.model.base.Product;
 import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
+import com.model_store.model.constant.OrderStatus;
+import com.model_store.model.constant.ParticipantRole;
 import com.model_store.model.dto.ImageMetadataDto;
 import com.model_store.model.dto.ImageResponse;
 import com.model_store.repository.ImageRepository;
@@ -21,7 +23,9 @@ import com.model_store.service.S3Service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.codec.multipart.FilePart;
+import org.springframework.r2dbc.core.DatabaseClient;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -41,6 +45,7 @@ public class ImageServiceImpl implements ImageService {
     private final ParticipantRepository participantRepository;
     private final ProductRepository productRepository;
     private final OrderRepository orderRepository;
+    private final DatabaseClient databaseClient;
     private final ApplicationProperties applicationProperties;
     private final S3ConfigurationProperties s3Properties;
 
@@ -48,14 +53,50 @@ public class ImageServiceImpl implements ImageService {
 
     @Override
     public Flux<ImageResponse> findImagesByIds(List<Long> imageIds) {
+        return findVisibleImagesByIds(imageIds, null);
+    }
+
+    @Override
+    public Flux<ImageResponse> findVisibleImagesByIds(List<Long> imageIds, Long viewerId) {
         if (imageIds == null || imageIds.isEmpty()) return Flux.empty();
         return imageRepository.findActiveByIds(imageIds.toArray(Long[]::new))
-                .filter(image -> image.getTag() == ImageTag.ORDER)
                 .collectMap(Image::getId)
                 .flatMapMany(imagesById -> Flux.fromIterable(imageIds)
-                        .concatMap(id -> Mono.justOrEmpty(imagesById.get(id))))
-                .flatMap(image -> s3Service.getFile(image.getTag(), "original/" + image.getFilename()), 10)
-                .onErrorResume(e -> findImageDefault());
+                        .concatMap(id -> Mono.justOrEmpty(imagesById.get(id))
+                                .flatMap(image -> {
+                                    Mono<ImageResponse> response = s3Service.getFile(image.getTag(),
+                                            "original/" + image.getFilename());
+                                    if (image.getTag() != ImageTag.ORDER) return response;
+                                    return Mono.justOrEmpty(viewerId)
+                                            .flatMap(participantRepository::findById)
+                                            .flatMap(viewer -> Mono.justOrEmpty(image.getEntityId())
+                                                    .flatMap(orderRepository::findById)
+                                                    .filter(order -> viewer.getRole() == ParticipantRole.ADMIN
+                                                            || order.getCustomerId().equals(viewerId)
+                                                            || order.getSellerId().equals(viewerId)))
+                                            .flatMap(order -> response);
+                                })
+                                .onErrorResume(e -> findImageDefault())));
+    }
+
+    @Override
+    public Flux<ImageResponse> findOrderImagesByIds(List<Long> imageIds, Long viewerId) {
+        if (imageIds == null || imageIds.isEmpty()) return Flux.empty();
+        return participantRepository.findById(viewerId)
+                .flatMapMany(viewer -> imageRepository.findActiveByIds(imageIds.toArray(Long[]::new))
+                        .filter(image -> image.getTag() == ImageTag.ORDER)
+                        .concatMap(image -> orderRepository.findById(image.getEntityId())
+                                .filter(order -> viewer.getRole() == ParticipantRole.ADMIN
+                                        || order.getCustomerId().equals(viewerId)
+                                        || order.getSellerId().equals(viewerId))
+                                .flatMap(order -> s3Service.getFile(image.getTag(), "original/" + image.getFilename()))));
+    }
+
+    @Override
+    public Mono<Void> activateOrderProof(Long imageId, Long orderId, Long participantId) {
+        return imageRepository.activateCaseEvidence(new Long[]{imageId}, orderId, participantId)
+                .flatMap(updated -> updated == 1 ? Mono.empty()
+                        : Mono.error(ApiErrors.notFound(ErrorCode.IMAGE_NOT_FOUND, "Подтверждение оплаты не найдено")));
     }
 
     @Override
@@ -151,13 +192,20 @@ public class ImageServiceImpl implements ImageService {
 
     @Override
     public Flux<Long> saveImages(ImageTag tag, Long entityId, List<FilePart> files) {
+        return saveImages(tag, entityId, files, null);
+    }
+
+    @Override
+    public Flux<Long> saveImages(ImageTag tag, Long entityId, List<FilePart> files, Long uploadedBy) {
         ImageStatus status = tag == ImageTag.PARTICIPANT ? ImageStatus.ACTIVE : ImageStatus.TEMPORARY;
         return Flux.fromIterable(files)
                 .flatMap(file -> s3Service.uploadFile(file, tag))
-                .map(result -> imageMapper.toImage(
-                        entityId, tag, result.filename(), status,
-                        result.contentType(), result.width(), result.height()
-                ))
+                .map(result -> {
+                    Image image = imageMapper.toImage(entityId, tag, result.filename(), status,
+                            result.contentType(), result.width(), result.height());
+                    image.setUploadedBy(uploadedBy);
+                    return image;
+                })
                 .flatMap(imageRepository::save)
                 .map(Image::getId);
     }
@@ -173,13 +221,45 @@ public class ImageServiceImpl implements ImageService {
         return switch (tag) {
             case PRODUCT -> productRepository.findActualProduct(entityId).hasElement();
             case PARTICIPANT -> Mono.just(participantId.equals(entityId));
-            case SYSTEM, ORDER -> Mono.just(true);
+            case ORDER -> orderRepository.findById(entityId)
+                    .map(order -> (order.getCustomerId().equals(participantId) || order.getSellerId().equals(participantId))
+                            && order.getStatus() != OrderStatus.COMPLETED && order.getStatus() != OrderStatus.FAILED)
+                    .defaultIfEmpty(false);
+            case SYSTEM -> Mono.just(true);
         };
     }
 
     @Override
-    public Flux<Image> findTemporaryImages() {
-        return imageRepository.findImagesToDelete();
+    @Transactional
+    public Flux<Image> prepareExpiredImagesForDeletion() {
+        return databaseClient.sql("""
+                UPDATE image SET status = 'DELETE'
+                WHERE (status = 'TEMPORARY' AND created_at <= now() - interval '24 hours')
+                   OR (tag = 'PRODUCT' AND status = 'ACTIVE' AND EXISTS (
+                       SELECT 1 FROM product p WHERE p.id = image.entity_id AND p.status = 'DELETED'
+                   ))
+                """)
+                .fetch().rowsUpdated()
+                .thenMany(databaseClient.sql("""
+                SELECT id, filename, tag::text AS tag FROM image
+                WHERE (status = 'DELETE' AND created_at <= now() - interval '24 hours')
+                   OR (tag = 'PRODUCT' AND EXISTS (
+                       SELECT 1 FROM product p WHERE p.id = image.entity_id AND p.status = 'DELETED'
+                   ))
+                """)
+                .map((row, metadata) -> Image.builder()
+                        .id(row.get("id", Long.class))
+                        .filename(row.get("filename", String.class))
+                        .tag(ImageTag.valueOf(row.get("tag", String.class)))
+                        .build())
+                .all());
+    }
+
+    @Override
+    public Mono<Void> deleteMarkedImage(Long imageId) {
+        return databaseClient.sql("DELETE FROM image WHERE id = :id AND status = 'DELETE'")
+                .bind("id", imageId)
+                .fetch().rowsUpdated().then();
     }
 
     @Override
@@ -188,12 +268,10 @@ public class ImageServiceImpl implements ImageService {
     }
 
     @Override
-    public Mono<Void> deleteAllByIds(List<Long> ids) {
-        return imageRepository.deleteAllByIds(ids.toArray(Long[]::new));
-    }
-
-    @Override
     public Mono<Void> deleteImages(List<Long> imageIds, ImageTag tag, Long participantId) {
+        if (tag == ImageTag.ORDER) {
+            return Mono.error(ApiErrors.forbidden(ErrorCode.ACCESS_DENIED, "Изображения заказа нельзя удалить"));
+        }
         return Flux.fromIterable(imageIds)
                 .flatMap(imageRepository::findById)
                 .filter(image -> image.getTag() == tag && image.getStatus() == ImageStatus.ACTIVE)

@@ -21,30 +21,30 @@ class ImageCleanupSchedulerTest {
     @Test
     void deletesFileBeforeDatabaseRow() {
         Image image = image(1L);
-        when(imageService.findTemporaryImages()).thenReturn(Flux.just(image));
+        when(imageService.prepareExpiredImagesForDeletion()).thenReturn(Flux.just(image));
         when(s3Service.deleteFile(ImageTag.PRODUCT, "photo.jpg")).thenReturn(Mono.empty());
-        when(imageService.deleteById(1L)).thenReturn(Mono.empty());
+        when(imageService.deleteMarkedImage(1L)).thenReturn(Mono.empty());
 
         StepVerifier.create(scheduler.cleanup()).verifyComplete();
 
         var ordered = inOrder(s3Service, imageService);
         ordered.verify(s3Service).deleteFile(ImageTag.PRODUCT, "photo.jpg");
-        ordered.verify(imageService).deleteById(1L);
+        ordered.verify(imageService).deleteMarkedImage(1L);
     }
 
     @Test
     void minioFailureKeepsRowAndContinuesWithNextImage() {
         Image failed = image(1L);
         Image next = image(2L);
-        when(imageService.findTemporaryImages()).thenReturn(Flux.just(failed, next));
+        when(imageService.prepareExpiredImagesForDeletion()).thenReturn(Flux.just(failed, next));
         when(s3Service.deleteFile(ImageTag.PRODUCT, "photo.jpg"))
                 .thenReturn(Mono.error(new IllegalStateException("MinIO unavailable")), Mono.empty());
-        when(imageService.deleteById(2L)).thenReturn(Mono.empty());
+        when(imageService.deleteMarkedImage(2L)).thenReturn(Mono.empty());
 
         StepVerifier.create(scheduler.cleanup()).verifyComplete();
 
-        verify(imageService, never()).deleteById(1L);
-        verify(imageService).deleteById(2L);
+        verify(imageService, never()).deleteMarkedImage(1L);
+        verify(imageService).deleteMarkedImage(2L);
     }
 
     private Image image(Long id) {

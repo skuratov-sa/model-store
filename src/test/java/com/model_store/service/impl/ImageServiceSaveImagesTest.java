@@ -21,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.http.codec.multipart.FilePart;
+import org.springframework.r2dbc.core.DatabaseClient;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
@@ -42,6 +43,7 @@ class ImageServiceSaveImagesTest {
     @Mock ParticipantRepository participantRepository;
     @Mock ProductRepository productRepository;
     @Mock OrderRepository orderRepository;
+    @Mock DatabaseClient databaseClient;
     @Mock ApplicationProperties applicationProperties;
     @Mock S3ConfigurationProperties s3Properties;
     @Mock FilePart filePart;
@@ -52,7 +54,7 @@ class ImageServiceSaveImagesTest {
     void setUp() {
         imageService = new ImageServiceImpl(
                 imageRepository, s3Service, imageMapper,
-                participantRepository, productRepository, orderRepository,
+                participantRepository, productRepository, orderRepository, databaseClient,
                 applicationProperties, s3Properties
         );
     }

@@ -6,8 +6,10 @@ import com.model_store.model.dto.CloseOrderRequest;
 import com.model_store.model.dto.CreateOrderRequest;
 import com.model_store.model.dto.FindOrderResponse;
 import com.model_store.model.dto.GetRequiredODataOrderDto;
+import com.model_store.model.dto.OrderCaseDetail;
 import com.model_store.service.JwtService;
 import com.model_store.service.OrderService;
+import com.model_store.service.impl.OrderCaseService;
 import com.model_store.repository.ParticipantRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,7 @@ public class OrderController {
     private final OrderService orderService;
     private final JwtService jwtService;
     private final ParticipantRepository participantRepository;
+    private final OrderCaseService orderCaseService;
 
     private Mono<Void> rejectBotSeller(Long participantId) {
         return participantRepository.findByIdAndIsAgentTrue(participantId)
@@ -116,24 +119,42 @@ public class OrderController {
         return orderService.deliveredOrder(orderId, comment, participantId);
     }
 
-    @Operation(summary = "6.Создание спора по заказу")
+    @Operation(summary = "Открыть спор по заказу после заявленной оплаты")
     @PostMapping("/orders/{orderId}/DISPUTED")
     public Mono<Long> openDisputeForOrder(@RequestHeader("Authorization") String authorizationHeader,
-                                          @PathVariable Long orderId, @RequestParam List<Long> imageIds, @RequestParam(required = false) String comment) {
+                                          @PathVariable Long orderId, @RequestParam(required = false) List<Long> imageIds,
+                                          @RequestParam String comment) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        return orderService.openDisputeForOrder(orderId, imageIds, comment, participantId);
+        return orderCaseService.openDispute(orderId, participantId, comment, imageIds);
     }
 
-    @Operation(summary = "7. Закрытие спора по заказу")
-    @PostMapping("/orders/{orderId}/dispute/COMPLETED")
-    public Mono<Long> closeDisputeForOrder(@RequestHeader("Authorization") String authorizationHeader,
-            @PathVariable Long orderId, @RequestParam(required = false) List<Long> imageIds, @RequestParam(required = false) String comment) {
+    @Operation(summary = "Попросить администратора отменить неоплаченный заказ")
+    @PostMapping("/{orderId}/cancellation-request")
+    public Mono<Long> requestCancellation(@RequestHeader("Authorization") String authorizationHeader,
+                                          @PathVariable Long orderId, @RequestParam String comment) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        return orderService.closeDisputeForOrder(orderId, imageIds, comment, participantId);
+        return orderCaseService.requestCancellation(orderId, participantId, comment);
+    }
+
+    @Operation(summary = "Сообщить об оплате после отмены заказа")
+    @PostMapping("/{orderId}/payment-appeal")
+    public Mono<Long> reportPaymentAfterCancellation(@RequestHeader("Authorization") String authorizationHeader,
+                                                      @PathVariable Long orderId, @RequestParam String comment,
+                                                      @RequestParam(required = false) List<Long> imageIds) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return orderCaseService.reportPaymentAfterCancellation(orderId, participantId, comment, imageIds);
+    }
+
+    @Operation(summary = "Обращения по заказу")
+    @GetMapping("/{orderId}/cases")
+    public Flux<OrderCaseDetail> getOrderCases(@RequestHeader("Authorization") String authorizationHeader,
+                                               @PathVariable Long orderId) {
+        Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
+        return orderCaseService.orderCases(orderId, participantId);
     }
 
     @Operation(summary = "Отменить заказ")
-    @PostMapping("/{orderId}/FAILED")
+    @PostMapping("/{orderId}/CANCELLED")
     public Mono<Long> closeOrder(@RequestHeader("Authorization") String authorizationHeader,
                                  @PathVariable Long orderId, @RequestBody CloseOrderRequest request) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);

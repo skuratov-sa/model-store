@@ -6,7 +6,6 @@ import com.model_store.model.base.Address;
 import com.model_store.model.base.Order;
 import com.model_store.model.base.Product;
 import com.model_store.model.base.Transfer;
-import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
 import com.model_store.model.constant.OrderStatus;
 import com.model_store.model.constant.ProductStatus;
@@ -15,7 +14,7 @@ import com.model_store.model.dto.CreateOrderRequest;
 import com.model_store.model.dto.FindOrderResponse;
 import com.model_store.model.dto.GetRequiredODataOrderDto;
 import com.model_store.model.dto.ProductDto;
-import com.model_store.model.dto.UpdateOrderRequest;
+import com.model_store.repository.OrderCaseRepository;
 import com.model_store.repository.OrderRepository;
 import com.model_store.service.AddressService;
 import com.model_store.service.BasketService;
@@ -61,6 +60,7 @@ import static java.util.Objects.nonNull;
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
+    private final OrderCaseRepository orderCaseRepository;
     private final ProductService productService;
     private final ParticipantService participantService;
     private final OrderStatusHistoryService orderHistoryService;
@@ -87,21 +87,14 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public Mono<Long> updateStatusOrder(UpdateOrderRequest request) {
-        log.info("Updating order status: orderId={}, newStatus={}", request.getOrderId(), request.getOrderStatus());
-        return orderRepository.findById(request.getOrderId())
-                .doOnNext(order -> order.setStatus(request.getOrderStatus()))
-                .flatMap(order -> orderRepository.save(order).map(Order::getId))
-                .doOnSuccess(id -> log.debug("Order status updated: orderId={}", id));
-    }
-
-    @Override
-    @Transactional
     public Mono<List<Long>> createOrders(List<CreateOrderRequest> requests, Long participantId) {
         log.info("Creating {} order(s) for participantId={}", requests.size(), participantId);
         Map<Long, CreateOrderRequest> merged = mergeRequests(requests);
 
-        return Flux.fromIterable(merged.values())
+        return Flux.fromIterable(merged.entrySet().stream()
+                        .sorted(Map.Entry.comparingByKey())
+                        .map(Map.Entry::getValue)
+                        .toList())
                 .concatMap(req -> createOrder(req, participantId))
                 .collectList()
                 .doOnSuccess(ids -> log.info("Created orders: ids={}, participantId={}", ids, participantId));
@@ -125,7 +118,7 @@ public class OrderServiceImpl implements OrderService {
 
     protected Mono<Long> createOrder(CreateOrderRequest request, Long participantId) {
         log.debug("Creating order: productId={}, participantId={}, count={}", request.getProductId(), participantId, request.getCount());
-        return productService.findActualProduct(request.getProductId())
+        return productService.findActualProductForUpdate(request.getProductId())
                 .switchIfEmpty(Mono.error(ApiErrors.notFound(PRODUCT_NOT_FOUND, "Товар не найден")))
                 .flatMap(product ->
                         validateCreateOrderRequest(request, participantId, product)
@@ -171,58 +164,77 @@ public class OrderServiceImpl implements OrderService {
         return orderRepository.findById(orderId)
                 .filter(order -> order.getStatus().equals(BOOKED) && order.getSellerId().equals(participantId))
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями")))
-                .doOnNext(order -> order.setComment(comment))
-                .doOnNext(order -> order.setStatus(!isNull(order.getPrepaymentAmount()) && order.getPrepaymentAmount() > 0 ? AWAITING_PREPAYMENT : AWAITING_PAYMENT))
-                .flatMap(order -> orderRepository.save(order).map(Order::getId))
+                .flatMap(order -> persistTransition(order,
+                        !isNull(order.getPrepaymentAmount()) && order.getPrepaymentAmount() > 0
+                                ? AWAITING_PREPAYMENT : AWAITING_PAYMENT, comment))
                 .doOnSuccess(id -> log.debug("Order agreed: orderId={}", id));
     }
 
     @Override
+    @Transactional
     public Mono<Long> prepaymentOrder(Long orderId, Long imageId, String comment, Long participantId) {
         log.info("Prepayment upload: orderId={}, customerId={}, imageId={}", orderId, participantId, imageId);
         return orderRepository.findById(orderId)
                 .filter(order -> !isNull(order.getPrepaymentAmount()) && order.getPrepaymentAmount() != 0)
                 .filter(order -> order.getStatus().equals(AWAITING_PREPAYMENT) && participantId.equals(order.getCustomerId()))
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями"))) // Если заказ не найден
-                .flatMap(order ->
-                        imageService.updateImagesStatus(List.of(imageId), order.getId(), ImageStatus.ACTIVE, ImageTag.ORDER)
-                                .thenReturn(order)
-                ).flatMap(order -> {
-                    order.setStatus(AWAITING_PREPAYMENT_APPROVAL);
-                    order.setComment(comment);
-                    order.setImagePaymentProofId(imageId);
-                    return orderRepository.save(order).then(Mono.just(order.getId()));
-                });
+                .flatMap(order -> transitionWithProof(order, AWAITING_PREPAYMENT_APPROVAL, comment, imageId)
+                        .then(imageService.activateOrderProof(imageId, order.getId(), participantId))
+                        .then(orderCaseRepository.dismissCancellationAfterPayment(order.getId()))
+                        .thenReturn(order.getId()));
     }
 
     @Override
+    @Transactional
     public Mono<Long> sellerConfirmsPreorder(Long orderId, String comment, Long participantId) {
         log.info("Seller confirms prepayment: orderId={}, sellerId={}", orderId, participantId);
         return orderRepository.findById(orderId)
                 .filter(order -> order.getStatus().equals(AWAITING_PREPAYMENT_APPROVAL) && order.getSellerId().equals(participantId))
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями")))
-                .doOnNext(order -> order.setComment(comment))
-                .doOnNext(order -> order.setStatus(AWAITING_PAYMENT))
-                .flatMap(order -> orderRepository.save(order).map(Order::getId))
+                .flatMap(order -> persistTransition(order, AWAITING_PAYMENT, comment))
                 .doOnSuccess(id -> log.debug("Prepayment confirmed: orderId={}", id));
     }
 
     @Override
+    @Transactional
     public Mono<Long> paymentOrder(Long orderId, Long imageId, String comment, Long participantId) {
         log.info("Payment upload: orderId={}, customerId={}, imageId={}", orderId, participantId, imageId);
         return orderRepository.findById(orderId)
-                .filter(order -> order.getStatus().equals(AWAITING_PAYMENT) && order.getCustomerId().equals(participantId))
+                .filter(order -> order.getCustomerId().equals(participantId))
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями"))) // Если заказ не найден
-                .flatMap(order ->
-                        imageService.updateImagesStatus(List.of(imageId), order.getId(), ImageStatus.ACTIVE, ImageTag.ORDER)
-                                .thenReturn(order)
-                ).flatMap(order -> {
-                    order.setStatus(OrderStatus.ASSEMBLING);
-                    order.setComment(comment);
-                    order.setImagePaymentProofId(imageId);
-                    return orderRepository.save(order)
-                            .then(Mono.just(order.getId()));
+                .flatMap(order -> {
+                    if (order.getStatus() == OrderStatus.DISPUTED) {
+                        return recordPaymentInDispute(order, imageId, participantId);
+                    }
+                    if (order.getStatus() != AWAITING_PAYMENT) {
+                        return Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями"));
+                    }
+                    return transitionWithProof(order, OrderStatus.ASSEMBLING, comment, imageId)
+                            .then(imageService.activateOrderProof(imageId, order.getId(), participantId))
+                            .then(orderCaseRepository.dismissCancellationAfterPayment(order.getId()))
+                            .thenReturn(order.getId())
+                            .onErrorResume(IllegalArgumentException.class, error ->
+                                    orderRepository.findById(orderId)
+                                            .filter(current -> current.getStatus() == OrderStatus.DISPUTED)
+                                            .flatMap(current -> recordPaymentInDispute(current, imageId, participantId))
+                                            .switchIfEmpty(Mono.error(error)));
                 });
+    }
+
+    private Mono<Long> recordPaymentInDispute(Order order, Long imageId, Long participantId) {
+        return orderCaseRepository.findOpenByOrderId(order.getId())
+                .filter(c -> "DISPUTE".equals(c.getKind())
+                        && c.getPreviousOrderStatus() == AWAITING_PAYMENT
+                        && order.getImagePaymentProofId() != null)
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Операция недоступна для текущего состояния заказа")))
+                .flatMap(c -> orderRepository.recordDisputedPayment(order.getId(),
+                                order.getImagePaymentProofId(), imageId)
+                        .flatMap(updated -> updated == 1 ? Mono.<Void>empty()
+                                : Mono.error(new IllegalArgumentException("Подтверждение оплаты уже добавлено или спор завершён")))
+                        .then(imageService.activateOrderProof(imageId, order.getId(), participantId))
+                        .then(orderCaseRepository.addEvidence(c.getId(), imageId, participantId))
+                        .flatMap(updated -> updated == 1 ? Mono.just(order.getId())
+                                : Mono.error(new IllegalArgumentException("Не удалось добавить подтверждение к спору"))));
     }
 
     @Override
@@ -254,77 +266,42 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    @Transactional
     public Mono<Long> transferOrder(Long orderId, String deliveryUrl, String comment, Long participantId) {
         log.info("Order shipped: orderId={}, sellerId={}", orderId, participantId);
         return orderRepository.findById(orderId)
                 .filter(order -> order.getStatus().equals(OrderStatus.ASSEMBLING) && order.getSellerId().equals(participantId))
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями")))
-                .doOnNext(order -> order.setDeliveryUrl(deliveryUrl))
-                .doOnNext(order -> order.setComment(comment))
-                .doOnNext(order -> order.setStatus(OrderStatus.ON_THE_WAY))
-                .flatMap(order -> orderRepository.save(order).map(Order::getId))
+                .flatMap(order -> orderRepository.transitionWithDelivery(order.getId(), order.getStatus().name(),
+                                OrderStatus.ON_THE_WAY.name(), comment, deliveryUrl)
+                        .flatMap(updated -> updated == 1 ? Mono.just(order.getId())
+                                : Mono.error(new IllegalArgumentException("Статус заказа изменился. Повторите операцию"))))
                 .doOnSuccess(id -> log.debug("Order status -> ON_THE_WAY: orderId={}", id));
     }
 
     @Override
+    @Transactional
     public Mono<Long> deliveredOrder(Long orderId, String comment, Long participantId) {
         log.info("Order delivered: orderId={}, customerId={}", orderId, participantId);
         return orderRepository.findById(orderId)
                 .filter(order -> order.getStatus().equals(OrderStatus.ON_THE_WAY) && order.getCustomerId().equals(participantId))
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями")))
-                .doOnNext(order -> order.setComment(comment))
-                .doOnNext(order -> order.setStatus(OrderStatus.COMPLETED))
-                .flatMap(order -> orderRepository.save(order).map(Order::getId))
+                .flatMap(order -> persistTransition(order, OrderStatus.COMPLETED, comment))
                 .doOnSuccess(id -> log.info("Order completed: orderId={}", id));
     }
 
     @Override
-    public Mono<Long> openDisputeForOrder(Long orderId, List<Long> imageIds, String comment, Long participantId) {
-        log.warn("Dispute opened: orderId={}, customerId={}", orderId, participantId);
-        return orderRepository.findById(orderId)
-                .filter(order -> order.getStatus().equals(OrderStatus.ON_THE_WAY) && order.getCustomerId().equals(participantId))
-                .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями")))
-                .flatMap(order ->
-                        imageService.updateImagesStatus(imageIds, order.getId(), ImageStatus.ACTIVE, ImageTag.ORDER)
-                                .thenReturn(order)
-                ).flatMap(order -> {
-                    order.setComment(comment);
-                    order.setStatus(OrderStatus.DISPUTED);
-                    return orderRepository.save(order)
-                            .then(Mono.just(order.getId()));
-                });
-    }
-
-    @Override
-    public Mono<Long> closeDisputeForOrder(Long orderId, List<Long> imageIds, String comment, Long participantId) {
-        log.info("Dispute closed: orderId={}, customerId={}", orderId, participantId);
-        return orderRepository.findById(orderId)
-                .filter(order -> order.getStatus().equals(OrderStatus.DISPUTED) && order.getCustomerId().equals(participantId))
-                .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями")))
-                .flatMap(order ->
-                        imageService.updateImagesStatus(imageIds, order.getId(), ImageStatus.ACTIVE, ImageTag.ORDER)
-                                .thenReturn(order)
-                )
-                .flatMap(order -> {
-                    order.setStatus(OrderStatus.COMPLETED);
-                    order.setComment(comment);
-                    return orderRepository.save(order)
-                            .then(Mono.just(order.getId()));
-                });
-    }
-
-    @Override
+    @Transactional
     public Mono<Long> closureOrder(CloseOrderRequest request, Long participantId) {
         log.info("Order closure requested: orderId={}, participantId={}", request.getOrderId(), participantId);
         return orderRepository.findById(request.getOrderId())
                 .filter(order -> List.of(order.getSellerId(), order.getCustomerId()).contains(participantId))
-                .filter(order -> List.of(BOOKED, AWAITING_PREPAYMENT, AWAITING_PREPAYMENT_APPROVAL, AWAITING_PAYMENT).contains(order.getStatus()))
+                .filter(order -> order.getStatus() == BOOKED)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("Нельзя выполнить операцию с данными условиями")))
-                .flatMap(order -> restoreStockIfNeeded(order).thenReturn(order))
-                .doOnNext(order -> order.setComment(request.getComment()))
-                .doOnNext(order -> order.setStatus(OrderStatus.FAILED))
-                .flatMap(order -> orderRepository.save(order).map(Order::getId))
-                .doOnSuccess(id -> log.info("Order closed (FAILED): orderId={}", id));
+                .flatMap(order -> guardedTransition(order, OrderStatus.CANCELLED, request.getComment())
+                        .then(restoreStockIfNeeded(order))
+                        .thenReturn(order.getId()))
+                .doOnSuccess(id -> log.info("Order cancelled: orderId={}", id));
     }
 
 
@@ -460,10 +437,26 @@ public class OrderServiceImpl implements OrderService {
                 .then();
     }
     private Mono<Void> restoreStockIfNeeded(Order order) {
-        return productService.findById(order.getProductId())
+        return productService.findByIdForUpdate(order.getProductId())
                 .filter(product -> PURCHASABLE.equals(product.getAvailability()))
                 .filter(product -> nonNull(product.getCount()))
                 .flatMap(product -> productService.incrementCountIfLimited(product.getId(), order.getCount()))
                 .then();
+    }
+
+    private Mono<Void> guardedTransition(Order order, OrderStatus target, String comment) {
+        return orderRepository.transition(order.getId(), order.getStatus().name(), target.name(), comment)
+                .flatMap(updated -> updated == 1 ? Mono.<Void>empty()
+                        : Mono.error(new IllegalArgumentException("Статус заказа изменился. Повторите операцию")));
+    }
+
+    private Mono<Long> persistTransition(Order order, OrderStatus target, String comment) {
+        return guardedTransition(order, target, comment).thenReturn(order.getId());
+    }
+
+    private Mono<Void> transitionWithProof(Order order, OrderStatus target, String comment, Long imageId) {
+        return orderRepository.transitionWithProof(order.getId(), order.getStatus().name(), target.name(), comment, imageId)
+                .flatMap(updated -> updated == 1 ? Mono.<Void>empty()
+                        : Mono.error(new IllegalArgumentException("Статус заказа изменился. Повторите операцию")));
     }
 }

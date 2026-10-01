@@ -23,7 +23,7 @@ class DeletedProductCleanupIntegrationTest extends IntegrationTest {
     void cleanUp() {
         databaseClient.sql("TRUNCATE TABLE participant RESTART IDENTITY CASCADE")
                 .fetch().rowsUpdated().block();
-        databaseClient.sql("TRUNCATE TABLE image RESTART IDENTITY")
+        databaseClient.sql("TRUNCATE TABLE image RESTART IDENTITY CASCADE")
                 .fetch().rowsUpdated().block();
     }
 

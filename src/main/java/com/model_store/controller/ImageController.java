@@ -32,8 +32,10 @@ public class ImageController {
 
     @Operation(summary = "Получить картинку по ID")
     @GetMapping
-    public Flux<ImageResponse> findImages(@RequestParam List<Long> ids) {
-        return imageService.findImagesByIds(ids);
+    public Flux<ImageResponse> findImages(@RequestParam List<Long> ids,
+                                          @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        Long viewerId = authorizationHeader == null ? null : jwtService.getIdByAccessToken(authorizationHeader);
+        return imageService.findVisibleImagesByIds(ids, viewerId);
     }
 
     @Operation(summary = "Получить дефолтную картинку")
@@ -63,7 +65,7 @@ public class ImageController {
                         imageService.isActualEntity(entityId, tag, participantId)
                                 .filter(Boolean::booleanValue)
                                 .switchIfEmpty(Mono.error(new NotFoundException("Entity not found")))
-                                .flatMapMany(actual -> imageService.saveImages(tag, entityId, files))
+                                .flatMapMany(actual -> imageService.saveImages(tag, entityId, files, participantId))
                 );
     }
 

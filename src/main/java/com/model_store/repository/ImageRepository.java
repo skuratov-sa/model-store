@@ -67,10 +67,16 @@ public interface ImageRepository extends ReactiveCrudRepository<Image, Long> {
     @Query("UPDATE image SET status = :status, entity_id = COALESCE(:entityId, entity_id) " +
            "WHERE id = ANY(:ids) " +
            "AND (:tag IS NULL OR tag::text = :tag) " +
-           "AND (entity_id IS NULL OR entity_id = :entityId)")
+           "AND (entity_id IS NULL OR entity_id = :entityId) " +
+           "AND (status <> 'DELETE' OR :status <> 'ACTIVE')")
     Mono<Integer> updateStatusByIds(Long[] ids, Long entityId, String status, String tag);
 
     @Modifying
-    @Query("DELETE FROM image WHERE id = ANY(:ids)")
-    Mono<Void> deleteAllByIds(Long[] ids);
+    @Query("""
+            UPDATE image SET status = 'ACTIVE', entity_id = :orderId
+            WHERE id = ANY(:ids) AND tag = 'ORDER' AND status = 'TEMPORARY'
+              AND uploaded_by = :participantId AND (entity_id IS NULL OR entity_id = :orderId)
+            """)
+    Mono<Integer> activateCaseEvidence(Long[] ids, Long orderId, Long participantId);
+
 }

@@ -103,4 +103,22 @@ class ImageControllerWebTest extends IntegrationTest {
                 .exchange()
                 .expectStatus().isOk();
     }
+
+    @Test
+    void anonymousCannotReadOrderImage() {
+        Image saved = imageRepository.save(Image.builder()
+                .filename("payment-proof.jpg")
+                .tag(ImageTag.ORDER)
+                .status(ImageStatus.ACTIVE)
+                .entityId(999999L)
+                .build()).block();
+
+        webTestClient.get()
+                .uri("/images?ids=" + saved.getId())
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$").isArray()
+                .jsonPath("$.length()").isEqualTo(0);
+    }
 }
