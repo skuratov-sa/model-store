@@ -1,7 +1,6 @@
 package com.model_store.scheduler;
 
-import com.model_store.model.constant.ProductStatus;
-import com.model_store.service.ProductService;
+import com.model_store.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -14,22 +13,18 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class ProductUpdateScheduler {
 
-    private final ProductService productService;
+    private final ProductRepository productRepository;
     private final TransactionalOperator transactionalOperator;
 
-    // Scheduler запускается каждый день в 01:00
-    @Scheduled(cron = "0 0 1 * * *")
+    @Scheduled(cron = "0 */5 * * * *")
     public void expireProducts() {
-        log.info("Запуск сброса статуса для товаров с истекшим expiration_date");
-
-        Mono<Void> task = productService.findExpiredActiveProductIds()
-                .flatMap(productId ->
-                        productService.updateProductStatus(productId, ProductStatus.TIME_EXPIRED)
-                                .doOnSuccess(aVoid -> log.info("Истекло время товара: {}", productId))
-                                .doOnError(e -> log.error("Ошибка при сбросе актуальности товара {}: {}", productId, e.getMessage())),
-                        10
-                ).doOnTerminate(() -> log.info("Товары с истекшим временем были переведены в статус TIME_EXPIRED"))
-                .doOnError(e -> log.error("Ошибка при сбросе статусов товара: {}", e.getMessage()))
+        Mono<Void> task = productRepository.expireDueOrdinaryProducts()
+                .flatMap(ordinaryCount -> productRepository.startDueGiveaways()
+                        .flatMap(startedCount -> productRepository.expireDueGiveaways()
+                                .doOnNext(expiredCount -> log.info(
+                                        "Истекли товары: {}, начались розыгрыши: {}, завершились розыгрыши: {}",
+                                        ordinaryCount, startedCount, expiredCount))))
+                .doOnError(error -> log.error("Ошибка при завершении товаров и розыгрышей", error))
                 .then();
         transactionalOperator.transactional(task).subscribe();
     }

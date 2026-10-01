@@ -2,7 +2,10 @@ package com.model_store.controller;
 
 import com.model_store.model.CustomUserDetails;
 import com.model_store.model.FindProductRequest;
+import com.model_store.model.CreateOrUpdateProductRequest;
+import com.model_store.model.GiveawaySettingsRequest;
 import com.model_store.model.base.Participant;
+import com.model_store.model.base.Dictionary;
 import com.model_store.model.base.Product;
 import com.model_store.model.constant.Currency;
 import com.model_store.model.constant.ParticipantRole;
@@ -98,6 +101,61 @@ class ProductControllerWebTest extends IntegrationTest {
                 .uri("/product/999999")
                 .exchange()
                 .expectStatus().isNotFound();
+    }
+
+    @Test
+    void giveawayRoutesAreSeparateAndAdminHistoryIsProtected() {
+        CreateOrUpdateProductRequest request = new CreateOrUpdateProductRequest();
+        request.setName("Figure Giveaway");
+        request.setPrice(100f);
+        request.setCurrency(Currency.RUB);
+        request.setAvailability(ProductAvailabilityType.GIVEAWAY);
+        GiveawaySettingsRequest giveaway = new GiveawaySettingsRequest();
+        giveaway.setEnabled(true);
+        giveaway.setTelegramUrl("https://t.me/figure_draw");
+        giveaway.setStartAt(Instant.now().minusSeconds(60));
+        giveaway.setEndAt(Instant.now().plusSeconds(3600));
+        giveaway.setWinnersCount(1);
+        giveaway.setRules("Join Telegram");
+        giveaway.setHomeText("Draw a figure");
+        request.setGiveaway(giveaway);
+
+        webTestClient.post().uri("/products").header("Authorization", userToken)
+                .contentType(MediaType.APPLICATION_JSON).bodyValue(request)
+                .exchange().expectStatus().isForbidden();
+
+        Long id = webTestClient.post().uri("/products").header("Authorization", adminToken)
+                .contentType(MediaType.APPLICATION_JSON).bodyValue(request)
+                .exchange().expectStatus().isOk().expectBody(Long.class).returnResult().getResponseBody();
+        assertThat(id).isNotNull();
+
+        webTestClient.get().uri("/product/{id}", id).exchange().expectStatus().isNotFound();
+        webTestClient.get().uri("/giveaways/active").exchange()
+                .expectStatus().isOk().expectHeader().valueEquals("X-Robots-Tag", "noindex, nofollow")
+                .expectBody().jsonPath("$.productId").isEqualTo(id.intValue());
+        webTestClient.get().uri("/giveaways/products/{id}", id).exchange()
+                .expectStatus().isOk().expectBody().jsonPath("$.telegramUrl").isEqualTo("https://t.me/figure_draw");
+        webTestClient.get().uri("/admin/actions/giveaways/{id}", id)
+                .header("Authorization", adminToken).exchange()
+                .expectStatus().isOk().expectBody().jsonPath("$.product.id").isEqualTo(id.intValue());
+        webTestClient.get().uri("/admin/actions/giveaways/history").header("Authorization", userToken)
+                .exchange().expectStatus().isForbidden();
+        webTestClient.get().uri("/admin/actions/giveaways/history").header("Authorization", adminToken)
+                .exchange().expectStatus().isOk().expectBody().jsonPath("$[0].id").isEqualTo(id.intValue());
+    }
+
+    @Test
+    void availabilityDictionaryShowsGiveawayOnlyToAdmin() {
+        List<Dictionary> publicValues = webTestClient.get().uri("/dictionary?type=PRODUCT_AVAILABILITY")
+                .exchange().expectStatus().isOk().expectBodyList(Dictionary.class)
+                .returnResult().getResponseBody();
+        List<Dictionary> adminValues = webTestClient.get().uri("/dictionary?type=PRODUCT_AVAILABILITY")
+                .header("Authorization", adminToken)
+                .exchange().expectStatus().isOk().expectBodyList(Dictionary.class)
+                .returnResult().getResponseBody();
+
+        assertThat(publicValues).extracting(Dictionary::getValue).containsExactlyInAnyOrder("PURCHASABLE", "PREORDER");
+        assertThat(adminValues).extracting(Dictionary::getValue).contains("GIVEAWAY", "EXTERNAL_PRODUCT");
     }
 
     @Test

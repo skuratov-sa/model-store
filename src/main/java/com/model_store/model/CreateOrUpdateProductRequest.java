@@ -19,5 +19,6 @@ public class CreateOrUpdateProductRequest {
     private ProductAvailabilityType availability;
     private Boolean used;
     private String externalUrl;
+    private GiveawaySettingsRequest giveaway;
     private List<Long> imageIds;
 }

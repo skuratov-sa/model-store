@@ -12,6 +12,8 @@ import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
 import com.model_store.model.constant.OrderStatus;
 import com.model_store.model.constant.ParticipantRole;
+import com.model_store.model.constant.ProductAvailabilityType;
+import com.model_store.model.constant.ProductStatus;
 import com.model_store.model.dto.ImageMetadataDto;
 import com.model_store.model.dto.ImageResponse;
 import com.model_store.repository.ImageRepository;
@@ -30,6 +32,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -219,7 +222,7 @@ public class ImageServiceImpl implements ImageService {
     public Mono<Boolean> isActualEntity(Long entityId, ImageTag tag, Long participantId) {
         if (isNull(entityId)) return Mono.just(true);
         return switch (tag) {
-            case PRODUCT -> productRepository.findActualProduct(entityId).hasElement();
+            case PRODUCT -> canEditProduct(entityId, participantId);
             case PARTICIPANT -> Mono.just(participantId.equals(entityId));
             case ORDER -> orderRepository.findById(entityId)
                     .map(order -> (order.getCustomerId().equals(participantId) || order.getSellerId().equals(participantId))
@@ -295,15 +298,33 @@ public class ImageServiceImpl implements ImageService {
 
         return switch (tag) {
             case PARTICIPANT -> Mono.just(entityIds.stream().allMatch(participantId::equals));
-            case PRODUCT -> Flux.fromIterable(entityIds)
-                    .flatMap(productRepository::findActualProduct)
-                    .map(Product::getParticipantId)
-                    .all(participantId::equals);
+            case PRODUCT -> entityIds.contains(null)
+                    ? Mono.just(false)
+                    : Flux.fromIterable(entityIds)
+                            .concatMap(entityId -> canEditProduct(entityId, participantId))
+                            .all(Boolean::booleanValue);
             case ORDER -> Flux.fromIterable(entityIds)
                     .flatMap(orderRepository::findById)
                     .map(order -> order.getCustomerId().equals(participantId) || order.getSellerId().equals(participantId))
                     .all(Boolean::booleanValue);
             default -> Mono.just(false);
         };
+    }
+
+    private Mono<Boolean> canEditProduct(Long entityId, Long participantId) {
+        return productRepository.findById(entityId)
+                .filter(product -> product.getStatus() != ProductStatus.DELETED)
+                .flatMap(product -> participantRepository.findById(participantId)
+                        .flatMap(participant -> {
+                            boolean admin = participant.getRole() == ParticipantRole.ADMIN;
+                            if (Objects.equals(product.getParticipantId(), participantId)) {
+                                return Mono.just(admin || (product.getStatus() == ProductStatus.ACTIVE
+                                        && product.getAvailability() != ProductAvailabilityType.GIVEAWAY));
+                            }
+                            if (!admin) return Mono.just(false);
+                            return participantRepository.findByIdAndIsAgentTrue(product.getParticipantId())
+                                    .hasElement();
+                        }))
+                .defaultIfEmpty(false);
     }
 }

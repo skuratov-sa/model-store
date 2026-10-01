@@ -41,6 +41,14 @@ public class Product {
     @Builder.Default
     private Boolean used = false;
     private String externalUrl;
+    @Builder.Default
+    private Boolean giveawayEnabled = false;
+    private String giveawayTelegramUrl;
+    private Instant giveawayStartAt;
+    private Instant giveawayEndAt;
+    private Integer giveawayWinnersCount;
+    private String giveawayRules;
+    private String giveawayHomeText;
 
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private Instant createdAt;

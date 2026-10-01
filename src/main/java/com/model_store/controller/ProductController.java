@@ -64,7 +64,8 @@ public class ProductController {
     public Flux<ProductDto> findProducts(@RequestHeader("Authorization") String authorizationHeader,
             @RequestBody FindMyProductRequest searchParams) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        return productService.findMyByParams(searchParams, participantId);
+        boolean admin = jwtService.getRoleByAccessToken(authorizationHeader) == com.model_store.model.constant.ParticipantRole.ADMIN;
+        return productService.findMyByParams(searchParams, participantId, admin);
     }
 
 
@@ -95,7 +96,8 @@ public class ProductController {
     @PutMapping(path = "/product/{id}")
     public Mono<Void> updateProduct(@PathVariable Long id, @RequestBody CreateOrUpdateProductRequest request, @RequestHeader("Authorization") String authorizationHeader) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        return productService.updateProduct(id, request, participantId);
+        var role = jwtService.getRoleByAccessToken(authorizationHeader);
+        return productService.updateProduct(id, request, participantId, role);
     }
 
     @Operation(summary = "Удалить товар")

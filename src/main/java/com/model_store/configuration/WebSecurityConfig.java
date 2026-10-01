@@ -117,7 +117,7 @@ public class WebSecurityConfig {
                         .pathMatchers("/auth/login", "/auth/verification/resend", "/auth/password/reset", "/auth/verify-code", "/auth/refresh").permitAll()
                         .pathMatchers("/swagger-ui.html", "/swagger-ui/**", "/webjars/**", "/v3/api-docs/**").permitAll()
                         .pathMatchers("/images", "/images/default", "/images/metadata", "/dictionary", "/regions").permitAll()
-                        .pathMatchers(HttpMethod.GET, "/categories", "/product/*").permitAll()
+                        .pathMatchers(HttpMethod.GET, "/categories", "/product/*", "/giveaways/active", "/giveaways/products/*").permitAll()
                         .pathMatchers(HttpMethod.POST, "/participant", "/products/names/find", "/participants/find").permitAll()
                         .pathMatchers("/admin/actions/**").hasAuthority("SCOPE_ADMIN")
                         .anyExchange().authenticated()

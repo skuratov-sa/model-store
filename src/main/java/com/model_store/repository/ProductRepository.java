@@ -29,6 +29,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
             SELECT p.*
             FROM product p
             WHERE
+                (:includeGiveaways IS TRUE OR p.availability <> 'GIVEAWAY') AND
                 (:includeCountEmpty IS TRUE OR p.count is NULL OR p.count > 0) AND
                 (:name IS NULL OR p.name ILIKE '%' || :name || '%' OR EXISTS (
                     SELECT 1 FROM product_category name_pc
@@ -74,6 +75,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
             LIMIT :limit
             """)
     Flux<Product> findByParams(
+            Boolean includeGiveaways,
             Boolean includeCountEmpty,
             Long categoryId,
             Long participantId,
@@ -104,6 +106,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                      WHERE (p.name ILIKE '%' || :search || '%'
                         OR similarity(p.name, :search) > 0.25)
                        AND p.status = 'ACTIVE'
+                       AND p.availability <> 'GIVEAWAY'
                        AND (p.count IS NULL OR p.count > 0)
                      UNION
                      SELECT c.name
@@ -121,6 +124,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
         int limit = Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSize).orElse(50); // limit
 
         return findByParams(
+                false,
                 false,
                 searchParams.getCategoryId(),
                 searchParams.getParticipantId(),
@@ -147,6 +151,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
         int limit = Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSize).orElse(50); // limit
 
         return findByParams(
+                false,
                 true,
                 searchParams.getCategoryId(),
                 searchParams.getParticipantId(),
@@ -168,10 +173,11 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 limit
         );
     }
-    default Flux<Product> findMyByParams(FindMyProductRequest searchParams, Long participantId) {
+    default Flux<Product> findMyByParams(FindMyProductRequest searchParams, Long participantId, boolean includeGiveaways) {
         int limit = Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSize).orElse(50); // limit
 
         return findByParams(
+                includeGiveaways,
                 true,
                 searchParams.getCategoryId(),
                 participantId,
@@ -182,7 +188,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 Optional.ofNullable(searchParams.getDateRange()).map(DateRange::getStart).orElse(null),
                 Optional.ofNullable(searchParams.getDateRange()).map(DateRange::getEnd).orElse(null),
                 null,
-                new ProductStatus[]{ProductStatus.ACTIVE, ProductStatus.BLOCKED, ProductStatus.TIME_EXPIRED},
+                new ProductStatus[]{ProductStatus.ACTIVE, ProductStatus.AWAITING_GIVEAWAY, ProductStatus.BLOCKED, ProductStatus.TIME_EXPIRED},
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastCreatedAt).orElse(null),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastPrice).orElse(null),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastId).orElse(0L),
@@ -211,22 +217,82 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
 
     Flux<Product> findByParticipantId(Long participantId);
 
-    @Query("SELECT * FROM product WHERE status = 'ACTIVE' AND id = :productId")
+    @Query("SELECT * FROM product WHERE status = 'ACTIVE' AND availability <> 'GIVEAWAY' AND id = :productId")
     Mono<Product> findActualProduct(Long productId);
 
-    @Query("SELECT * FROM product WHERE status = 'ACTIVE' AND id = :productId FOR UPDATE")
+    @Query("SELECT * FROM product WHERE status = 'ACTIVE' AND availability <> 'GIVEAWAY' AND id = :productId FOR UPDATE")
     Mono<Product> findActualProductForUpdate(Long productId);
 
     @Query("SELECT * FROM product WHERE id = :productId FOR UPDATE")
     Mono<Product> findByIdForUpdate(Long productId);
 
-    @Query("SELECT * FROM product WHERE status in ('ACTIVE', 'TIME_EXPIRED') AND id = :productId FOR UPDATE")
+    @Query("SELECT * FROM product WHERE status in ('ACTIVE', 'TIME_EXPIRED') AND availability <> 'GIVEAWAY' AND id = :productId FOR UPDATE")
     Mono<Product> findProductForExtendForUpdate(Long productId);
 
-    @Query("SELECT * FROM product WHERE status in ('ACTIVE', 'TIME_EXPIRED') AND id = :productId")
+    @Query("SELECT value FROM dictionary WHERE type = 'PRODUCT_AVAILABILITY' AND value = 'GIVEAWAY' FOR UPDATE")
+    Mono<String> lockGiveawayActivation();
+
+    @Query("""
+            SELECT * FROM product
+            WHERE availability = 'GIVEAWAY' AND status IN ('ACTIVE', 'AWAITING_GIVEAWAY')
+              AND giveaway_enabled AND giveaway_end_at > CURRENT_TIMESTAMP
+            ORDER BY id DESC LIMIT 1
+            """)
+    Mono<Product> findActiveGiveaway();
+
+    @Query("""
+            SELECT * FROM product
+            WHERE id = :productId AND availability = 'GIVEAWAY'
+              AND status IN ('ACTIVE', 'AWAITING_GIVEAWAY')
+              AND giveaway_enabled AND giveaway_end_at > CURRENT_TIMESTAMP
+            """)
+    Mono<Product> findPublicGiveawayById(Long productId);
+
+    @Query("""
+            SELECT p.* FROM product p
+            JOIN participant owner ON owner.id = p.participant_id
+            WHERE p.giveaway_end_at IS NOT NULL AND p.status <> 'DELETED'
+              AND (p.participant_id = :adminId OR owner.is_agent)
+            ORDER BY p.giveaway_end_at DESC, p.id DESC
+            LIMIT :limit OFFSET :offset
+            """)
+    Flux<Product> findGiveawayHistory(Long adminId, int limit, long offset);
+
+    @Modifying
+    @Query("""
+            UPDATE product SET giveaway_enabled = false, status = 'TIME_EXPIRED'
+            WHERE availability = 'GIVEAWAY' AND giveaway_enabled AND id <> :productId
+            """)
+    Mono<Integer> deactivateOtherGiveaways(Long productId);
+
+    @Modifying
+    @Query("""
+            UPDATE product SET status = 'ACTIVE'
+            WHERE availability = 'GIVEAWAY' AND status = 'AWAITING_GIVEAWAY'
+              AND giveaway_enabled AND giveaway_start_at <= CURRENT_TIMESTAMP
+              AND giveaway_end_at > CURRENT_TIMESTAMP
+            """)
+    Mono<Integer> startDueGiveaways();
+
+    @Modifying
+    @Query("""
+            UPDATE product SET giveaway_enabled = false, status = 'TIME_EXPIRED'
+            WHERE availability = 'GIVEAWAY' AND status IN ('ACTIVE', 'AWAITING_GIVEAWAY')
+              AND giveaway_end_at <= CURRENT_TIMESTAMP
+            """)
+    Mono<Integer> expireDueGiveaways();
+
+    @Modifying
+    @Query("""
+            UPDATE product SET status = 'TIME_EXPIRED'
+            WHERE availability <> 'GIVEAWAY' AND status = 'ACTIVE' AND expiration_date <= CURRENT_TIMESTAMP
+            """)
+    Mono<Integer> expireDueOrdinaryProducts();
+
+    @Query("SELECT * FROM product WHERE status in ('ACTIVE', 'TIME_EXPIRED') AND availability <> 'GIVEAWAY' AND id = :productId")
     Mono<Product> findProductForExtend(Long productId);
 
-    @Query("SELECT id FROM product WHERE status = 'ACTIVE' AND expiration_date < CURRENT_TIMESTAMP")
+    @Query("SELECT id FROM product WHERE status = 'ACTIVE' AND availability <> 'GIVEAWAY' AND expiration_date < CURRENT_TIMESTAMP")
     Flux<Long> findExpiredActiveProductIds();
 
     @Query("""
@@ -260,7 +326,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
     Mono<Integer> deleteDeletedWithoutImages(Long[] productIds);
 
     @Modifying
-    @Query("UPDATE product SET count = count - :amount WHERE id = :id AND count >= :amount")
+    @Query("UPDATE product SET count = count - :amount WHERE id = :id AND status = 'ACTIVE' AND availability = 'PURCHASABLE' AND count >= :amount")
     Mono<Integer> decrementCountIfSufficient(Long id, Integer amount);
 
     @Modifying

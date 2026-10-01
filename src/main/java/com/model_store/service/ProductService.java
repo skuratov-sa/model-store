@@ -4,10 +4,13 @@ import com.model_store.model.CreateAgentProductRequest;
 import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.FindMyProductRequest;
 import com.model_store.model.FindProductRequest;
+import com.model_store.model.GiveawaySettingsRequest;
 import com.model_store.model.base.Product;
 import com.model_store.model.constant.ParticipantRole;
 import com.model_store.model.constant.ProductStatus;
 import com.model_store.model.dto.GetProductResponse;
+import com.model_store.model.dto.AdminGiveawayProductResponse;
+import com.model_store.model.dto.GiveawayResponse;
 import com.model_store.model.dto.ProductDto;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -36,11 +39,15 @@ public interface ProductService {
 
     Flux<ProductDto> findMyByParams(FindMyProductRequest searchParams, Long participantId);
 
+    Flux<ProductDto> findMyByParams(FindMyProductRequest searchParams, Long participantId, boolean includeGiveaways);
+
     Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId, ParticipantRole role);
 
     Mono<Long> createAgentProduct(CreateAgentProductRequest request, Long participantId);
 
     Mono<Void> updateProduct(Long id, CreateOrUpdateProductRequest request, Long participantId);
+
+    Mono<Void> updateProduct(Long id, CreateOrUpdateProductRequest request, Long participantId, ParticipantRole role);
 
     Mono<Void> updateAgentProduct(Long id, CreateOrUpdateProductRequest request, Long agentId);
 
@@ -49,6 +56,18 @@ public interface ProductService {
     Mono<Product> findActualProduct(Long productId);
 
     Mono<Product> findActualProductForUpdate(Long productId);
+
+    Mono<GiveawayResponse> findActiveGiveaway();
+
+    Mono<GiveawayResponse> findPublicGiveawayById(Long productId);
+
+    Flux<Product> findGiveawayHistory(Long adminId, int page, int size);
+
+    Mono<Product> findAdminGiveaway(Long productId, Long adminId);
+
+    Mono<AdminGiveawayProductResponse> findAdminGiveawayDetails(Long productId, Long adminId);
+
+    Mono<Void> updateAdminGiveaway(Long productId, GiveawaySettingsRequest request, Long adminId);
 
     Mono<Void> updateProductStatus(Long id, ProductStatus status);
 

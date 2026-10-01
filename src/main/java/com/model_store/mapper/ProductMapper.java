@@ -18,6 +18,13 @@ import java.util.Optional;
 @Mapper(componentModel = "spring")
 public interface ProductMapper {
     @Mapping(target = "id", ignore = true)
+    @Mapping(target = "giveawayEnabled", ignore = true)
+    @Mapping(target = "giveawayTelegramUrl", ignore = true)
+    @Mapping(target = "giveawayStartAt", ignore = true)
+    @Mapping(target = "giveawayEndAt", ignore = true)
+    @Mapping(target = "giveawayWinnersCount", ignore = true)
+    @Mapping(target = "giveawayRules", ignore = true)
+    @Mapping(target = "giveawayHomeText", ignore = true)
     Product toProduct(CreateOrUpdateProductRequest product,
                       Long participantId,
                       ProductStatus status,
@@ -42,6 +49,13 @@ public interface ProductMapper {
                 .availability(availability)
                 .used(Optional.ofNullable(productRequest.getUsed()).orElse(product.getUsed()))
                 .externalUrl(Optional.ofNullable(productRequest.getExternalUrl()).orElse(product.getExternalUrl()))
+                .giveawayEnabled(product.getGiveawayEnabled())
+                .giveawayTelegramUrl(product.getGiveawayTelegramUrl())
+                .giveawayStartAt(product.getGiveawayStartAt())
+                .giveawayEndAt(product.getGiveawayEndAt())
+                .giveawayWinnersCount(product.getGiveawayWinnersCount())
+                .giveawayRules(product.getGiveawayRules())
+                .giveawayHomeText(product.getGiveawayHomeText())
                 .participantId(product.getParticipantId())
                 .status(product.getStatus())
                 .expirationDate(product.getExpirationDate())

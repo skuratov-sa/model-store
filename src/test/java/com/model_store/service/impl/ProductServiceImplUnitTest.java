@@ -15,6 +15,7 @@ import com.model_store.model.constant.ParticipantRole;
 import com.model_store.model.constant.ProductAvailabilityType;
 import com.model_store.model.constant.ProductStatus;
 import com.model_store.repository.ImageRepository;
+import com.model_store.repository.OrderRepository;
 import com.model_store.repository.ParticipantRepository;
 import com.model_store.repository.ProductCategoryRepository;
 import com.model_store.repository.ProductRepository;
@@ -65,6 +66,7 @@ class ProductServiceImplUnitTest {
     @Mock ImageRepository imageRepository;
     @Mock ParticipantRepository participantRepository;
     @Mock SellerRatingRepository sellerRatingRepository;
+    @Mock OrderRepository orderRepository;
 
     ProductServiceImpl productService;
 
@@ -74,7 +76,7 @@ class ProductServiceImplUnitTest {
                 productRepository, categoryService, productMapper,
                 imageService, reviewService, properties,
                 socialNetworksService, transferService, sellerRatingService, participantService,
-                productCategoryRepository, imageRepository, participantRepository, sellerRatingRepository
+                productCategoryRepository, imageRepository, participantRepository, sellerRatingRepository, orderRepository
         );
         when(properties.getProductExpirationDays()).thenReturn(30);
         when(participantRepository.findByIdAndIsAgentTrue(anyLong())).thenReturn(Mono.empty());
@@ -164,7 +166,7 @@ class ProductServiceImplUnitTest {
         Product savedProduct = Product.builder().id(1L).count(null).build();
         when(productRepository.save(any())).thenReturn(Mono.just(savedProduct));
 
-        StepVerifier.create(productService.createProduct(req, 1L, ParticipantRole.USER))
+        StepVerifier.create(productService.createProduct(req, 1L, ParticipantRole.ADMIN))
                 .expectNext(1L)
                 .verifyComplete();
 
@@ -226,6 +228,7 @@ class ProductServiceImplUnitTest {
                 .availability(ProductAvailabilityType.EXTERNAL_PRODUCT)
                 .externalUrl("https://t.me/source").build();
         when(participantRepository.findByIdAndIsAgentTrue(7L)).thenReturn(Mono.just(agent));
+        when(productRepository.lockGiveawayActivation()).thenReturn(Mono.just("GIVEAWAY"));
         when(productRepository.findByIdForUpdate(5L)).thenReturn(Mono.just(product));
         when(productMapper.updateProduct(any(), any())).thenReturn(product);
         when(productRepository.save(product)).thenReturn(Mono.just(product));

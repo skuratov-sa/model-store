@@ -8,18 +8,23 @@ import com.model_store.model.CreateAgentProductRequest;
 import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.FindMyProductRequest;
 import com.model_store.model.FindProductRequest;
+import com.model_store.model.GiveawaySettingsRequest;
 import com.model_store.model.ReviewResponseDto;
 import com.model_store.model.base.Product;
 import com.model_store.model.base.SellerRating;
 import com.model_store.model.constant.ImageStatus;
 import com.model_store.model.constant.ImageTag;
+import com.model_store.model.constant.Currency;
 import com.model_store.model.constant.ParticipantRole;
 import com.model_store.model.constant.ProductAvailabilityType;
 import com.model_store.model.constant.ProductStatus;
 import com.model_store.model.dto.CategoryDto;
+import com.model_store.model.dto.AdminGiveawayProductResponse;
 import com.model_store.model.dto.GetProductResponse;
+import com.model_store.model.dto.GiveawayResponse;
 import com.model_store.model.dto.ProductDto;
 import com.model_store.repository.ImageRepository;
+import com.model_store.repository.OrderRepository;
 import com.model_store.repository.ParticipantRepository;
 import com.model_store.repository.ProductCategoryRepository;
 import com.model_store.repository.ProductRepository;
@@ -41,6 +46,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
+import java.net.URI;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.List;
@@ -69,6 +75,7 @@ public class ProductServiceImpl implements ProductService {
     private final ImageRepository imageRepository;
     private final ParticipantRepository participantRepository;
     private final SellerRatingRepository sellerRatingRepository;
+    private final OrderRepository orderRepository;
 
     @Autowired
     public ProductServiceImpl(
@@ -85,7 +92,8 @@ public class ProductServiceImpl implements ProductService {
             ProductCategoryRepository productCategoryRepository,
             ImageRepository imageRepository,
             ParticipantRepository participantRepository,
-            SellerRatingRepository sellerRatingRepository
+            SellerRatingRepository sellerRatingRepository,
+            OrderRepository orderRepository
     ) {
         this.productRepository = productRepository;
         this.categoryService = categoryService;
@@ -101,6 +109,7 @@ public class ProductServiceImpl implements ProductService {
         this.imageRepository = imageRepository;
         this.participantRepository = participantRepository;
         this.sellerRatingRepository = sellerRatingRepository;
+        this.orderRepository = orderRepository;
     }
 
     public Mono<GetProductResponse> getProductById(Long productId) {
@@ -157,7 +166,12 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public Flux<ProductDto> findMyByParams(FindMyProductRequest searchParams, Long participantId) {
-        return buildProductDtos(productRepository.findMyByParams(searchParams, participantId));
+        return findMyByParams(searchParams, participantId, false);
+    }
+
+    @Override
+    public Flux<ProductDto> findMyByParams(FindMyProductRequest searchParams, Long participantId, boolean includeGiveaways) {
+        return buildProductDtos(productRepository.findMyByParams(searchParams, participantId, includeGiveaways));
     }
 
     @Override
@@ -266,8 +280,138 @@ public class ProductServiceImpl implements ProductService {
         return productRepository.findByIdForUpdate(productId);
     }
 
+    @Override
+    public Mono<GiveawayResponse> findActiveGiveaway() {
+        return productRepository.findActiveGiveaway().flatMap(this::toGiveawayResponse);
+    }
+
+    @Override
+    public Mono<GiveawayResponse> findPublicGiveawayById(Long productId) {
+        return productRepository.findPublicGiveawayById(productId).flatMap(this::toGiveawayResponse);
+    }
+
+    private Mono<GiveawayResponse> toGiveawayResponse(Product product) {
+        return imageService.findActualImages(product.getId(), ImageTag.PRODUCT)
+                .collectList()
+                .map(images -> new GiveawayResponse(
+                        product.getId(), product.getName(), product.getDescription(), images,
+                        product.getGiveawayTelegramUrl(), product.getGiveawayStartAt(), product.getGiveawayEndAt(),
+                        product.getGiveawayWinnersCount(), product.getGiveawayRules(), product.getGiveawayHomeText(),
+                        product.getGiveawayStartAt().isAfter(Instant.now())
+                                ? ProductStatus.AWAITING_GIVEAWAY : ACTIVE
+                ));
+    }
+
+    @Override
+    public Flux<Product> findGiveawayHistory(Long adminId, int page, int size) {
+        if (page < 0 || size < 1 || size > 100) {
+            return Flux.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Некорректная страница истории"));
+        }
+        return productRepository.findGiveawayHistory(adminId, size, (long) page * size);
+    }
+
+    @Override
+    public Mono<Product> findAdminGiveaway(Long productId, Long adminId) {
+        return productRepository.findById(productId)
+                .filter(product -> product.getStatus() != ProductStatus.DELETED && product.getGiveawayEndAt() != null)
+                .flatMap(product -> Objects.equals(product.getParticipantId(), adminId)
+                        ? Mono.just(product)
+                        : participantRepository.findByIdAndIsAgentTrue(product.getParticipantId())
+                                .hasElement()
+                                .flatMap(isAgent -> isAgent ? Mono.just(product) : Mono.empty()))
+                .switchIfEmpty(Mono.error(ApiErrors.notFound(ErrorCode.PRODUCT_NOT_FOUND, "Розыгрыш не найден")));
+    }
+
+    @Override
+    public Mono<AdminGiveawayProductResponse> findAdminGiveawayDetails(Long productId, Long adminId) {
+        return findAdminGiveaway(productId, adminId)
+                .flatMap(product -> Mono.zip(
+                        imageService.findActualImages(productId, ImageTag.PRODUCT).collectList(),
+                        categoryService.findByProductId(productId).collectList()
+                ).map(details -> new AdminGiveawayProductResponse(product, details.getT1(), details.getT2())));
+    }
+
+    @Override
+    @Transactional
+    public Mono<Void> updateAdminGiveaway(Long productId, GiveawaySettingsRequest settings, Long adminId) {
+        if (settings == null) {
+            return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Пустые настройки розыгрыша"));
+        }
+        return findAdminGiveaway(productId, adminId)
+                .flatMap(product -> {
+                    CreateOrUpdateProductRequest request = new CreateOrUpdateProductRequest();
+                    request.setAvailability(ProductAvailabilityType.GIVEAWAY);
+                    request.setGiveaway(settings);
+                    return updateOwnedProduct(productId, request, product.getParticipantId(), true);
+                });
+    }
+
+    private void applyGiveawaySettings(Product product, GiveawaySettingsRequest settings, boolean enteringGiveaway) {
+        if (settings == null && enteringGiveaway) {
+            throw ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Укажите настройки розыгрыша");
+        }
+        if (settings != null) {
+            if (settings.getTelegramUrl() != null) product.setGiveawayTelegramUrl(settings.getTelegramUrl().trim());
+            if (settings.getStartAt() != null) product.setGiveawayStartAt(settings.getStartAt());
+            if (settings.getEndAt() != null) product.setGiveawayEndAt(settings.getEndAt());
+            if (settings.getWinnersCount() != null) product.setGiveawayWinnersCount(settings.getWinnersCount());
+            if (settings.getRules() != null) product.setGiveawayRules(settings.getRules());
+            if (settings.getHomeText() != null) product.setGiveawayHomeText(settings.getHomeText());
+            if (settings.getEnabled() != null) product.setGiveawayEnabled(settings.getEnabled());
+            else if (enteringGiveaway) product.setGiveawayEnabled(true);
+        }
+        if (!isValidTelegramUrl(product.getGiveawayTelegramUrl())
+                || product.getGiveawayStartAt() == null || product.getGiveawayEndAt() == null
+                || !product.getGiveawayStartAt().isBefore(product.getGiveawayEndAt())
+                || product.getGiveawayWinnersCount() == null || product.getGiveawayWinnersCount() <= 0
+                || product.getGiveawayRules() == null || product.getGiveawayRules().isBlank()
+                || product.getGiveawayHomeText() == null || product.getGiveawayHomeText().isBlank()) {
+            throw ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Некорректные настройки розыгрыша");
+        }
+        if (Boolean.TRUE.equals(product.getGiveawayEnabled())) {
+            if (!product.getGiveawayEndAt().isAfter(Instant.now())) {
+                throw ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Дата окончания розыгрыша должна быть в будущем");
+            }
+            if (product.getStatus() == ProductStatus.BLOCKED || product.getStatus() == ProductStatus.DELETED) {
+                throw ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Заблокированный товар нельзя активировать");
+            }
+            product.setStatus(product.getGiveawayStartAt().isAfter(Instant.now())
+                    ? ProductStatus.AWAITING_GIVEAWAY : ACTIVE);
+        } else if (product.getStatus() == ACTIVE || product.getStatus() == ProductStatus.AWAITING_GIVEAWAY) {
+            product.setStatus(ProductStatus.TIME_EXPIRED);
+        }
+    }
+
+    private boolean isValidTelegramUrl(String value) {
+        if (value == null || value.isBlank()) return false;
+        try {
+            URI uri = URI.create(value);
+            String host = uri.getHost();
+            return "https".equalsIgnoreCase(uri.getScheme())
+                    && host != null
+                    && (host.equalsIgnoreCase("t.me") || host.equalsIgnoreCase("telegram.me"))
+                    && uri.getRawUserInfo() == null
+                    && uri.getPath() != null && uri.getPath().length() > 1;
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
+    }
+
     @Transactional
     public Mono<Long> createProduct(CreateOrUpdateProductRequest request, Long participantId, ParticipantRole role) {
+        if (request == null || request.getAvailability() == null) {
+            return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Укажите тип товара"));
+        }
+        if (role != ParticipantRole.ADMIN && request.getAvailability() != ProductAvailabilityType.PURCHASABLE
+                && request.getAvailability() != ProductAvailabilityType.PREORDER) {
+            return Mono.error(ApiErrors.forbidden(ErrorCode.ACCESS_DENIED, "Этот тип товара доступен только администратору"));
+        }
+        if (request.getAvailability() != ProductAvailabilityType.GIVEAWAY && request.getGiveaway() != null) {
+            return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Настройки розыгрыша допустимы только для GIVEAWAY"));
+        }
+        if (role == ParticipantRole.ADMIN && request.getAvailability() == ProductAvailabilityType.GIVEAWAY) {
+            return Mono.defer(() -> createProduct(request, participantId));
+        }
         return Mono.zip(
                 transferService.findByParticipantId(participantId).hasElements(),
                 socialNetworksService.findByParticipantId(participantId).hasElements()
@@ -276,7 +420,7 @@ public class ProductServiceImpl implements ProductService {
                 return Mono.error(ApiErrors.badRequest(ErrorCode.TRANSFER_NOT_FOUND, "Добавьте способ получения оплаты перед созданием товара"));
             if (!tuple.getT2())
                 return Mono.error(ApiErrors.badRequest(ErrorCode.SOCIAL_NETWORK_NOT_FOUND, "Добавьте социальную сеть перед созданием товара"));
-            return createProduct(request, participantId);
+            return Mono.defer(() -> createProduct(request, participantId));
         });
     }
 
@@ -307,8 +451,18 @@ public class ProductServiceImpl implements ProductService {
         if (product.getUsed() == null) product.setUsed(false);
         if (request.getAvailability() == ProductAvailabilityType.EXTERNAL_PRODUCT) product.setCount(null);
         if (request.getAvailability() == ProductAvailabilityType.PURCHASABLE) product.setPrepaymentAmount(null);
+        if (request.getAvailability() == ProductAvailabilityType.GIVEAWAY) {
+            product.setCount(null);
+            product.setPrepaymentAmount(null);
+            if (product.getPrice() == null) product.setPrice(0f);
+            if (product.getCurrency() == null) product.setCurrency(Currency.RUB);
+            applyGiveawaySettings(product, request.getGiveaway(), true);
+        }
 
-        return productRepository.save(product)
+        Mono<Void> deactivatePrevious = Boolean.TRUE.equals(product.getGiveawayEnabled())
+                ? lockGiveawayActivation().then(productRepository.deactivateOtherGiveaways(-1L)).then()
+                : Mono.empty();
+        return deactivatePrevious.then(productRepository.save(product))
                 .flatMap(savedProduct ->
                         updateImagesStatus(request.getImageIds(), savedProduct.getId())
                                 .then(addLinkProductAndCategories(request.getCategoryIds(), savedProduct.getId()))
@@ -352,21 +506,35 @@ public class ProductServiceImpl implements ProductService {
 
     @Transactional
     public Mono<Void> updateProduct(Long id, CreateOrUpdateProductRequest request, Long participantId) {
+        return updateProduct(id, request, participantId, ParticipantRole.USER);
+    }
+
+    @Override
+    @Transactional
+    public Mono<Void> updateProduct(Long id, CreateOrUpdateProductRequest request, Long participantId, ParticipantRole role) {
         log.info("Update product: productId={}, participantId={}", id, participantId);
+
+        if (request == null) return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Пустой запрос"));
+        if (role != ParticipantRole.ADMIN && request.getAvailability() != null
+                && request.getAvailability() != ProductAvailabilityType.PURCHASABLE
+                && request.getAvailability() != ProductAvailabilityType.PREORDER) {
+            return Mono.error(ApiErrors.forbidden(ErrorCode.ACCESS_DENIED, "Этот тип товара доступен только администратору"));
+        }
 
         return participantRepository.findByIdAndIsAgentTrue(participantId)
                 .hasElement()
                 .flatMap(isAgent -> isAgent
                         ? Mono.error(ApiErrors.forbidden(ErrorCode.ACCESS_DENIED, "Товары бота редактирует администратор"))
-                        : updateOwnedProduct(id, request, participantId, false));
+                        : updateOwnedProduct(id, request, participantId, role == ParticipantRole.ADMIN));
     }
 
     @Override
     @Transactional
     public Mono<Void> updateAgentProduct(Long id, CreateOrUpdateProductRequest request, Long agentId) {
-        if (request.getAvailability() != null
-                && request.getAvailability() != ProductAvailabilityType.EXTERNAL_PRODUCT) {
-            return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Тип товара бота должен оставаться EXTERNAL_PRODUCT"));
+        if (request == null || (request.getAvailability() != null
+                && request.getAvailability() != ProductAvailabilityType.EXTERNAL_PRODUCT
+                && request.getAvailability() != ProductAvailabilityType.GIVEAWAY)) {
+            return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Товар бота может быть EXTERNAL_PRODUCT или GIVEAWAY"));
         }
         return participantRepository.findByIdAndIsAgentTrue(agentId)
                 .switchIfEmpty(Mono.error(ApiErrors.notFound(ErrorCode.PARTICIPANT_NOT_FOUND, "Бот не найден")))
@@ -378,13 +546,37 @@ public class ProductServiceImpl implements ProductService {
         Mono<Product> source = includeInactive
                 ? productRepository.findByIdForUpdate(id).filter(p -> p.getStatus() != ProductStatus.DELETED)
                 : productRepository.findActualProductForUpdate(id);
-        return source
+        Mono<Void> activationLock = includeInactive ? lockGiveawayActivation() : Mono.empty();
+        return activationLock.then(source)
                 .filter(product -> Objects.equals(product.getParticipantId(), participantId))
                 .switchIfEmpty(Mono.error(
                         ApiErrors.notFound(ErrorCode.PRODUCT_NOT_FOUND, "Не удалось выполнить операцию: не достаточно прав или его не существует")
                 ))
-                .map(product -> productMapper.updateProduct(request, product))
-                .flatMap(product -> {
+                .flatMap(original -> {
+                    if (!includeInactive && request.getGiveaway() != null) {
+                        return Mono.error(ApiErrors.forbidden(ErrorCode.ACCESS_DENIED, "Настройки розыгрыша меняет администратор"));
+                    }
+                    Product product = productMapper.updateProduct(request, original);
+                    boolean enteringGiveaway = original.getAvailability() != ProductAvailabilityType.GIVEAWAY
+                            && product.getAvailability() == ProductAvailabilityType.GIVEAWAY;
+                    if (product.getAvailability() == ProductAvailabilityType.GIVEAWAY) {
+                        if (!includeInactive) {
+                            return Mono.error(ApiErrors.forbidden(ErrorCode.ACCESS_DENIED, "Розыгрыш настраивает администратор"));
+                        }
+                        product.setCount(null);
+                        product.setPrepaymentAmount(null);
+                        applyGiveawaySettings(product, request.getGiveaway(), enteringGiveaway);
+                    } else if (original.getAvailability() == ProductAvailabilityType.GIVEAWAY) {
+                        product.setGiveawayEnabled(false);
+                        if (product.getPrice() == null || product.getPrice() <= 0) {
+                            return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Укажите цену товара при возврате в продажу"));
+                        }
+                        if (product.getStatus() == ProductStatus.TIME_EXPIRED
+                                || product.getStatus() == ProductStatus.AWAITING_GIVEAWAY) product.setStatus(ACTIVE);
+                        if (!product.getExpirationDate().isAfter(Instant.now())) product.setExpirationDate(getExpirationDate());
+                    } else if (request.getGiveaway() != null) {
+                        return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Настройки розыгрыша допустимы только для GIVEAWAY"));
+                    }
                     if (product.getAvailability() == ProductAvailabilityType.EXTERNAL_PRODUCT
                             && (product.getExternalUrl() == null || product.getExternalUrl().isBlank())) {
                         return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Укажите ссылку на внешний товар"));
@@ -395,11 +587,25 @@ public class ProductServiceImpl implements ProductService {
                                 || product.getPrepaymentAmount() > product.getPrice())) {
                         return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Предоплата указана неверно"));
                     }
-                    return Mono.just(product);
+                    Mono<Void> noOrders = enteringGiveaway
+                            ? orderRepository.existsActiveOrderForProduct(id).flatMap(hasOrders -> hasOrders
+                                    ? Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Товар с незавершёнными заказами нельзя перевести в розыгрыш"))
+                                    : Mono.empty())
+                            : Mono.empty();
+                    Mono<Void> deactivatePrevious = Boolean.TRUE.equals(product.getGiveawayEnabled())
+                            ? productRepository.deactivateOtherGiveaways(id).then()
+                            : Mono.empty();
+                    return noOrders.then(deactivatePrevious).thenReturn(product);
                 })
                 .flatMap(productRepository::save)
                 .flatMap(p -> updateImagesStatus(request.getImageIds(), id)
                         .then(replaceCategories(request.getCategoryIds(), id)))
+                .then();
+    }
+
+    private Mono<Void> lockGiveawayActivation() {
+        return productRepository.lockGiveawayActivation()
+                .switchIfEmpty(Mono.error(new IllegalStateException("Не найдена запись блокировки розыгрыша")))
                 .then();
     }
 
@@ -421,7 +627,10 @@ public class ProductServiceImpl implements ProductService {
     @Transactional
     public Mono<Void> updateProductStatus(Long id, ProductStatus status) {
         log.info("Update product id: {}, status: {}", id, status);
-        return productRepository.findByIdForUpdate(id)
+        if (status == ProductStatus.AWAITING_GIVEAWAY) {
+            return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Статус ожидания задаётся датой начала розыгрыша"));
+        }
+        return lockGiveawayActivation().then(productRepository.findByIdForUpdate(id))
                 .filter(product -> product.getStatus() != ProductStatus.DELETED)
                 .switchIfEmpty(Mono.error(
                         ApiErrors.notFound(ErrorCode.PRODUCT_NOT_FOUND, "Не удалось выполнить операцию: не достаточно прав или его не существует")
@@ -429,6 +638,9 @@ public class ProductServiceImpl implements ProductService {
                     if (status == ACTIVE && (product.getExpirationDate() == null
                             || !product.getExpirationDate().isAfter(Instant.now()))) {
                         product.setExpirationDate(getExpirationDate());
+                    }
+                    if (product.getAvailability() == ProductAvailabilityType.GIVEAWAY && status != ACTIVE) {
+                        product.setGiveawayEnabled(false);
                     }
                     product.setStatus(status);
                     return productRepository.save(product).then();
