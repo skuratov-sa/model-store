@@ -6,6 +6,8 @@ import com.model_store.modern.identity.participant.application.ReadParticipant
 import com.model_store.modern.identity.participant.application.ParticipantImagePort
 import com.model_store.modern.identity.participant.application.ParticipantStore
 import com.model_store.modern.identity.participant.application.UpdateParticipant
+import com.model_store.modern.identity.participant.application.ParticipantVerificationCommands
+import com.model_store.modern.identity.participant.application.ParticipantVerificationFailure
 import com.model_store.modern.identity.participant.domain.ParticipantStatus
 import com.model_store.modern.identity.participant.domain.ParticipantImageNotFound
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
@@ -33,6 +35,11 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import jakarta.servlet.Filter
 import org.mockito.Mockito
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
+import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @SpringBootTest
 @ActiveProfiles("modern")
@@ -42,6 +49,7 @@ class ParticipantJpaIntegrationTest {
     @Autowired lateinit var register: RegisterParticipant
     @Autowired lateinit var read: ReadParticipant
     @Autowired lateinit var update: UpdateParticipant
+    @Autowired lateinit var verificationCommands: ParticipantVerificationCommands
     @Autowired lateinit var store: ParticipantStore
     @Autowired lateinit var images: ParticipantImagePort
     @Autowired lateinit var jdbc: JdbcTemplate
@@ -159,6 +167,108 @@ class ParticipantJpaIntegrationTest {
         assertNull(jdbc.queryForObject("SELECT entity_id FROM image WHERE id = ?", Long::class.java, imageId))
         assertEquals("ACTIVE", jdbc.queryForObject("SELECT status::text FROM image WHERE id = ?", String::class.java, imageId))
         assertEquals("user$id", store.find(id)?.login)
+    }
+
+    @Test
+    fun `verification commands persist status and password in isolated database`() {
+        val id = register.execute("verification-${UUID.randomUUID()}@example.test", "original", 20)
+        verificationCommands.activate(id)
+        assertEquals(ParticipantStatus.ACTIVE, store.find(id)?.status)
+        assertThrows(ParticipantVerificationFailure.AlreadyActive::class.java) { verificationCommands.activate(id) }
+        verificationCommands.resetPassword(id, "replacement")
+        assertEquals(ParticipantStatus.ACTIVE, store.find(id)?.status)
+        assertTrue(BCryptPasswordEncoder().matches("replacement", store.find(id)?.passwordHash))
+
+        val waitingId = register.execute("verification-${UUID.randomUUID()}@example.test", "original", 20)
+        verificationCommands.resetPassword(waitingId, "temporary")
+        assertEquals(ParticipantStatus.ACTIVE, store.find(waitingId)?.status)
+        assertTrue(BCryptPasswordEncoder().matches("temporary", store.find(waitingId)?.passwordHash))
+
+        for (status in listOf(ParticipantStatus.BLOCKED, ParticipantStatus.DELETED)) {
+            val rejectedId = register.execute("verification-${UUID.randomUUID()}@example.test", "original", 20)
+            TransactionTemplate(transactionManager).executeWithoutResult {
+                store.save(store.find(rejectedId)!!.copy(status = status))
+            }
+            val failure = if (status == ParticipantStatus.BLOCKED)
+                ParticipantVerificationFailure.Blocked::class.java else ParticipantVerificationFailure.Deleted::class.java
+            assertThrows(failure) { verificationCommands.activate(rejectedId) }
+            assertThrows(failure) { verificationCommands.resetPassword(rejectedId, "replacement") }
+            assertEquals(status, store.find(rejectedId)?.status)
+            assertTrue(BCryptPasswordEncoder().matches("original", store.find(rejectedId)?.passwordHash))
+        }
+        assertThrows(ParticipantVerificationFailure.NotFound::class.java) { verificationCommands.activate(-1) }
+        assertThrows(ParticipantVerificationFailure.NotFound::class.java) { verificationCommands.resetPassword(-1, "replacement") }
+    }
+
+    @Test
+    fun `reset waits for concurrent participant edit and preserves both changes`() {
+        val id = register.execute("verification-${UUID.randomUUID()}@example.test", "original", 20)
+        val locked = CountDownLatch(1)
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val edit = executor.submit {
+                TransactionTemplate(transactionManager).executeWithoutResult {
+                    val participant = store.findForUpdate(id)!!
+                    locked.countDown()
+                    check(release.await(10, TimeUnit.SECONDS))
+                    store.save(participant.copy(fullName = "Concurrent edit"))
+                }
+            }
+            assertTrue(locked.await(10, TimeUnit.SECONDS))
+            val reset = executor.submit {
+                started.countDown()
+                verificationCommands.resetPassword(id, "replacement")
+            }
+            assertTrue(started.await(10, TimeUnit.SECONDS))
+            assertThrows(java.util.concurrent.TimeoutException::class.java) { reset.get(200, TimeUnit.MILLISECONDS) }
+            release.countDown()
+            edit.get(10, TimeUnit.SECONDS)
+            reset.get(10, TimeUnit.SECONDS)
+            val saved = store.find(id)!!
+            assertEquals("Concurrent edit", saved.fullName)
+            assertEquals(ParticipantStatus.ACTIVE, saved.status)
+            assertTrue(BCryptPasswordEncoder().matches("replacement", saved.passwordHash))
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `activation observes concurrent block after row lock is released`() {
+        val id = register.execute("verification-${UUID.randomUUID()}@example.test", "original", 20)
+        val locked = CountDownLatch(1)
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val block = executor.submit {
+                TransactionTemplate(transactionManager).executeWithoutResult {
+                    val participant = store.findForUpdate(id)!!
+                    locked.countDown()
+                    check(release.await(10, TimeUnit.SECONDS))
+                    store.save(participant.copy(status = ParticipantStatus.BLOCKED))
+                }
+            }
+            assertTrue(locked.await(10, TimeUnit.SECONDS))
+            val activation = executor.submit {
+                started.countDown()
+                verificationCommands.activate(id)
+            }
+            assertTrue(started.await(10, TimeUnit.SECONDS))
+            assertThrows(java.util.concurrent.TimeoutException::class.java) { activation.get(200, TimeUnit.MILLISECONDS) }
+            release.countDown()
+            block.get(10, TimeUnit.SECONDS)
+            val cause = assertThrows(java.util.concurrent.ExecutionException::class.java) { activation.get(10, TimeUnit.SECONDS) }
+            assertTrue(cause.cause is ParticipantVerificationFailure.Blocked)
+            assertEquals(ParticipantStatus.BLOCKED, store.find(id)?.status)
+            assertTrue(BCryptPasswordEncoder().matches("original", store.find(id)?.passwordHash))
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
+        }
     }
 
     companion object {
