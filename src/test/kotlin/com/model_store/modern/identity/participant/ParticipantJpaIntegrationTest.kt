@@ -152,20 +152,113 @@ class ParticipantJpaIntegrationTest {
     }
 
     @Test
+    fun `profile update accepts own unassigned image and preserves old image on rejected claims`() {
+        val owner = register.execute("image-owner-${UUID.randomUUID()}@example.test", "secret", 20)
+        val other = register.execute("image-other-${UUID.randomUUID()}@example.test", "secret", 20)
+        TransactionTemplate(transactionManager).executeWithoutResult {
+            store.save(store.find(owner)!!.copy(status = ParticipantStatus.ACTIVE))
+        }
+        val old = jdbc.queryForObject(
+            "INSERT INTO image(tag, status, entity_id) VALUES ('PARTICIPANT', 'ACTIVE', ?) RETURNING id",
+            Long::class.java, owner,
+        )!!
+        fun image(status: String, uploadedBy: Long?): Long = jdbc.queryForObject(
+            "INSERT INTO image(tag, status, uploaded_by) VALUES ('PARTICIPANT', ?::image_status, ?) RETURNING id",
+            Long::class.java, status, uploadedBy,
+        )!!
+        val foreign = image("ACTIVE", other)
+        val unknownUploader = image("ACTIVE", null)
+        val inactive = image("DELETE", owner)
+        for (candidate in listOf(foreign, unknownUploader, inactive, Long.MAX_VALUE)) {
+            assertThrows(ParticipantImageNotFound::class.java) {
+                update.execute(owner, "rejected-$candidate", null, null, null, null, candidate)
+            }
+            assertEquals("ACTIVE", jdbc.queryForObject("SELECT status::text FROM image WHERE id = ?", String::class.java, old))
+            assertEquals(owner, jdbc.queryForObject("SELECT entity_id FROM image WHERE id = ?", Long::class.java, old))
+            assertEquals("user$owner", store.find(owner)?.login)
+        }
+        assertNull(jdbc.queryForObject("SELECT entity_id FROM image WHERE id = ?", Long::class.java, foreign))
+        assertNull(jdbc.queryForObject("SELECT entity_id FROM image WHERE id = ?", Long::class.java, unknownUploader))
+        assertNull(jdbc.queryForObject("SELECT entity_id FROM image WHERE id = ?", Long::class.java, inactive))
+
+        val own = image("ACTIVE", owner)
+        update.execute(owner, "image-owner-$owner", null, null, null, null, own)
+        assertEquals(owner, jdbc.queryForObject("SELECT entity_id FROM image WHERE id = ?", Long::class.java, own))
+        assertEquals("DELETE", jdbc.queryForObject("SELECT status::text FROM image WHERE id = ?", String::class.java, old))
+
+        // A pre-migration image may have no uploaded_by, but its existing binding still identifies the owner.
+        jdbc.update("UPDATE image SET status = 'ACTIVE' WHERE id = ?", old)
+        update.execute(owner, null, null, null, null, null, old)
+        assertEquals("ACTIVE", jdbc.queryForObject("SELECT status::text FROM image WHERE id = ?", String::class.java, old))
+        assertEquals("DELETE", jdbc.queryForObject("SELECT status::text FROM image WHERE id = ?", String::class.java, own))
+        update.execute(owner, null, null, null, null, null, old)
+        assertEquals("ACTIVE", jdbc.queryForObject("SELECT status::text FROM image WHERE id = ?", String::class.java, old))
+    }
+
+    @Test
+    fun `concurrent assignment is rechecked after image row lock`() {
+        val owner = register.execute("image-race-owner-${UUID.randomUUID()}@example.test", "secret", 20)
+        val other = register.execute("image-race-other-${UUID.randomUUID()}@example.test", "secret", 20)
+        TransactionTemplate(transactionManager).executeWithoutResult {
+            store.save(store.find(owner)!!.copy(status = ParticipantStatus.ACTIVE))
+        }
+        val old = jdbc.queryForObject(
+            "INSERT INTO image(tag, status, entity_id) VALUES ('PARTICIPANT', 'ACTIVE', ?) RETURNING id",
+            Long::class.java, owner,
+        )!!
+        val candidate = jdbc.queryForObject(
+            "INSERT INTO image(tag, status, uploaded_by) VALUES ('PARTICIPANT', 'ACTIVE', ?) RETURNING id",
+            Long::class.java, owner,
+        )!!
+        val locked = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val competingAssignment = executor.submit {
+                TransactionTemplate(transactionManager).executeWithoutResult {
+                    jdbc.update("UPDATE image SET entity_id = ? WHERE id = ?", other, candidate)
+                    locked.countDown()
+                    check(release.await(10, TimeUnit.SECONDS))
+                }
+            }
+            assertTrue(locked.await(10, TimeUnit.SECONDS))
+            val claim = executor.submit {
+                update.execute(owner, "lost-race-$owner", null, null, null, null, candidate)
+            }
+            assertThrows(java.util.concurrent.TimeoutException::class.java) { claim.get(200, TimeUnit.MILLISECONDS) }
+            release.countDown()
+            competingAssignment.get(10, TimeUnit.SECONDS)
+            val failure = assertThrows(java.util.concurrent.ExecutionException::class.java) { claim.get(10, TimeUnit.SECONDS) }
+            assertTrue(failure.cause is ParticipantImageNotFound)
+            assertEquals(other, jdbc.queryForObject("SELECT entity_id FROM image WHERE id = ?", Long::class.java, candidate))
+            assertEquals("ACTIVE", jdbc.queryForObject("SELECT status::text FROM image WHERE id = ?", String::class.java, old))
+            assertEquals("user$owner", store.find(owner)?.login)
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
     fun `image assignment rolls back when profile update fails`() {
         val id = register.execute("image-rollback@example.test", "secret", 20)
         TransactionTemplate(transactionManager).executeWithoutResult {
             store.save(store.find(id)!!.copy(status = ParticipantStatus.ACTIVE))
         }
+        val old = jdbc.queryForObject(
+            "INSERT INTO image(tag, status, entity_id) VALUES ('PARTICIPANT', 'ACTIVE', ?) RETURNING id",
+            Long::class.java, id,
+        )!!
         val imageId = jdbc.queryForObject(
-            "INSERT INTO image(tag, status) VALUES ('PARTICIPANT', 'ACTIVE') RETURNING id",
-            Long::class.java,
+            "INSERT INTO image(tag, status, uploaded_by) VALUES ('PARTICIPANT', 'ACTIVE', ?) RETURNING id",
+            Long::class.java, id,
         )!!
         assertThrows(Exception::class.java) {
             update.execute(id, "x".repeat(300), null, null, null, null, imageId)
         }
         assertNull(jdbc.queryForObject("SELECT entity_id FROM image WHERE id = ?", Long::class.java, imageId))
         assertEquals("ACTIVE", jdbc.queryForObject("SELECT status::text FROM image WHERE id = ?", String::class.java, imageId))
+        assertEquals("ACTIVE", jdbc.queryForObject("SELECT status::text FROM image WHERE id = ?", String::class.java, old))
         assertEquals("user$id", store.find(id)?.login)
     }
 
