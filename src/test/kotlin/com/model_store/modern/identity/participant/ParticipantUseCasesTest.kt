@@ -78,6 +78,53 @@ class ParticipantUseCasesTest {
         }
     }
 
+    @Test
+    fun `verification activation has explicit outcomes for every status`() {
+        for (status in ParticipantStatus.entries) {
+            val store = MemoryStore(original.copy(status = status))
+            val command: ParticipantVerificationCommands = ParticipantVerificationService(store, passwords)
+            when (status) {
+                ParticipantStatus.WAITING_VERIFY -> {
+                    assertEquals(7L, command.activate(7))
+                    assertEquals(ParticipantStatus.ACTIVE, store.find(7)?.status)
+                    assertEquals(original.passwordHash, store.find(7)?.passwordHash)
+                }
+                ParticipantStatus.ACTIVE -> assertThrows(ParticipantVerificationFailure.AlreadyActive::class.java) { command.activate(7) }
+                ParticipantStatus.BLOCKED -> assertThrows(ParticipantVerificationFailure.Blocked::class.java) { command.activate(7) }
+                ParticipantStatus.DELETED -> assertThrows(ParticipantVerificationFailure.Deleted::class.java) { command.activate(7) }
+            }
+            if (status != ParticipantStatus.WAITING_VERIFY) assertEquals(original.copy(status = status), store.find(7))
+        }
+        assertThrows(ParticipantVerificationFailure.NotFound::class.java) {
+            ParticipantVerificationService(MemoryStore(), passwords).activate(7)
+        }
+    }
+
+    @Test
+    fun `verification reset changes password only for waiting and active participants`() {
+        for (status in ParticipantStatus.entries) {
+            val store = MemoryStore(original.copy(status = status))
+            val command: ParticipantVerificationCommands = ParticipantVerificationService(store, passwords)
+            when (status) {
+                ParticipantStatus.WAITING_VERIFY, ParticipantStatus.ACTIVE -> {
+                    assertEquals(7L, command.resetPassword(7, "temporary-secret"))
+                    assertEquals(ParticipantStatus.ACTIVE, store.find(7)?.status)
+                    assertTrue(passwords.matches("temporary-secret", store.find(7)!!.passwordHash))
+                }
+                ParticipantStatus.BLOCKED -> assertThrows(ParticipantVerificationFailure.Blocked::class.java) { command.resetPassword(7, "temporary-secret") }
+                ParticipantStatus.DELETED -> assertThrows(ParticipantVerificationFailure.Deleted::class.java) { command.resetPassword(7, "temporary-secret") }
+            }
+            if (status == ParticipantStatus.BLOCKED || status == ParticipantStatus.DELETED)
+                assertEquals(original.copy(status = status), store.find(7))
+        }
+        assertThrows(ParticipantVerificationFailure.NotFound::class.java) {
+            ParticipantVerificationService(MemoryStore(), passwords).resetPassword(7, "temporary-secret")
+        }
+        val store = MemoryStore(original)
+        assertThrows(IllegalArgumentException::class.java) { ParticipantVerificationService(store, passwords).resetPassword(7, "") }
+        assertEquals(original, store.find(7))
+    }
+
     private class MemoryStore(initial: Participant? = null) : ParticipantStore {
         private val values = mutableMapOf<Long, Participant>()
         init { if (initial != null) values[initial.id] = initial }
