@@ -10,8 +10,11 @@ plugins {
     id 'java'
     id 'application'
     id 'org.flywaydb.flyway' version '10.21.0'
-    id 'org.springframework.boot' version '3.4.5'
+    id 'org.springframework.boot' version '4.1.1'
     id 'io.spring.dependency-management' version '1.1.7'
+    id 'org.jetbrains.kotlin.jvm' version '2.4.20'
+    id 'org.jetbrains.kotlin.plugin.spring' version '2.4.20'
+    id 'org.jetbrains.kotlin.plugin.jpa' version '2.4.20'
 }
 
 repositories {
@@ -26,23 +29,30 @@ java {
     targetCompatibility = '21'
 }
 
+kotlin {
+    jvmToolchain(21)
+}
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    compilerOptions {
+        freeCompilerArgs.addAll('-Xjsr305=strict')
+    }
+}
+
 configurations {
     compileOnly {
         extendsFrom annotationProcessor
     }
 }
 
-tasks.named('processResources') {
-    exclude 'keys/**'
-}
-
 flyway {
-    url = 'jdbc:postgresql://localhost:5432/model_store'
-    user = 'root'
-    password = 'root'
+    url = System.getenv('FLYWAY_URL') ?: 'jdbc:postgresql://localhost:5432/model_store'
+    user = System.getenv('FLYWAY_USER') ?: 'root'
+    password = System.getenv('FLYWAY_PASSWORD') ?: ''
     locations = ['filesystem:src/main/resources/db/migration']
     baselineVersion = '7.17.7'
-    cleanDisabled = false
+    // Do not allow an accidental `flywayClean` to drop a database.
+    cleanDisabled = true
 }
 
 dependencies {
@@ -51,33 +61,40 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok:1.18.38'
 
     // Web
-    implementation 'org.springframework.boot:spring-boot-starter-webflux:3.4.5'
-    implementation 'org.springdoc:springdoc-openapi-starter-webflux-ui:2.8.6'
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'org.springdoc:springdoc-openapi-starter-webflux-ui:3.0.0'
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.0'
 
     // Mail
-    implementation 'org.springframework.boot:spring-boot-starter-mail:3.4.5'
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
+    // Legacy controllers and codecs still use Jackson 2 while new Kotlin DTOs migrate gradually.
+    implementation 'org.springframework.boot:spring-boot-jackson2'
 
     // DB
-    implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc:3.4.5'
+    implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
     implementation 'org.postgresql:r2dbc-postgresql:1.0.7.RELEASE'
     runtimeOnly 'org.postgresql:postgresql:42.7.5'
 
-    // Flyway (10.x требует отдельный модуль для PostgreSQL)
-    implementation 'org.flywaydb:flyway-core:10.20.1'
-    runtimeOnly 'org.flywaydb:flyway-database-postgresql:10.20.1'
+    // Boot 4 moved Flyway auto-configuration into an explicit starter.
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 
 
     // JetBrains annotations (был транзитивным через minio/aws-sdk-v2, теперь явный)
     implementation 'org.jetbrains:annotations:26.0.1'
 
     // S3 (AWS SDK v1 — используется в коде, com.amazonaws импорты)
-    implementation 'org.springframework.cloud:spring-cloud-starter-aws:2.2.6.RELEASE'
+    implementation 'com.amazonaws:aws-java-sdk-s3:1.12.780'
+    implementation 'com.amazonaws:aws-java-sdk-kms:1.12.780'
 
     // Validation
-    implementation 'org.springframework.boot:spring-boot-starter-validation:3.4.5'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
 
     // Security
-    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server:3.4.5'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
     implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
@@ -93,13 +110,14 @@ dependencies {
     implementation 'io.micrometer:context-propagation'
 
     // AOP
-    implementation 'org.springframework.boot:spring-boot-starter-aop:3.4.5'
+    implementation 'org.springframework.boot:spring-boot-starter-aspectj'
 
     // Image resizing
     implementation 'org.imgscalr:imgscalr-lib:4.2'
 
     // Test
-    testImplementation 'org.springframework.boot:spring-boot-starter-test:3.4.5'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-webflux-test'
     testImplementation 'io.projectreactor:reactor-test:3.7.5'
     testImplementation 'io.zonky.test:embedded-postgres:2.0.7'
 }

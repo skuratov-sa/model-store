@@ -2,6 +2,11 @@ server:
   port: 8081
 
 spring:
+  # Default mode. Select the servlet implementation with --spring.profiles.active=modern.
+  profiles:
+    default: legacy
+    group:
+      test: legacy
   config:
     import: optional:file:.env[.properties]
   application:
@@ -10,22 +15,21 @@ spring:
     allow-circular-references: true
   codec:
     max-in-memory-size: 100MB
-  r2dbc:
-    url: r2dbc:postgresql://localhost:5432/model_store?tcpKeepAlive=true
+  datasource:
+    url: jdbc:postgresql://localhost:5432/model_store
     username: root
     password: root
-    pool:
-      enabled: true
-      initial-size: 5
-      max-size: 40
-      max-idle-time: 20m
-      max-life-time: 30m
-      max-acquire-time: 10s
-      validation-query: "SELECT 1"
-      validation-depth: remote
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
   flyway:
     locations: classpath:/db/migration  # Путь к миграциям
     enabled: true
+    url: jdbc:postgresql://localhost:5432/model_store
+    user: root
+    password: root
   mail:
     host: ${SPRING_MAIL_HOST:smtp.gmail.com}
     port: ${SPRING_MAIL_PORT:587}
@@ -61,6 +65,9 @@ springdoc:
     path: /v3/api-docs
 
 app:
+  migration:
+    # Transition adapters use app.migration.scenarios.<scenario>=legacy|modern; unset entries remain legacy.
+    scenarios: {}
   max-participant-images: 1
   max-product-images: 4
   product-expiration-days: 30

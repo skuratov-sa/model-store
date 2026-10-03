@@ -1,0 +1,16 @@
+spring:
+  main:
+    web-application-type: reactive
+  r2dbc:
+    url: r2dbc:postgresql://localhost:5432/model_store?tcpKeepAlive=true
+    username: root
+    password: root
+    pool:
+      enabled: true
+      initial-size: 5
+      max-size: 40
+      max-idle-time: 20m
+      max-life-time: 30m
+      max-acquire-time: 10s
+      validation-query: "SELECT 1"
+      validation-depth: remote

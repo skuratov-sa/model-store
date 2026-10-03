@@ -1,0 +1,9 @@
+spring:
+  autoconfigure:
+    exclude: org.springframework.boot.r2dbc.autoconfigure.R2dbcAutoConfiguration
+  main:
+    web-application-type: servlet
+  data:
+    r2dbc:
+      repositories:
+        enabled: false

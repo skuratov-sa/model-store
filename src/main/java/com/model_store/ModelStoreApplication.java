@@ -2,20 +2,12 @@ package com.model_store;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
-import org.springframework.cloud.aws.context.config.annotation.EnableContextCredentials;
-import org.springframework.data.r2dbc.repository.config.EnableR2dbcRepositories;
-import org.springframework.scheduling.annotation.EnableScheduling;
-import org.springframework.web.reactive.config.EnableWebFlux;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
+import com.model_store.configuration.ModernModeLegacyFilter;
 
-
-
-@EnableWebFlux
-@ConfigurationPropertiesScan
-@EnableContextCredentials
 @SpringBootApplication
-@EnableScheduling
-@EnableR2dbcRepositories
+@ComponentScan(excludeFilters = @ComponentScan.Filter(type = FilterType.CUSTOM, classes = ModernModeLegacyFilter.class))
 public class ModelStoreApplication {
 
     public static void main(String[] args) {
