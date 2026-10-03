@@ -57,6 +57,9 @@ flyway {
 
 dependencies {
 
+    // Required by Spring Data for Kotlin entity and repository introspection.
+    implementation 'org.jetbrains.kotlin:kotlin-reflect'
+
     // Lombok
     annotationProcessor 'org.projectlombok:lombok:1.18.38'
 
