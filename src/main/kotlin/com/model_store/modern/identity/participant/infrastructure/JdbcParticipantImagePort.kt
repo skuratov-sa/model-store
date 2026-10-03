@@ -10,8 +10,9 @@ class JdbcParticipantImagePort(private val jdbc: JdbcTemplate) : ParticipantImag
     override fun replace(participantId: Long, imageId: Long) {
         val claimed = jdbc.update(
             """UPDATE image SET entity_id = ? WHERE id = ? AND tag = 'PARTICIPANT'
-                AND status = 'ACTIVE' AND (entity_id IS NULL OR entity_id = ?)""",
-            participantId, imageId, participantId,
+                AND status = 'ACTIVE'
+                AND ((entity_id IS NULL AND uploaded_by = ?) OR entity_id = ?)""",
+            participantId, imageId, participantId, participantId,
         )
         if (claimed != 1) throw ParticipantImageNotFound(imageId)
         jdbc.update("UPDATE image SET status = 'DELETE' WHERE entity_id = ? AND tag = 'PARTICIPANT' AND id <> ? AND status = 'ACTIVE'", participantId, imageId)
