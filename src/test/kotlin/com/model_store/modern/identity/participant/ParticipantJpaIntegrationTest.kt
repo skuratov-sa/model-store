@@ -109,7 +109,8 @@ class ParticipantJpaIntegrationTest {
         val id = register.execute("participant-auth@example.test", "secret", 20)
         store.save(store.find(id)!!.copy(status = ParticipantStatus.ACTIVE))
         val jwt = Jwt.withTokenValue("participant-user-token")
-            .header("alg", "RS256").claim("id", id).claim("role", "USER").claim("login", "user$id").build()
+            .header("alg", "RS256").claim("id", id).claim("role", "USER").claim("login", "user$id")
+            .claim("type", "access").build()
         Mockito.`when`(jwtDecoder.decode("participant-user-token")).thenReturn(jwt)
         val securityFilter = webContext.getBean("springSecurityFilterChain") as Filter
         val builder = MockMvcBuilders.webAppContextSetup(webContext)
