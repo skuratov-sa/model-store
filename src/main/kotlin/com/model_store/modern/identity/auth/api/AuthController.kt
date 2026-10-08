@@ -30,7 +30,7 @@ class AuthController(private val auth: AuthUseCases) {
     @GetMapping("/profile")
     fun profile(authentication: Authentication): Map<String, Any?> {
         val actor = authentication.principal as? Actor ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
-        // Integration 01.2 must retain the verified Jwt in authentication credentials.
+        // Shared MVC security supplies the Jwt it has already decoded.
         val jwt = authentication.credentials as? Jwt
             ?: throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Verified JWT claims unavailable")
         val id = (jwt.claims["id"] as? Number)?.toLong()
