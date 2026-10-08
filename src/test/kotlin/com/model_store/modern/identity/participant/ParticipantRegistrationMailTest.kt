@@ -7,6 +7,7 @@ import com.model_store.modern.identity.verification.application.VerificationUseC
 import com.model_store.modern.identity.verification.domain.VerificationCodeInvalid
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
 import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.*
@@ -15,12 +16,16 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.security.oauth2.jwt.JwtDecoder
+import jakarta.servlet.Filter
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.support.TransactionTemplate
@@ -60,6 +65,7 @@ class ParticipantRegistrationMailTest {
         assertFalse(result.second.contains(email))
         assertFalse(result.second.contains("secret"))
         verify(mail, times(1)).sendVerification(eq(email) ?: email, matches("[0-9]{5}") ?: "")
+        mvc().perform(get("/participant")).andExpect(status().isUnauthorized)
     }
 
     @Test
@@ -125,15 +131,22 @@ class ParticipantRegistrationMailTest {
     }
 
     private fun postRegistration(email: String): Pair<Int, String> {
-        val response = MockMvcBuilders.webAppContextSetup(webContext).build()
+        val response = mvc()
             .perform(post("/participant").contentType(MediaType.APPLICATION_JSON)
                 .content("""{"mail":"$email","password":"secret","age":21}"""))
             .andReturn().response
         return response.status to response.contentAsString
     }
 
+    private fun mvc() = MockMvcBuilders.webAppContextSetup(webContext)
+        .addFilters<DefaultMockMvcBuilder>(webContext.getBean("springSecurityFilterChain") as Filter)
+        .build()
+
     companion object {
         private val postgres = EmbeddedPostgres.start()
+
+        @JvmStatic @AfterAll
+        fun close() = postgres.close()
 
         @JvmStatic @DynamicPropertySource
         fun database(registry: DynamicPropertyRegistry) {
