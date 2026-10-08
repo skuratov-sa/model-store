@@ -26,6 +26,11 @@ interface ParticipantPasswords {
     fun matches(raw: String, hash: String): Boolean
 }
 
+/** Invoked by the HTTP registration boundary after RegisterParticipant has committed. */
+interface ParticipantRegistrationMail {
+    fun send(participantId: Long)
+}
+
 data class FullProfile(
     val id: Long, val login: String?, val mail: String?, val fullName: String?, val phoneNumber: String?,
     val status: String, val sellerStatus: String?, val averageRating: Float?, val totalReviews: Int?,

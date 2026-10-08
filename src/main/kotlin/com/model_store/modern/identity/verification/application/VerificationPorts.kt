@@ -4,6 +4,7 @@ import com.model_store.modern.identity.verification.domain.VerificationParticipa
 
 interface VerificationParticipants {
     fun byMail(mail: String): VerificationParticipant?
+    fun byId(id: Long): VerificationParticipant?
 }
 
 interface VerificationMail {

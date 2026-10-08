@@ -5,6 +5,7 @@ import com.model_store.modern.seller.address.application.AddressUseCases
 import com.model_store.modern.seller.address.application.DeliveryAddressReadPort
 import com.model_store.modern.seller.address.domain.AddressFields
 import com.model_store.modern.seller.address.domain.AddressNotFound
+import io.jsonwebtoken.Jwts
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
@@ -12,11 +13,11 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.http.MediaType
-import org.springframework.security.oauth2.jwt.Jwt
-import org.springframework.security.oauth2.jwt.JwtDecoder
+import org.springframework.core.io.ClassPathResource
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
+import org.springframework.test.context.TestPropertySource
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -27,13 +28,18 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.context.WebApplicationContext
 import jakarta.servlet.Filter
-import org.mockito.Mockito
+import java.security.KeyFactory
+import java.security.PrivateKey
+import java.security.spec.PKCS8EncodedKeySpec
+import java.time.Instant
+import java.util.Base64
+import java.util.Date
 
 @SpringBootTest
 @ActiveProfiles("modern")
+@TestPropertySource(properties = ["app.public-key-path=keys/test_public_key.pem"])
 class AddressIntegrationTest {
     @field:MockitoBean lateinit var s3: AmazonS3
-    @field:MockitoBean lateinit var jwtDecoder: JwtDecoder
     @Autowired lateinit var cases: AddressUseCases
     @Autowired lateinit var read: DeliveryAddressReadPort
     @Autowired lateinit var jdbc: JdbcTemplate
@@ -78,20 +84,24 @@ class AddressIntegrationTest {
     fun `HTTP routes require a token and hide foreign addresses`() {
         val owner = participant()
         val other = participant()
-        fun token(id: Long): String {
-            val value = "address-user-$id"
-            Mockito.`when`(jwtDecoder.decode(value)).thenReturn(
-                Jwt.withTokenValue(value).header("alg", "RS256")
-                    .claim("id", id).claim("role", "USER").claim("login", "user$id").build(),
-            )
-            return "Bearer $value"
+        fun token(id: Long, type: String? = "access"): String {
+            val jwt = Jwts.builder().claim("id", id).claim("role", "USER").claim("login", "user$id")
+                .expiration(Date.from(Instant.now().plusSeconds(3600)))
+            if (type != null) jwt.claim("type", type)
+            return "Bearer ${jwt.signWith(privateKey).compact()}"
         }
         val ownerToken = token(owner)
         val otherToken = token(other)
+        val missingTypeToken = token(owner, null)
+        val refreshToken = token(owner, "refresh")
         val builder = MockMvcBuilders.webAppContextSetup(webContext)
         builder.addFilters<DefaultMockMvcBuilder>(webContext.getBean("springSecurityFilterChain") as Filter)
         val mvc = builder.build()
         assertEquals(401, mvc.perform(get("/address/regions")).andReturn().response.status)
+        assertEquals(401, mvc.perform(get("/address")).andReturn().response.status)
+        assertEquals(401, mvc.perform(get("/address/regions").header("Authorization", missingTypeToken)).andReturn().response.status)
+        assertEquals(401, mvc.perform(get("/address").header("Authorization", refreshToken)).andReturn().response.status)
+        assertEquals(401, mvc.perform(post("/address").header("Authorization", refreshToken)).andReturn().response.status)
         assertEquals(200, mvc.perform(get("/address/regions").header("Authorization", ownerToken)).andReturn().response.status)
         val id = mvc.perform(post("/address").header("Authorization", ownerToken)
             .contentType(MediaType.APPLICATION_JSON)
@@ -118,6 +128,12 @@ class AddressIntegrationTest {
 
     companion object {
         private val postgres = EmbeddedPostgres.start()
+        private val privateKey: PrivateKey by lazy {
+            val pem = ClassPathResource("keys/test_private_key.pem").inputStream.bufferedReader().use { it.readText() }
+                .replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", "")
+                .replace(Regex("\\s+"), "")
+            KeyFactory.getInstance("RSA").generatePrivate(PKCS8EncodedKeySpec(Base64.getDecoder().decode(pem)))
+        }
 
         @JvmStatic
         @DynamicPropertySource

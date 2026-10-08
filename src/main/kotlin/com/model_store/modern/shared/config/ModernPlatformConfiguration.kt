@@ -16,8 +16,8 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
 import org.springframework.security.oauth2.jwt.JwtException
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter
 import org.springframework.core.convert.converter.Converter
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.authentication.AbstractAuthenticationToken
+import org.springframework.security.core.GrantedAuthority
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter
 import org.springframework.security.web.util.matcher.RequestMatcher
@@ -92,7 +92,7 @@ class ModernPlatformConfiguration {
                 tokenType = requireNotNull(TokenType.fromClaim(jwt.claims["type"] as? String)),
             )
             val grantedAuthorities = authorities.convert(jwt).orEmpty()
-            UsernamePasswordAuthenticationToken(actor, jwt, grantedAuthorities)
+            VerifiedActorAuthentication(actor, jwt, grantedAuthorities)
         }
     }
 
@@ -123,8 +123,10 @@ class ModernPlatformConfiguration {
                     exact(HttpMethod.GET, "/images"), exact(HttpMethod.GET, "/images/default"),
                     exact(HttpMethod.GET, "/images/metadata")).permitAll()
                 .requestMatchers(exact(HttpMethod.POST, "/participant"), exact(HttpMethod.POST, "/participants/find"),
+                    exact(HttpMethod.POST, "/auth/login"), exact(HttpMethod.POST, "/auth/refresh"),
                     exact(HttpMethod.POST, "/auth/verification/resend"), exact(HttpMethod.POST, "/auth/password/reset"),
                     exact(HttpMethod.POST, "/auth/verify-code"), exact(HttpMethod.POST, "/products/names/find")).permitAll()
+                .requestMatchers(singleProductSegment()).permitAll()
                 .requestMatchers(exact(HttpMethod.GET, "/modern/check/admin")).hasAuthority("SCOPE_ADMIN")
                 .requestMatchers(adminActions()).hasAuthority("SCOPE_ADMIN")
                 .anyRequest().authenticated()
@@ -136,12 +138,33 @@ class ModernPlatformConfiguration {
         request.method == method.name() && request.requestURI.removePrefix(request.contextPath) == path
     }
 
+    private fun singleProductSegment(): RequestMatcher = RequestMatcher { request ->
+        val path = request.requestURI.removePrefix(request.contextPath)
+        val segment = path.removePrefix("/product/")
+        request.method == HttpMethod.GET.name() && path.startsWith("/product/") &&
+            segment.isNotEmpty() && '/' !in segment && '\\' !in segment &&
+            !segment.contains("%2f", ignoreCase = true) && !segment.contains("%5c", ignoreCase = true)
+    }
+
     private fun participantId(jwt: Jwt): Long? =
         (jwt.claims["id"] as? Number)?.toString()?.toLongOrNull()?.takeIf { it > 0 }
 
     private fun adminActions(): RequestMatcher = RequestMatcher { request ->
         val path = request.requestURI.removePrefix(request.contextPath)
         path == "/admin/actions" || path.startsWith("/admin/actions/")
+    }
+
+    /** Carries the decoder-verified claims through ProviderManager credential erasure. */
+    private class VerifiedActorAuthentication(
+        private val actor: Actor,
+        private val verifiedJwt: Jwt,
+        authorities: Collection<GrantedAuthority>,
+    ) : AbstractAuthenticationToken(authorities) {
+        init { isAuthenticated = true }
+
+        override fun getPrincipal(): Actor = actor
+
+        override fun getCredentials(): Jwt = verifiedJwt
     }
 
     /** Legacy search treats an unusable optional Bearer as a guest, only on this exact route. */

@@ -2,6 +2,7 @@ package com.model_store.modern.identity.verification.application
 
 import com.model_store.modern.identity.participant.application.ParticipantVerificationCommands
 import com.model_store.modern.identity.participant.application.ParticipantVerificationFailure
+import com.model_store.modern.identity.participant.application.ParticipantRegistrationMail
 import com.model_store.modern.identity.verification.domain.VerificationAccountUnavailable
 import com.model_store.modern.identity.verification.domain.VerificationCodeInvalid
 import com.model_store.modern.identity.verification.domain.VerificationMailNotFound
@@ -19,7 +20,7 @@ class VerificationUseCases(
     private val mail: VerificationMail,
     private val codes: VerificationCodes,
     private val secrets: VerificationSecrets,
-) {
+) : ParticipantRegistrationMail {
     // A fixed set of locks serializes mail issuance, code replacement, consumption and reset per participant.
     // It does not create a database transaction around SMTP and only protects this JVM.
     private val participantLocks = Array(256) { Any() }
@@ -51,6 +52,13 @@ class VerificationUseCases(
             codes.store(current.id, code)
             current.id
         }
+    }
+
+    override fun send(participantId: Long) = synchronized(lockFor(participantId)) {
+        val participant = participants.byId(participantId) ?: throw VerificationParticipantNotFound()
+        val code = secrets.code()
+        mail.sendVerification(participant.mail, code)
+        codes.store(participant.id, code)
     }
 
     fun verify(userId: Long, code: String) {
