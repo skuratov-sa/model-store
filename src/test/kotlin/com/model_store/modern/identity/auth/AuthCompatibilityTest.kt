@@ -1,6 +1,7 @@
 package com.model_store.modern.identity.auth
 
 import com.amazonaws.services.s3.AmazonS3
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.model_store.modern.identity.auth.api.AuthController
 import com.model_store.modern.identity.auth.api.AuthLoginRequest
 import com.model_store.modern.identity.auth.application.AuthUseCases
@@ -8,7 +9,6 @@ import com.model_store.modern.identity.auth.domain.AuthAccount
 import com.model_store.modern.identity.auth.domain.AuthStatus
 import com.model_store.modern.identity.auth.domain.AuthFailure
 import com.model_store.modern.identity.verification.application.VerificationMail
-import com.model_store.modern.identity.verification.application.VerificationCodes
 import com.model_store.modern.shared.domain.Actor
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
@@ -40,13 +40,13 @@ import java.util.Base64
 import java.util.Date
 import jakarta.servlet.Filter
 import org.springframework.web.context.WebApplicationContext
-import com.model_store.modern.identity.auth.api.AuthErrorHandler
 import com.model_store.configuration.property.ApplicationProperties
 import com.model_store.model.CustomUserDetails
 import com.model_store.model.constant.ParticipantStatus
 import com.model_store.repository.ParticipantRepository
 import com.model_store.service.impl.JwtServiceImpl
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.mockingDetails
 import org.springframework.security.core.userdetails.ReactiveUserDetailsService
 import org.springframework.web.server.ResponseStatusException
 
@@ -60,8 +60,7 @@ class AuthCompatibilityTest {
     @Autowired lateinit var decoder: JwtDecoder
     @Autowired lateinit var jdbc: JdbcTemplate
     @Autowired lateinit var webContext: WebApplicationContext
-    @Autowired lateinit var errors: AuthErrorHandler
-    @Autowired lateinit var codes: VerificationCodes
+    @Autowired lateinit var json: ObjectMapper
 
     @Test
     fun `login issues legacy compatible claims and profile returns the same JSON values`() {
@@ -130,7 +129,7 @@ class AuthCompatibilityTest {
             .claim("id", id).claim("role", "USER")
             .expiration(Date.from(Instant.now().minusSeconds(120))).signWith(keyPair.private).compact()
         val noExpiry = Jwts.builder().subject(mail).claim("type", "refresh").signWith(keyPair.private).compact()
-        val forged = legacyRefresh.dropLast(1) + if (legacyRefresh.last() == 'A') "B" else "A"
+        val forged = tamperSignature(legacyRefresh)
         val hmac = Jwts.builder().subject(mail).claim("type", "refresh")
             .expiration(Date.from(Instant.now().plusSeconds(3600)))
             .signWith(Keys.hmacShaKeyFor(ByteArray(32) { 7 })).compact()
@@ -178,17 +177,28 @@ class AuthCompatibilityTest {
 
     @Test
     fun `status and password checks match legacy login while verified ID issues tokens`() {
+        val securedBuilder = MockMvcBuilders.webAppContextSetup(webContext)
+        securedBuilder.addFilters<DefaultMockMvcBuilder>(webContext.getBean("springSecurityFilterChain") as Filter)
+        val secured = securedBuilder.build()
+        fun httpLogin(id: Long) = secured.perform(post("/auth/login").contentType("application/json")
+            .content("""{"mail":"${mail(id)}","password":"password"}""")).andReturn().response
         val active = account("ACTIVE")
         assertThrows(BadCredentialsException::class.java) { auth.login(mail(active), "wrong") }
         assertThrows(BadCredentialsException::class.java) { auth.login("missing-${System.nanoTime()}@test.invalid", "password") }
         val waiting = account("WAITING_VERIFY")
         assertThrows(AuthFailure.WaitingVerify::class.java) { auth.login(mail(waiting), "password") }
+        val waitingDenied = httpLogin(waiting)
+        assertEquals(401, waitingDenied.status)
+        assertEquals("WAITING_VERIFY", json.readTree(waitingDenied.contentAsString)["code"].asText())
         assertThrows(AuthFailure.InvalidRefresh::class.java) { auth.issue(waiting) }
         jdbc.update("UPDATE participant SET status = 'ACTIVE'::participant_status WHERE id = ?", waiting)
         assertEquals(waiting, (decoder.decode(auth.issue(waiting).getValue("access_token")).claims["id"] as Number).toLong())
         listOf("BLOCKED", "DELETED").forEach { status ->
             val id = account(status)
             assertThrows(AuthFailure.Blocked::class.java) { auth.login(mail(id), "password") }
+            val denied = httpLogin(id)
+            assertEquals(403, denied.status)
+            assertEquals("ACCOUNT_LOCKED", json.readTree(denied.contentAsString)["code"].asText())
             assertThrows(AuthFailure.InvalidRefresh::class.java) { auth.issue(id) }
             val legacyRefresh = Jwts.builder().subject(mail(id)).claim("type", "refresh")
                 .expiration(Date.from(Instant.now().plusSeconds(3600))).signWith(keyPair.private).compact()
@@ -207,49 +217,89 @@ class AuthCompatibilityTest {
         assertEquals("admin", agentAccess.getClaimAsString("issuedBy"))
         assertTrue(kotlin.math.abs(Duration.ofHours(24).seconds - (agentAccess.expiresAt!!.epochSecond - Instant.now().epochSecond)) <= 2)
         assertThrows(AuthFailure.InvalidRefresh::class.java) { auth.refresh(agentAccess.tokenValue) }
+        val agentProfile = secured.perform(get("/auth/profile").header("Authorization", "Bearer ${agentAccess.tokenValue}"))
+            .andReturn().response
+        assertEquals(200, agentProfile.status)
+        assertEquals("agent_access", json.readTree(agentProfile.contentAsString)["type"].asText())
+        assertEquals("admin", json.readTree(agentProfile.contentAsString)["issuedBy"].asText())
         assertFalse(AuthAccount(agent, "agent", mail(agent), null, "secret-hash", "USER", AuthStatus.ACTIVE, null, true)
             .toString().contains("secret-hash"))
     }
 
     @Test
-    fun `MVC response shapes and secured profile use verified access only`() {
+    fun `MVC security permits login and refresh and profile returns all verified claims`() {
         val id = account("ACTIVE")
         val mail = mail(id)
-        val endpoint = MockMvcBuilders.standaloneSetup(controller).setControllerAdvice(errors).build()
-        val login = endpoint.perform(post("/auth/login").contentType("application/json")
+        val securedBuilder = MockMvcBuilders.webAppContextSetup(webContext)
+        securedBuilder.addFilters<DefaultMockMvcBuilder>(webContext.getBean("springSecurityFilterChain") as Filter)
+        val secured = securedBuilder.build()
+
+        val login = secured.perform(post("/auth/login").contentType("application/json")
             .content("""{"mail":"$mail","password":"password"}""")).andReturn().response
         assertEquals(200, login.status)
-        assertTrue(login.contentAsString.contains("access_token"))
-        assertTrue(login.contentAsString.contains("refresh_token"))
-        val badLogin = endpoint.perform(post("/auth/login").contentType("application/json")
+        val issued = json.readTree(login.contentAsString)
+        assertEquals(setOf("access_token", "refresh_token"), issued.fieldNames().asSequence().toSet())
+        val access = issued["access_token"].asText()
+        val refresh = issued["refresh_token"].asText()
+        assertEquals(id, (decoder.decode(access).claims["id"] as Number).toLong())
+
+        val badLogin = secured.perform(post("/auth/login").contentType("application/json")
             .content("""{"mail":"$mail","password":"wrong"}""")).andReturn().response
         assertEquals(401, badLogin.status)
         assertTrue(badLogin.contentAsString.contains("BAD_CREDENTIALS"))
         assertFalse(badLogin.contentAsString.contains("wrong"))
         assertFalse(AuthLoginRequest(mail, "password").toString().contains("password=password"))
-        val badRefresh = endpoint.perform(post("/auth/refresh").header("X-Refresh-Token", "garbage"))
+        val unknown = secured.perform(post("/auth/login").contentType("application/json")
+            .content("""{"mail":"missing-${System.nanoTime()}@example.test","password":"wrong"}"""))
+            .andReturn().response
+        assertEquals(401, unknown.status)
+        for (field in listOf("code", "message", "status", "details"))
+            assertEquals(json.readTree(badLogin.contentAsString)[field], json.readTree(unknown.contentAsString)[field])
+        val badRefresh = secured.perform(post("/auth/refresh").header("X-Refresh-Token", "garbage"))
             .andReturn().response
         assertEquals(401, badRefresh.status)
         assertTrue(badRefresh.contentAsString.contains("TOKEN_INVALID_OR_EXPIRED"))
+        val refreshed = secured.perform(post("/auth/refresh").header("X-Refresh-Token", refresh))
+            .andReturn().response
+        assertEquals(200, refreshed.status)
+        assertEquals("access", decoder.decode(refreshed.contentAsString).getClaimAsString("type"))
 
-        val access = auth.login(mail, "password").getValue("access_token")
-        val refresh = auth.login(mail, "password").getValue("refresh_token")
-        val securedBuilder = MockMvcBuilders.webAppContextSetup(webContext)
-        securedBuilder.addFilters<DefaultMockMvcBuilder>(webContext.getBean("springSecurityFilterChain") as Filter)
-        val secured = securedBuilder.build()
-        // Shared converter currently erases the verified Jwt; integration 01.2 must change this to 200.
-        assertEquals(503, secured.perform(get("/auth/profile").header("Authorization", "Bearer $access"))
-            .andReturn().response.status)
-        listOf(refresh, "garbage").forEach { token ->
+        val profile = secured.perform(get("/auth/profile").header("Authorization", "Bearer $access"))
+            .andReturn().response
+        assertEquals(200, profile.status)
+        val claims = json.readTree(profile.contentAsString)
+        val verified = decoder.decode(access)
+        val expectedClaims = verified.claims.mapValues { (_, value) -> if (value is Instant) value.epochSecond else value }
+        assertEquals(json.readTree(json.writeValueAsString(expectedClaims)), claims)
+        assertEquals(id, claims["id"].asLong())
+        assertEquals(verified.subject, claims["sub"].asText())
+        assertEquals(mail, claims["email"].asText())
+        assertEquals("Full Name", claims["fullName"].asText())
+        assertEquals("USER", claims["role"].asText())
+        assertEquals("access", claims["type"].asText())
+        assertEquals(verified.expiresAt!!.epochSecond, claims["exp"].asLong())
+        assertFalse(profile.contentAsString.contains("password"))
+
+        val verify = Jwts.builder().claim("type", "verify").claim("id", id)
+            .expiration(Date.from(Instant.now().plusSeconds(3600))).signWith(keyPair.private).compact()
+        val expired = Jwts.builder().subject(mail).claim("type", "access").claim("id", id).claim("role", "USER")
+            .expiration(Date.from(Instant.now().minusSeconds(120))).signWith(keyPair.private).compact()
+        val invalidId = Jwts.builder().subject(mail).claim("type", "access").claim("id", "wrong")
+            .claim("role", "USER").expiration(Date.from(Instant.now().plusSeconds(3600)))
+            .signWith(keyPair.private).compact()
+        val invalidRole = Jwts.builder().subject(mail).claim("type", "access").claim("id", id)
+            .claim("role", "").expiration(Date.from(Instant.now().plusSeconds(3600)))
+            .signWith(keyPair.private).compact()
+        val unsignedAgent = Jwts.builder().subject(mail).claim("type", "agent_access").claim("id", id)
+            .claim("role", "USER").expiration(Date.from(Instant.now().plusSeconds(3600)))
+            .signWith(keyPair.private).compact()
+        val forged = tamperSignature(access)
+        listOf(refresh, verify, expired, invalidId, invalidRole, unsignedAgent, forged, "garbage").forEach { token ->
             assertEquals(401, secured.perform(get("/auth/profile").header("Authorization", "Bearer $token"))
                 .andReturn().response.status)
         }
         assertEquals(401, secured.perform(get("/auth/profile")).andReturn().response.status)
-        // Exact public route matchers belong to integration 01.2.
-        assertEquals(401, secured.perform(post("/auth/login").contentType("application/json")
-            .content("""{"mail":"$mail","password":"password"}""")).andReturn().response.status)
-        assertEquals(401, secured.perform(post("/auth/refresh").header("X-Refresh-Token", refresh))
-            .andReturn().response.status)
+        assertEquals(401, secured.perform(get("/auth/login")).andReturn().response.status)
         assertEquals(403, secured.perform(get("/modern/check/admin").header("Authorization", "Bearer $access"))
             .andReturn().response.status)
         jdbc.update("UPDATE participant SET role = 'ADMIN'::participant_role WHERE id = ?", id)
@@ -262,19 +312,35 @@ class AuthCompatibilityTest {
     }
 
     @Test
-    fun `public verify-code activates participant and returns access and refresh`() {
-        val id = account("WAITING_VERIFY")
-        codes.store(id, "12345")
+    fun `registration mail code flows through verification into auth tokens once`() {
         val builder = MockMvcBuilders.webAppContextSetup(webContext)
         builder.addFilters<DefaultMockMvcBuilder>(webContext.getBean("springSecurityFilterChain") as Filter)
-        val response = builder.build().perform(post("/auth/verify-code").contentType("application/json")
-            .content("""{"userId":$id,"code":"12345"}""")).andReturn().response
+        val secured = builder.build()
+        val email = "auth-registration-${System.nanoTime()}@example.test"
+        val registration = secured.perform(post("/participant").contentType("application/json")
+            .content("""{"mail":"$email","password":"password","age":21}""")).andReturn().response
+        assertEquals(200, registration.status)
+        val id = registration.contentAsString.toLong()
+        val code = mockingDetails(mail).invocations.last {
+            it.method.name == "sendVerification" && it.arguments[0] == email
+        }.arguments[1] as String
+        assertTrue(code.matches(Regex("[0-9]{5}")))
+        val otherId = account("WAITING_VERIFY")
+        val wrongId = secured.perform(post("/auth/verify-code").contentType("application/json")
+            .content("""{"userId":$otherId,"code":"$code"}""")).andReturn().response
+        assertEquals(400, wrongId.status)
+        assertEquals("WAITING_VERIFY", jdbc.queryForObject("SELECT status::text FROM participant WHERE id = ?", String::class.java, otherId))
+
+        val response = secured.perform(post("/auth/verify-code").contentType("application/json")
+            .content("""{"userId":$id,"code":"$code"}""")).andReturn().response
         assertEquals(200, response.status)
-        assertTrue(response.contentAsString.contains("access_token"))
-        assertTrue(response.contentAsString.contains("refresh_token"))
+        val issued = json.readTree(response.contentAsString)
+        assertEquals(id, (decoder.decode(issued["access_token"].asText()).claims["id"] as Number).toLong())
+        assertEquals("refresh", Jwts.parser().verifyWith(keyPair.public).build()
+            .parseSignedClaims(issued["refresh_token"].asText()).payload["type"])
         assertEquals("ACTIVE", jdbc.queryForObject("SELECT status::text FROM participant WHERE id = ?", String::class.java, id))
-        val replay = builder.build().perform(post("/auth/verify-code").contentType("application/json")
-            .content("""{"userId":$id,"code":"12345"}""")).andReturn().response
+        val replay = secured.perform(post("/auth/verify-code").contentType("application/json")
+            .content("""{"userId":$id,"code":"$code"}""")).andReturn().response
         assertEquals(400, replay.status)
         assertFalse(replay.contentAsString.contains("access_token"))
     }
@@ -289,6 +355,13 @@ class AuthCompatibilityTest {
     }
 
     private fun mail(id: Long) = jdbc.queryForObject("SELECT mail FROM participant WHERE id = ?", String::class.java, id)!!
+
+    private fun tamperSignature(token: String): String {
+        val parts = token.split('.')
+        val signature = parts[2]
+        val first = if (signature[0] == 'A') 'B' else 'A'
+        return "${parts[0]}.${parts[1]}.$first${signature.substring(1)}"
+    }
 
     companion object {
         private val postgres = EmbeddedPostgres.start()
