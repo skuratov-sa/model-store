@@ -7,8 +7,13 @@ import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotNull
 import org.springframework.context.annotation.Profile
+import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.bind.annotation.*
+import java.time.OffsetDateTime
 
 data class RegisterParticipantRequest(
     val mail: String? = null,
@@ -34,6 +39,7 @@ data class FindParticipantRequest(val id: Long? = null, val name: String? = null
 @Profile("modern")
 class ParticipantController(
     private val register: RegisterParticipant,
+    private val registrationMail: ParticipantRegistrationMail,
     private val read: ReadParticipant,
     private val update: UpdateParticipant,
     private val delete: DeleteParticipant,
@@ -48,8 +54,20 @@ class ParticipantController(
         read.search(request.id, request.name)
 
     @PostMapping("/participant")
-    fun register(@Valid @RequestBody request: RegisterParticipantRequest): Long =
-        register.execute(request.mail, request.password, request.age)
+    @Transactional(transactionManager = "transactionManager", propagation = Propagation.NOT_SUPPORTED)
+    fun register(@Valid @RequestBody request: RegisterParticipantRequest): Long {
+        val id = register.execute(request.mail, request.password, request.age)
+        try {
+            registrationMail.send(id)
+        } catch (failure: RuntimeException) {
+            throw RegistrationMailFailure(failure)
+        }
+        return id
+    }
+
+    @ExceptionHandler(RegistrationMailFailure::class)
+    fun registrationMailFailure(): ResponseEntity<ParticipantError> = ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+        .body(ParticipantError("INTERNAL_ERROR", "Внутренняя ошибка", 500, OffsetDateTime.now().toString()))
 
     @PutMapping("/participant")
     fun update(@AuthenticationPrincipal actor: Actor?, @RequestBody request: UpdateParticipantRequest): Long =
@@ -73,3 +91,4 @@ class ParticipantController(
 }
 
 class ParticipantAccessDenied : RuntimeException("Доступ запрещён")
+private class RegistrationMailFailure(cause: RuntimeException) : RuntimeException("Registration mail failed", cause)

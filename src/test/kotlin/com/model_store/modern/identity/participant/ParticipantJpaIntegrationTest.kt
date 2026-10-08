@@ -10,6 +10,7 @@ import com.model_store.modern.identity.participant.application.ParticipantVerifi
 import com.model_store.modern.identity.participant.application.ParticipantVerificationFailure
 import com.model_store.modern.identity.participant.domain.ParticipantStatus
 import com.model_store.modern.identity.participant.domain.ParticipantImageNotFound
+import com.model_store.modern.identity.verification.application.VerificationMail
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
@@ -46,6 +47,7 @@ import java.util.concurrent.TimeUnit
 class ParticipantJpaIntegrationTest {
     @field:MockitoBean lateinit var s3: AmazonS3
     @field:MockitoBean lateinit var jwtDecoder: JwtDecoder
+    @field:MockitoBean lateinit var mail: VerificationMail
     @Autowired lateinit var register: RegisterParticipant
     @Autowired lateinit var read: ReadParticipant
     @Autowired lateinit var update: UpdateParticipant
