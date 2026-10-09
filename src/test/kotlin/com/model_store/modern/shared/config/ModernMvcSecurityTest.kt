@@ -23,6 +23,7 @@ import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthenticationToken
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationProvider
+import org.springframework.security.web.util.matcher.RequestMatcher
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.TestPropertySource
@@ -42,6 +43,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import org.springframework.mock.web.MockHttpServletRequest
 import jakarta.servlet.Filter
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
@@ -79,7 +81,8 @@ class ModernMvcSecurityTest {
             HttpMethod.POST to "/auth/verify-code", HttpMethod.POST to "/products/find",
             HttpMethod.POST to "/products/names/find",
             HttpMethod.POST to "/auth/login", HttpMethod.POST to "/auth/refresh",
-            HttpMethod.GET to "/product/42",
+            HttpMethod.GET to "/product/42", HttpMethod.GET to "/giveaways/active",
+            HttpMethod.GET to "/giveaways/products/42",
         )
         public.forEach { (method, path) -> assertEquals(200, call(method, path).status, "$method $path") }
         val protected = listOf(
@@ -99,6 +102,12 @@ class ModernMvcSecurityTest {
             HttpMethod.POST to "/product/42", HttpMethod.PUT to "/product/42",
             HttpMethod.DELETE to "/product/42", HttpMethod.HEAD to "/product/42",
             HttpMethod.PUT to "/auth/login", HttpMethod.DELETE to "/auth/refresh",
+            HttpMethod.GET to "/giveaways", HttpMethod.GET to "/giveaways/active/",
+            HttpMethod.GET to "/giveaways/active/extra", HttpMethod.GET to "/giveaways/history",
+            HttpMethod.GET to "/giveaways/products", HttpMethod.GET to "/giveaways/products/42/",
+            HttpMethod.GET to "/giveaways/products/42/extra", HttpMethod.GET to "/giveaways/admin",
+            HttpMethod.POST to "/giveaways/active", HttpMethod.PUT to "/giveaways/active",
+            HttpMethod.DELETE to "/giveaways/products/42", HttpMethod.HEAD to "/giveaways/products/42",
             HttpMethod.POST to "/admin/actions/categories",
         )
         protected.forEach { (method, path) ->
@@ -108,6 +117,11 @@ class ModernMvcSecurityTest {
         listOf("/product//42", "/product/42%2Fextra", "/product/42%5Cextra", "/product/42%252Fextra").forEach { path ->
             assertTrue(call(HttpMethod.GET, path).status in setOf(400, 401), path)
         }
+        listOf("/giveaways/products//42", "/giveaways/products/42%2Fextra",
+            "/giveaways/products/42%5Cextra", "/giveaways/products/42%252Fextra").forEach { path ->
+            assertTrue(call(HttpMethod.GET, path).status in setOf(400, 401), path)
+        }
+        assertEquals(400, call(HttpMethod.GET, "/giveaways/products/not-a-number").status)
         assertEquals(400, call(HttpMethod.GET, "/product/not-a-number").status)
     }
 
@@ -124,6 +138,33 @@ class ModernMvcSecurityTest {
         assertEquals(401, underContext(HttpMethod.GET, "/product/42/"))
         assertTrue(underContext(HttpMethod.GET, "/product//42") in setOf(400, 401))
         assertEquals(401, underContext(HttpMethod.PUT, "/product/42"))
+        assertEquals(200, underContext(HttpMethod.GET, "/giveaways/active"))
+        assertEquals(200, underContext(HttpMethod.GET, "/giveaways/products/42"))
+        assertEquals(401, underContext(HttpMethod.GET, "/giveaways/products/42/extra"))
+        assertEquals(401, underContext(HttpMethod.POST, "/giveaways/active"))
+    }
+
+    @Test
+    fun `raw giveaway matcher rejects encoded separators independently of the firewall`() {
+        val method = ModernPlatformConfiguration::class.java.getDeclaredMethod("singleGiveawayProductSegment")
+        method.isAccessible = true
+        val matcher = method.invoke(ModernPlatformConfiguration()) as RequestMatcher
+        fun matches(path: String, verb: String = "GET", contextPath: String = ""): Boolean {
+            val request = MockHttpServletRequest(verb, "$contextPath$path")
+            request.contextPath = contextPath
+            return matcher.matches(request)
+        }
+        assertTrue(matches("/giveaways/products/42"))
+        assertTrue(matches("/giveaways/products/42", contextPath = "/store"))
+        assertTrue(matches("/giveaways/products/not-a-number")) // MVC supplies the legacy 400.
+        listOf("/giveaways/products/", "/giveaways/products//42", "/giveaways/products/42/",
+            "/giveaways/products/42/extra", "/giveaways/products/42\\extra",
+            "/giveaways/products/42;mode=admin",
+            "/giveaways/products/42%2Fextra", "/giveaways/products/42%5cextra",
+            "/giveaways/products/42%252Fextra", "/giveaways/products/42%255cextra").forEach {
+            assertFalse(matches(it), it)
+        }
+        assertFalse(matches("/giveaways/products/42", verb = "POST"))
     }
 
     @Test
@@ -166,6 +207,8 @@ class ModernMvcSecurityTest {
             assertEquals(401, call(HttpMethod.GET, "/categories", bearer).status)
             assertEquals(401, call(HttpMethod.GET, "/auth/profile", bearer).status)
             assertEquals(401, call(HttpMethod.GET, "/product/42", bearer).status)
+            assertEquals(401, call(HttpMethod.GET, "/giveaways/active", bearer).status)
+            assertEquals(401, call(HttpMethod.GET, "/giveaways/products/42", bearer).status)
             assertEquals(401, call(HttpMethod.POST, "/auth/login", bearer).status)
             assertEquals(401, call(HttpMethod.POST, "/auth/refresh", bearer).status)
         }
@@ -217,6 +260,9 @@ class ModernMvcSecurityTest {
     class ProbeController {
         @GetMapping("/product/{id}")
         fun product(@PathVariable id: Long): String = "product:$id"
+
+        @GetMapping("/giveaways/products/{productId}")
+        fun giveawayProduct(@PathVariable productId: Long): String = "giveaway:$productId"
 
         @GetMapping("/auth/profile")
         fun profile(authentication: Authentication): String {

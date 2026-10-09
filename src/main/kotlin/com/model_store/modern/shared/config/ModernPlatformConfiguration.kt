@@ -127,6 +127,7 @@ class ModernPlatformConfiguration {
                     exact(HttpMethod.POST, "/auth/verification/resend"), exact(HttpMethod.POST, "/auth/password/reset"),
                     exact(HttpMethod.POST, "/auth/verify-code"), exact(HttpMethod.POST, "/products/names/find")).permitAll()
                 .requestMatchers(singleProductSegment()).permitAll()
+                .requestMatchers(exact(HttpMethod.GET, "/giveaways/active"), singleGiveawayProductSegment()).permitAll()
                 .requestMatchers(exact(HttpMethod.GET, "/modern/check/admin")).hasAuthority("SCOPE_ADMIN")
                 .requestMatchers(adminActions()).hasAuthority("SCOPE_ADMIN")
                 .anyRequest().authenticated()
@@ -144,6 +145,13 @@ class ModernPlatformConfiguration {
         request.method == HttpMethod.GET.name() && path.startsWith("/product/") &&
             segment.isNotEmpty() && '/' !in segment && '\\' !in segment &&
             !segment.contains("%2f", ignoreCase = true) && !segment.contains("%5c", ignoreCase = true)
+    }
+
+    private fun singleGiveawayProductSegment(): RequestMatcher = RequestMatcher { request ->
+        val path = request.requestURI.removePrefix(request.contextPath)
+        val segment = path.removePrefix("/giveaways/products/")
+        request.method == HttpMethod.GET.name() && path.startsWith("/giveaways/products/") &&
+            segment.isNotEmpty() && '/' !in segment && '\\' !in segment && '%' !in segment && ';' !in segment
     }
 
     private fun participantId(jwt: Jwt): Long? =

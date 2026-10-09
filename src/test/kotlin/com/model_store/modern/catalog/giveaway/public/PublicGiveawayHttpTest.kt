@@ -28,7 +28,7 @@ import java.time.Instant
 import java.util.Base64
 import java.util.Date
 
-@SpringBootTest(properties = ["app.public-key-path=keys/test_public_key.pem"])
+@SpringBootTest(properties = ["app.public-key-path=keys/test_public_key.pem", "app.private-key-path=keys/test_private_key.pem"])
 @ActiveProfiles("modern")
 class PublicGiveawayHttpTest {
     @Autowired lateinit var context: WebApplicationContext
@@ -37,7 +37,7 @@ class PublicGiveawayHttpTest {
     @MockitoBean lateinit var mail: JavaMailSender
 
     @Test
-    fun `full security chain serves authenticated giveaway reads`() {
+    fun `full security chain serves guest and authenticated giveaway reads`() {
         val owner = jdbc.queryForObject("""INSERT INTO participant(login,mail,password,status,role,deadline_sending,deadline_payment)
             VALUES ('giveaway21owner','giveaway21@example.test','hash','ACTIVE','USER',3,7) RETURNING id""", Long::class.java)!!
         val product = jdbc.queryForObject("""INSERT INTO product(name,description,price,currency,participant_id,
@@ -48,9 +48,8 @@ class PublicGiveawayHttpTest {
             Long::class.java, owner)!!
         val mvc = MockMvcBuilders.webAppContextSetup(context)
             .addFilters<DefaultMockMvcBuilder>(context.getBean("springSecurityFilterChain") as Filter).build()
-        // Shared public matchers have not yet been integrated for these two routes.
-        assertEquals(401, mvc.perform(get("/giveaways/active")).andReturn().response.status)
-        assertEquals(401, mvc.perform(get("/giveaways/products/$product")).andReturn().response.status)
+        assertEquals(200, mvc.perform(get("/giveaways/active")).andReturn().response.status)
+        assertEquals(200, mvc.perform(get("/giveaways/products/$product")).andReturn().response.status)
         val bearer = "Bearer ${token(owner)}"
         val active = mvc.perform(get("/giveaways/active").header("Authorization", bearer)).andReturn().response
         assertEquals(200, active.status)
