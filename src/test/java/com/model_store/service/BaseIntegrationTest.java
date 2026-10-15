@@ -33,6 +33,10 @@ public abstract class BaseIntegrationTest {
                 () -> "r2dbc:postgresql://localhost:" + port + "/postgres");
         registry.add("spring.r2dbc.username", () -> "postgres");
         registry.add("spring.r2dbc.password", () -> "");
+        registry.add("spring.datasource.url",
+                () -> "jdbc:postgresql://localhost:" + port + "/postgres");
+        registry.add("spring.datasource.username", () -> "postgres");
+        registry.add("spring.datasource.password", () -> "");
         registry.add("spring.flyway.url",
                 () -> "jdbc:postgresql://localhost:" + port + "/postgres");
         registry.add("spring.flyway.user", () -> "postgres");

@@ -129,6 +129,12 @@ class ProductControllerWebTest extends IntegrationTest {
                 .exchange().expectStatus().isOk().expectBody(Long.class).returnResult().getResponseBody();
         assertThat(id).isNotNull();
 
+        request.setName("Overlapping Giveaway");
+        webTestClient.post().uri("/products").header("Authorization", adminToken)
+                .contentType(MediaType.APPLICATION_JSON).bodyValue(request)
+                .exchange().expectStatus().isBadRequest()
+                .expectBody().jsonPath("$.code").isEqualTo("GIVEAWAY_WINDOW_OVERLAP");
+
         webTestClient.get().uri("/product/{id}", id).exchange().expectStatus().isNotFound();
         webTestClient.get().uri("/giveaways/active").exchange()
                 .expectStatus().isOk().expectHeader().valueEquals("X-Robots-Tag", "noindex, nofollow")

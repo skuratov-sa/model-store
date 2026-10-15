@@ -4,6 +4,7 @@ import com.model_store.exception.ApiException;
 import com.model_store.exception.constant.ErrorCode;
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.CreateOrUpdateProductRequest;
+import com.model_store.model.CustomUserDetails;
 import com.model_store.model.base.Address;
 import com.model_store.model.base.Image;
 import com.model_store.model.base.Order;
@@ -39,12 +40,14 @@ import com.model_store.repository.TransferRepository;
 import com.model_store.service.BasketService;
 import com.model_store.service.IntegrationTest;
 import com.model_store.service.OrderService;
+import com.model_store.service.JwtService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.r2dbc.core.DatabaseClient;
+import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.transaction.reactive.TransactionalOperator;
-import org.springframework.web.server.ResponseStatusException;
 import reactor.test.StepVerifier;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Signal;
@@ -66,10 +69,17 @@ import static com.model_store.model.constant.OrderStatus.AWAITING_PREPAYMENT;
 import static com.model_store.model.constant.OrderStatus.AWAITING_PREPAYMENT_APPROVAL;
 import static org.assertj.core.api.Assertions.assertThat;
 
+@AutoConfigureWebTestClient
 class OrderServiceImplTest extends IntegrationTest {
 
     @Autowired
     private OrderService orderService;
+
+    @Autowired
+    private JwtService jwtService;
+
+    @Autowired
+    private WebTestClient webTestClient;
 
     @Autowired
     private BasketService basketService;
@@ -463,6 +473,7 @@ class OrderServiceImplTest extends IntegrationTest {
                     assertThat(response.getOrderId()).isNotNull();
                     assertThat(response.getProduct()).isNotNull();
                     assertThat(response.getUserInfo()).isNotNull();
+                    assertThat(response.getPaymentProofImageId()).isNull();
                 })
                 .verifyComplete();
     }
@@ -477,8 +488,70 @@ class OrderServiceImplTest extends IntegrationTest {
                     assertThat(response.getOrderId()).isNotNull();
                     assertThat(response.getProduct()).isNotNull();
                     assertThat(response.getUserInfo()).isNotNull();
+                    assertThat(response.getPaymentProofImageId()).isNull();
                 })
                 .verifyComplete();
+    }
+
+    @Test
+    void orderListsExposePaymentProofBeforeFirstCase() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        Image proof = saveOrderImage();
+        orderService.paymentOrder(orderId, proof.getId(), "paid", buyer.getId()).block();
+
+        assertThat(orderCaseRepository.findByOrderId(orderId).collectList().block()).isEmpty();
+        assertThat(orderService.getOrdersByCustomer(buyer.getId()).next().block().getPaymentProofImageId())
+                .isEqualTo(proof.getId());
+        assertThat(orderService.getOrdersBySeller(seller.getId()).next().block().getPaymentProofImageId())
+                .isEqualTo(proof.getId());
+    }
+
+    @Test
+    void orderCaseHttpResponsesExposeProofCurrencyAndConflictCodes() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        Image proof = saveOrderImage();
+        orderService.paymentOrder(orderId, proof.getId(), "paid", buyer.getId()).block();
+
+        webTestClient.get().uri("/order/customer")
+                .header("Authorization", accessToken(buyer))
+                .exchange().expectStatus().isOk()
+                .expectBody().jsonPath("$[0].paymentProofImageId").isEqualTo(proof.getId().intValue());
+
+        Long caseId = orderCaseService.openDispute(orderId, buyer.getId(), "Спор", List.of()).block();
+        webTestClient.get().uri("/admin/actions/order-cases/{caseId}", caseId)
+                .header("Authorization", accessToken(admin))
+                .exchange().expectStatus().isOk()
+                .expectBody().jsonPath("$.currency").isEqualTo("RUB");
+
+        webTestClient.post().uri("/order/orders/{orderId}/DISPUTED?comment=again", orderId)
+                .header("Authorization", accessToken(seller))
+                .exchange().expectStatus().isEqualTo(409)
+                .expectBody().jsonPath("$.code").isEqualTo("ORDER_CASE_ALREADY_OPEN");
+
+        orderCaseService.resolve(caseId, admin.getId(), OrderCaseOutcome.BUYER, "Решено").block();
+        webTestClient.post().uri("/admin/actions/order-cases/{caseId}/resolve?outcome=BUYER&comment=again", caseId)
+                .header("Authorization", accessToken(admin))
+                .exchange().expectStatus().isEqualTo(409)
+                .expectBody().jsonPath("$.code").isEqualTo("ORDER_CASE_ALREADY_RESOLVED");
+    }
+
+    @Test
+    void buyerCanCancelBookedOrderFromBotSeller() {
+        seller.setIsAgent(true);
+        participantRepository.save(seller).block();
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+
+        webTestClient.post().uri("/order/{orderId}/CANCELLED", orderId)
+                .header("Authorization", accessToken(buyer))
+                .bodyValue(closeRequest())
+                .exchange().expectStatus().isOk();
+
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.CANCELLED);
     }
 
     @Test
@@ -602,6 +675,10 @@ class OrderServiceImplTest extends IntegrationTest {
         Long caseId = orderCaseService.openDispute(orderId, seller.getId(), "Покупатель сообщил об оплате", List.of()).block();
 
         assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.DISPUTED);
+        Product changedProduct = productRepository.findById(product.getId()).block();
+        changedProduct.setCurrency(Currency.USD);
+        productRepository.save(changedProduct).block();
+        assertThat(orderCaseService.adminDetail(caseId).block().currency()).isEqualTo(Currency.RUB);
         orderCaseService.changeTelegramUrl(caseId, admin.getId(), "https://t.me/order_dispute").block();
         orderCaseService.resolve(caseId, admin.getId(), OrderCaseOutcome.SELLER, "Решение в пользу продавца").block();
 
@@ -612,7 +689,7 @@ class OrderServiceImplTest extends IntegrationTest {
                 .contains(caseId);
         assertThat(productRepository.findById(product.getId()).block().getCount()).isEqualTo(4);
         StepVerifier.create(orderCaseService.changeTelegramUrl(caseId, admin.getId(), "https://t.me/changed"))
-                .expectError(IllegalArgumentException.class).verify();
+                .expectErrorSatisfies(error -> assertApiCode(error, ErrorCode.ORDER_CASE_ALREADY_RESOLVED)).verify();
     }
 
     @Test
@@ -628,6 +705,22 @@ class OrderServiceImplTest extends IntegrationTest {
         assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.FAILED);
         assertThat(productRepository.findById(product.getId()).block().getCount()).isEqualTo(4);
         assertThat(orderCaseRepository.findById(caseId).block().getOutcome()).isEqualTo(OrderCaseOutcome.BUYER);
+        StepVerifier.create(orderCaseService.resolve(caseId, admin.getId(), OrderCaseOutcome.BUYER, "Повтор"))
+                .expectErrorSatisfies(error -> assertApiCode(error, ErrorCode.ORDER_CASE_ALREADY_RESOLVED))
+                .verify();
+    }
+
+    @Test
+    void repeatedDisputeReturnsAlreadyOpenCode() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        orderService.paymentOrder(orderId, saveOrderImage().getId(), "paid", buyer.getId()).block();
+        orderCaseService.openDispute(orderId, buyer.getId(), "Первое обращение", List.of()).block();
+
+        StepVerifier.create(orderCaseService.openDispute(orderId, seller.getId(), "Повтор", List.of()))
+                .expectErrorSatisfies(error -> assertApiCode(error, ErrorCode.ORDER_CASE_ALREADY_OPEN))
+                .verify();
     }
 
     @Test
@@ -639,7 +732,7 @@ class OrderServiceImplTest extends IntegrationTest {
         Long caseId = orderCaseService.openDispute(orderId, seller.getId(), "Спор до отправки", List.of()).block();
 
         StepVerifier.create(orderCaseService.resolve(caseId, admin.getId(), OrderCaseOutcome.SELLER, "В пользу продавца"))
-                .expectError(IllegalArgumentException.class).verify();
+                .expectErrorSatisfies(error -> assertApiCode(error, ErrorCode.ORDER_CASE_INVALID_OUTCOME)).verify();
 
         assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.DISPUTED);
         assertThat(orderCaseRepository.findById(caseId).block().getState()).isEqualTo(OrderCaseState.OPEN);
@@ -705,21 +798,21 @@ class OrderServiceImplTest extends IntegrationTest {
         Product product = savePreorderProduct(500f);
         Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
         StepVerifier.create(orderCaseService.openDispute(orderId, buyer.getId(), "Нет оплаты", List.of()))
-                .expectError(IllegalArgumentException.class).verify();
+                .expectErrorSatisfies(error -> assertApiCode(error, ErrorCode.ORDER_CASE_INVALID_TRANSITION)).verify();
         orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
 
         StepVerifier.create(orderCaseService.openDispute(orderId, seller.getId(), "Нет оплаты", List.of()))
-                .expectError(IllegalArgumentException.class).verify();
+                .expectErrorSatisfies(error -> assertApiCode(error, ErrorCode.ORDER_CASE_INVALID_TRANSITION)).verify();
 
         Image proof = saveOrderImage();
         orderService.prepaymentOrder(orderId, proof.getId(), "prepaid", buyer.getId()).block();
         Long caseId = orderCaseService.openDispute(orderId, seller.getId(), "Предоплата внесена", List.of()).block();
 
         StepVerifier.create(orderCaseService.resolve(caseId, admin.getId(), OrderCaseOutcome.SELLER, "В пользу продавца"))
-                .expectError(IllegalArgumentException.class).verify();
+                .expectErrorSatisfies(error -> assertApiCode(error, ErrorCode.ORDER_CASE_INVALID_OUTCOME)).verify();
 
         StepVerifier.create(orderCaseService.requestCancellation(orderId, buyer.getId(), "Отменить"))
-                .expectError(IllegalArgumentException.class).verify();
+                .expectErrorSatisfies(error -> assertApiCode(error, ErrorCode.ORDER_CASE_ALREADY_OPEN)).verify();
 
         assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.DISPUTED);
         assertThat(orderCaseRepository.findById(caseId).block().getOpenedBy()).isEqualTo(seller.getId());
@@ -772,7 +865,7 @@ class OrderServiceImplTest extends IntegrationTest {
         assertThat(results.stream().filter(Signal::isOnNext).count()).isEqualTo(1);
         assertThat(results.stream().filter(Signal::isOnError).count()).isEqualTo(1);
         assertThat(results.stream().filter(Signal::isOnError).findFirst().orElseThrow().getThrowable())
-                .isInstanceOf(ResponseStatusException.class);
+                .satisfies(error -> assertApiCode(error, ErrorCode.ORDER_CASE_ALREADY_OPEN));
         assertThat(orderCaseRepository.findByOrderId(orderId).collectList().block()).hasSize(1);
     }
 
@@ -789,7 +882,7 @@ class OrderServiceImplTest extends IntegrationTest {
         assertThat(results.stream().filter(Signal::isOnNext).count()).isEqualTo(1);
         assertThat(results.stream().filter(Signal::isOnError).count()).isEqualTo(1);
         assertThat(results.stream().filter(Signal::isOnError).findFirst().orElseThrow().getThrowable())
-                .isInstanceOf(ResponseStatusException.class);
+                .satisfies(error -> assertApiCode(error, ErrorCode.PAYMENT_APPEAL_ALREADY_EXISTS));
         assertThat(orderCaseRepository.findByOrderId(orderId).collectList().block()).hasSize(1);
         assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.DISPUTED);
     }
@@ -1058,6 +1151,24 @@ class OrderServiceImplTest extends IntegrationTest {
         ApiException apiException = (ApiException) error;
         assertThat(apiException.getCode()).isEqualTo(code);
         assertThat(apiException.getMessage()).isEqualTo(message);
+    }
+
+    private void assertApiCode(Throwable error, ErrorCode code) {
+        assertThat(error).isInstanceOf(ApiException.class);
+        assertThat(((ApiException) error).getCode()).isEqualTo(code);
+    }
+
+    private String accessToken(Participant participant) {
+        CustomUserDetails details = CustomUserDetails.builder()
+                .id(participant.getId())
+                .login(participant.getLogin())
+                .email(participant.getMail())
+                .fullName(participant.getFullName())
+                .role(participant.getRole().name())
+                .password(participant.getPassword())
+                .status(participant.getStatus())
+                .build();
+        return "Bearer " + jwtService.generateAccessToken(details, Duration.ofMinutes(30));
     }
 
     private Product savePurchasableProduct(int count) {

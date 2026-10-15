@@ -9,6 +9,9 @@ import com.model_store.model.dto.ProductDto;
 import com.model_store.service.JwtService;
 import com.model_store.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -85,6 +88,8 @@ public class ProductController {
     }
 
     @Operation(summary = "Создать товар")
+    @ApiResponse(responseCode = "400", description = "GIVEAWAY_WINDOW_OVERLAP: период включённого розыгрыша пересекается с другим",
+            content = @Content(schema = @Schema(implementation = GlobalExceptionHandler.ApiErrorResponse.class)))
     @PostMapping(path = "/products")
     public Mono<Long> createProduct(@RequestHeader("Authorization") String authorizationHeader, @RequestBody CreateOrUpdateProductRequest request) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
@@ -93,6 +98,8 @@ public class ProductController {
     }
 
     @Operation(summary = "Обновить товар по id")
+    @ApiResponse(responseCode = "400", description = "GIVEAWAY_WINDOW_OVERLAP: период включённого розыгрыша пересекается с другим",
+            content = @Content(schema = @Schema(implementation = GlobalExceptionHandler.ApiErrorResponse.class)))
     @PutMapping(path = "/product/{id}")
     public Mono<Void> updateProduct(@PathVariable Long id, @RequestBody CreateOrUpdateProductRequest request, @RequestHeader("Authorization") String authorizationHeader) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
