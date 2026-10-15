@@ -37,7 +37,10 @@ import java.util.Date
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-@SpringBootTest(properties = ["app.public-key-path=keys/test_public_key.pem"])
+@SpringBootTest(properties = [
+    "app.public-key-path=keys/test_public_key.pem",
+    "app.private-key-path=keys/test_private_key.pem",
+])
 @ActiveProfiles("modern")
 class ProductCommandHttpTest {
     @Autowired lateinit var context: WebApplicationContext
@@ -275,6 +278,20 @@ class ProductCommandHttpTest {
         }
         assertEquals("PARTICIPANT", jdbc.queryForObject("SELECT tag::text FROM image WHERE id=?", String::class.java, wrongTag))
         assertNull(jdbc.queryForObject("SELECT entity_id FROM image WHERE id=?", Long::class.java, noUploader))
+        val alreadyAttached = image(owner, "PRODUCT", "ACTIVE", otherProduct)
+        for ((ids, status, code) in listOf(
+            Triple(listOf(alreadyAttached), 409, "INVALID_REQUEST"),
+            Triple(listOf(Long.MAX_VALUE), 404, "IMAGE_NOT_FOUND"),
+            Triple(listOf(noUploader, noUploader), 400, "INVALID_REQUEST"),
+        )) {
+            val response = mvc.perform(put("/product/$id").header("Authorization", "Bearer ${token(owner)}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"name":"Must not save","imageIds":${json.writeValueAsString(ids)}}"""))
+                .andReturn().response
+            assertEquals(status, response.status, response.contentAsString)
+            assertEquals(code, json.readTree(response.contentAsString)["code"].asText())
+            assertEquals("Command16 checked", jdbc.queryForObject("SELECT name FROM product WHERE id=?", String::class.java, id))
+        }
         val oldAttached = image(null, "PRODUCT", "ACTIVE", id)
         assertEquals(200, mvc.perform(put("/product/$id").header("Authorization", "Bearer ${token(owner)}")
             .contentType(MediaType.APPLICATION_JSON)
