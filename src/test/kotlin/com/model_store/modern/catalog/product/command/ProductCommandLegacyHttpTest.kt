@@ -26,6 +26,7 @@ import java.net.http.HttpResponse
 import java.security.KeyFactory
 import java.security.PrivateKey
 import java.security.spec.PKCS8EncodedKeySpec
+import java.time.Duration
 import java.time.Instant
 import java.util.Base64
 import java.util.Date
@@ -34,6 +35,7 @@ import java.util.Date
     properties = ["app.public-key-path=keys/test_public_key.pem", "app.private-key-path=keys/test_private_key.pem"])
 @ActiveProfiles("legacy")
 class ProductCommandLegacyHttpTest {
+    private val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build()
     @Value("\${local.server.port}") private var port: Int = 0
     @Autowired lateinit var jdbc: JdbcTemplate
     @Autowired lateinit var json: ObjectMapper
@@ -80,10 +82,11 @@ class ProductCommandLegacyHttpTest {
     private fun request(method: String, path: String, body: String?, actorId: Long,
                         role: String = "USER"): HttpResponse<String> {
         val builder = HttpRequest.newBuilder(URI("http://localhost:$port$path"))
+            .timeout(Duration.ofSeconds(10))
             .header("Authorization", "Bearer ${token(actorId, role)}")
         if (body != null) builder.header("Content-Type", "application/json")
         val publisher = body?.let(HttpRequest.BodyPublishers::ofString) ?: HttpRequest.BodyPublishers.noBody()
-        return HttpClient.newHttpClient().send(builder.method(method, publisher).build(), HttpResponse.BodyHandlers.ofString())
+        return client.send(builder.method(method, publisher).build(), HttpResponse.BodyHandlers.ofString())
     }
 
     private fun participant(login: String, role: String): Long = jdbc.queryForObject(
