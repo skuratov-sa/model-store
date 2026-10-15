@@ -15,6 +15,7 @@ interface ParticipantStore {
 interface ParticipantProfileRead {
     fun fullProfile(participant: Participant): FullProfile
     fun search(id: Long?, name: String?): List<ParticipantSearchResult>
+    fun mainImageId(participantId: Long): Long?
 }
 
 interface ParticipantImagePort {

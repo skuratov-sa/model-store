@@ -22,7 +22,7 @@ class JdbcParticipantProfileRead(private val jdbc: JdbcTemplate) : ParticipantPr
         return FullProfile(
             id, participant.login, participant.mail, participant.fullName, participant.phoneNumber,
             participant.status.name, participant.sellerStatus?.name, rating?.first, rating?.second,
-            mainImage(id),
+            mainImageId(id),
             rows("""SELECT a.id, a.country, a.city, a.street, a.house_number AS "houseNumber",
                 a.apartment_number AS "apartmentNumber", a."index", a.status::text AS status
                 FROM address a JOIN participant_address pa ON pa.address_id = a.id WHERE pa.participant_id = ?""", id)
@@ -53,7 +53,7 @@ class JdbcParticipantProfileRead(private val jdbc: JdbcTemplate) : ParticipantPr
         return jdbc.query(sql.toString(), { rs, _ ->
             val participantId = rs.getLong("id")
             ParticipantSearchResult(
-                participantId, rs.getString("login"), null, null, mainImage(participantId),
+                participantId, rs.getString("login"), null, null, mainImageId(participantId),
                 experience(rs.getTimestamp("created_at")?.toInstant()),
                 count("SELECT count(*) FROM \"order\" WHERE seller_id = ? AND status = 'COMPLETED'", participantId),
                 count("SELECT count(*) FROM \"order\" WHERE customer_id = ? AND status = 'COMPLETED'", participantId),
@@ -71,10 +71,10 @@ class JdbcParticipantProfileRead(private val jdbc: JdbcTemplate) : ParticipantPr
         for (column in 1..meta.columnCount) put(meta.getColumnLabel(column), getObject(column))
     }
 
-    private fun mainImage(id: Long): Long? = jdbc.query(
+    override fun mainImageId(participantId: Long): Long? = jdbc.query(
         """SELECT id FROM image WHERE entity_id = ? AND tag = 'PARTICIPANT'
             AND status = 'ACTIVE' ORDER BY created_at LIMIT 1""",
-        { rs, _ -> rs.getLong(1) }, id,
+        { rs, _ -> rs.getLong(1) }, participantId,
     ).firstOrNull()
 
     private fun count(sql: String, id: Long): Int = jdbc.queryForObject(sql, Int::class.java, id) ?: 0
