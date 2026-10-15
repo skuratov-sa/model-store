@@ -122,12 +122,14 @@ public class OrderCaseService {
         if (outcome == null || outcome == OrderCaseOutcome.LEGACY) return invalidOutcome();
         return requireAdmin(adminId).then(cases.findById(caseId))
                 .switchIfEmpty(invalid())
-                .flatMap(c -> c.getState() == OrderCaseState.OPEN ? Mono.just(c) : alreadyResolved())
                 .flatMap(c -> orders.findByIdForUpdate(c.getOrderId()).switchIfEmpty(invalid())
-                        .flatMap(order -> resolutionTransition(c, order, outcome, comment)
-                                .then(cases.resolve(caseId, c.getVersion(), adminId, outcome.name(), comment))
-                                .flatMap(updated -> updated == 1 ? Mono.just(caseId)
-                                        : invalidTransition())));
+                        .flatMap(order -> cases.findById(caseId).switchIfEmpty(invalid())
+                                .flatMap(current -> current.getState() == OrderCaseState.OPEN
+                                        ? Mono.just(current) : alreadyResolved())
+                                .flatMap(current -> resolutionTransition(current, order, outcome, comment)
+                                        .then(cases.resolve(caseId, current.getVersion(), adminId, outcome.name(), comment))
+                                        .flatMap(updated -> updated == 1 ? Mono.just(caseId)
+                                                : invalidTransition()))));
     }
 
     private Mono<Void> resolutionTransition(OrderCase c, Order order, OrderCaseOutcome outcome, String comment) {

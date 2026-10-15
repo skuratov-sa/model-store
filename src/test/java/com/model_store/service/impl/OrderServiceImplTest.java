@@ -711,6 +711,26 @@ class OrderServiceImplTest extends IntegrationTest {
     }
 
     @Test
+    void concurrentResolutionsReturnAlreadyResolvedForSecondAdmin() throws Exception {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
+        orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
+        orderService.paymentOrder(orderId, saveOrderImage().getId(), "paid", buyer.getId()).block();
+        Long caseId = orderCaseService.openDispute(orderId, buyer.getId(), "Спор", List.of()).block();
+
+        List<Signal<Long>> results = raceWhileOrderRowLocked(orderId,
+                orderCaseService.resolve(caseId, admin.getId(), OrderCaseOutcome.BUYER, "Первое решение"),
+                orderCaseService.resolve(caseId, admin.getId(), OrderCaseOutcome.BUYER, "Повторное решение"));
+
+        assertThat(results.stream().filter(Signal::isOnNext).count()).isEqualTo(1);
+        assertThat(results.stream().filter(Signal::isOnError).count()).isEqualTo(1);
+        assertThat(results.stream().filter(Signal::isOnError).findFirst().orElseThrow().getThrowable())
+                .satisfies(error -> assertApiCode(error, ErrorCode.ORDER_CASE_ALREADY_RESOLVED));
+        assertThat(orderCaseRepository.findById(caseId).block().getState()).isEqualTo(OrderCaseState.RESOLVED);
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.FAILED);
+    }
+
+    @Test
     void repeatedDisputeReturnsAlreadyOpenCode() {
         Product product = savePurchasableProduct(5);
         Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
