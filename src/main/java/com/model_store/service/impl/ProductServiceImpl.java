@@ -627,7 +627,7 @@ public class ProductServiceImpl implements ProductService {
                         product.getId() == null ? -1L : product.getId(),
                         product.getGiveawayStartAt(), product.getGiveawayEndAt())
                 .flatMap(overlaps -> overlaps
-                        ? Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST,
+                        ? Mono.error(ApiErrors.badRequest(ErrorCode.GIVEAWAY_WINDOW_OVERLAP,
                                 "Период розыгрыша пересекается с другим запланированным розыгрышем"))
                         : Mono.empty());
     }

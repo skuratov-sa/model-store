@@ -17,7 +17,7 @@ import java.time.Instant;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "\"order\"")
+@Table(name = "order")
 public class Order {
     /**
      * Идентификатор заказа

@@ -36,7 +36,7 @@ import java.time.Instant
 import java.util.Base64
 import java.util.Date
 
-@SpringBootTest(properties = ["app.public-key-path=keys/test_public_key.pem"])
+@SpringBootTest(properties = ["app.public-key-path=keys/test_public_key.pem", "app.private-key-path=keys/test_private_key.pem"])
 @ActiveProfiles("modern")
 class ProductDetailHttpTest {
     @Autowired lateinit var context: WebApplicationContext

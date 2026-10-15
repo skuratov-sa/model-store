@@ -1,6 +1,7 @@
 package com.model_store.service.impl;
 
 import com.model_store.exception.ApiException;
+import com.model_store.exception.constant.ErrorCode;
 import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.FindMyProductRequest;
 import com.model_store.model.FindProductRequest;
@@ -250,7 +251,10 @@ class GiveawayIntegrationTest extends IntegrationTest {
         overlapping.getGiveaway().setEndAt(Instant.now().plusSeconds(5400));
 
         StepVerifier.create(productService.createProduct(overlapping, admin.getId(), ParticipantRole.ADMIN))
-                .expectError(ApiException.class).verify();
+                .expectErrorSatisfies(error -> {
+                    assertThat(error).isInstanceOf(ApiException.class);
+                    assertThat(((ApiException) error).getCode()).isEqualTo(ErrorCode.GIVEAWAY_WINDOW_OVERLAP);
+                }).verify();
         assertThat(productService.findActiveGiveaway().block().productId()).isEqualTo(firstId);
         assertThat(productRepository.findById(firstId).block().getGiveawayEnabled()).isTrue();
     }

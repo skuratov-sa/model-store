@@ -2,6 +2,7 @@ package com.model_store.controller;
 
 import com.amazonaws.services.kms.model.NotFoundException;
 import com.model_store.exception.ApiException;
+import com.model_store.exception.constant.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
@@ -60,7 +61,7 @@ public class GlobalExceptionHandler {
         }
 
         if (msg != null && msg.contains("uq_open_order_case")) {
-            return build(HttpStatus.CONFLICT, "ORDER_CASE_ALREADY_OPEN", "По заказу уже открыто обращение", null);
+            return build(HttpStatus.CONFLICT, ErrorCode.ORDER_CASE_ALREADY_OPEN.name(), "По заказу уже открыто обращение", null);
         }
 
         if (msg != null && msg.contains("review")) {

@@ -14,6 +14,10 @@ import com.model_store.service.ProductService;
 import com.model_store.service.JwtService;
 import com.model_store.service.impl.OrderCaseService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -58,6 +62,12 @@ public class AdminController {
     }
 
     @Operation(summary = "Завершить спор или обращение")
+    @ApiResponses({
+            @ApiResponse(responseCode = "400", description = "ORDER_CASE_INVALID_OUTCOME или ORDER_CASE_INVALID_TRANSITION",
+                    content = @Content(schema = @Schema(implementation = GlobalExceptionHandler.ApiErrorResponse.class))),
+            @ApiResponse(responseCode = "409", description = "ORDER_CASE_ALREADY_RESOLVED: обращение уже завершено",
+                    content = @Content(schema = @Schema(implementation = GlobalExceptionHandler.ApiErrorResponse.class)))
+    })
     @PostMapping("/order-cases/{caseId}/resolve")
     public Mono<Long> resolveOrderCase(@RequestHeader("Authorization") String authorizationHeader,
                                         @PathVariable Long caseId, @RequestParam OrderCaseOutcome outcome,

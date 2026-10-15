@@ -12,6 +12,10 @@ import com.model_store.service.OrderService;
 import com.model_store.service.impl.OrderCaseService;
 import com.model_store.repository.ParticipantRepository;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -120,6 +124,12 @@ public class OrderController {
     }
 
     @Operation(summary = "Открыть спор по заказу после заявленной оплаты")
+    @ApiResponses({
+            @ApiResponse(responseCode = "400", description = "ORDER_CASE_INVALID_TRANSITION: статус или подтверждение оплаты не позволяют открыть спор",
+                    content = @Content(schema = @Schema(implementation = GlobalExceptionHandler.ApiErrorResponse.class))),
+            @ApiResponse(responseCode = "409", description = "ORDER_CASE_ALREADY_OPEN: по заказу уже открыто обращение",
+                    content = @Content(schema = @Schema(implementation = GlobalExceptionHandler.ApiErrorResponse.class)))
+    })
     @PostMapping("/orders/{orderId}/DISPUTED")
     public Mono<Long> openDisputeForOrder(@RequestHeader("Authorization") String authorizationHeader,
                                           @PathVariable Long orderId, @RequestParam(required = false) List<Long> imageIds,
@@ -129,6 +139,12 @@ public class OrderController {
     }
 
     @Operation(summary = "Попросить администратора отменить неоплаченный заказ")
+    @ApiResponses({
+            @ApiResponse(responseCode = "400", description = "ORDER_CASE_INVALID_TRANSITION: запрос отмены недоступен для состояния заказа",
+                    content = @Content(schema = @Schema(implementation = GlobalExceptionHandler.ApiErrorResponse.class))),
+            @ApiResponse(responseCode = "409", description = "ORDER_CASE_ALREADY_OPEN: по заказу уже открыто обращение",
+                    content = @Content(schema = @Schema(implementation = GlobalExceptionHandler.ApiErrorResponse.class)))
+    })
     @PostMapping("/{orderId}/cancellation-request")
     public Mono<Long> requestCancellation(@RequestHeader("Authorization") String authorizationHeader,
                                           @PathVariable Long orderId, @RequestParam String comment) {
@@ -137,6 +153,12 @@ public class OrderController {
     }
 
     @Operation(summary = "Сообщить об оплате после отмены заказа")
+    @ApiResponses({
+            @ApiResponse(responseCode = "400", description = "ORDER_CASE_INVALID_TRANSITION: заказ не отменён",
+                    content = @Content(schema = @Schema(implementation = GlobalExceptionHandler.ApiErrorResponse.class))),
+            @ApiResponse(responseCode = "409", description = "ORDER_CASE_ALREADY_OPEN или PAYMENT_APPEAL_ALREADY_EXISTS",
+                    content = @Content(schema = @Schema(implementation = GlobalExceptionHandler.ApiErrorResponse.class)))
+    })
     @PostMapping("/{orderId}/payment-appeal")
     public Mono<Long> reportPaymentAfterCancellation(@RequestHeader("Authorization") String authorizationHeader,
                                                       @PathVariable Long orderId, @RequestParam String comment,

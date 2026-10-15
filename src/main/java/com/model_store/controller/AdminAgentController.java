@@ -21,6 +21,9 @@ import com.model_store.service.JwtService;
 import com.model_store.service.SocialNetworksService;
 import com.model_store.service.TransferService;
 import com.model_store.service.impl.AdminAgentService;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -76,6 +79,8 @@ public class AdminAgentController {
         return agents.product(productId);
     }
 
+    @ApiResponse(responseCode = "400", description = "GIVEAWAY_WINDOW_OVERLAP: период включённого розыгрыша пересекается с другим",
+            content = @Content(schema = @Schema(implementation = GlobalExceptionHandler.ApiErrorResponse.class)))
     @PutMapping("/agents/{agentId}/products/{productId}")
     public Mono<Void> updateProduct(@PathVariable Long agentId, @PathVariable Long productId,
                                     @RequestBody CreateOrUpdateProductRequest request) {

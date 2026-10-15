@@ -8,6 +8,9 @@ import com.model_store.model.dto.AdminGiveawayProductResponse;
 import com.model_store.model.constant.ParticipantRole;
 import com.model_store.service.JwtService;
 import com.model_store.service.ProductService;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -40,6 +43,8 @@ public class AdminGiveawayController {
         return Mono.defer(() -> products.findAdminGiveawayDetails(productId, requireAdminId(authorization)));
     }
 
+    @ApiResponse(responseCode = "400", description = "GIVEAWAY_WINDOW_OVERLAP: период включённого розыгрыша пересекается с другим",
+            content = @Content(schema = @Schema(implementation = GlobalExceptionHandler.ApiErrorResponse.class)))
     @PutMapping("/{productId}")
     public Mono<Void> update(@PathVariable Long productId,
                              @RequestHeader("Authorization") String authorization,
