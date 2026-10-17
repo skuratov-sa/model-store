@@ -56,7 +56,11 @@ import java.util.Date
 @SpringJUnitConfig
 @WebAppConfiguration
 @ActiveProfiles("modern", "security-test")
-@TestPropertySource(properties = ["app.public-key-path=keys/test_public_key.pem"])
+@TestPropertySource(properties = [
+    "app.public-key-path=keys/test_public_key.pem",
+    "app.allowed-origins[0]=http://localhost:3000",
+    "app.allowed-origins[1]=http://localhost:5173",
+])
 @ContextConfiguration(classes = [ModernMvcSecurityTest.SecurityTestConfiguration::class])
 class ModernMvcSecurityTest {
     @Autowired lateinit var context: WebApplicationContext
@@ -68,6 +72,34 @@ class ModernMvcSecurityTest {
         val builder = MockMvcBuilders.webAppContextSetup(context)
         builder.addFilters<DefaultMockMvcBuilder>(securityFilter)
         builder.build()
+    }
+
+    @Test
+    fun `CORS keeps configured origins credentials and exact preflight methods`() {
+        for (path in listOf("/products/find", "/images", "/admin/actions/categories")) {
+            val allowed = mvc.perform(request(HttpMethod.OPTIONS, path)
+                .header("Origin", "http://localhost:3000")
+                .header("Access-Control-Request-Method", "POST")
+                .header("Access-Control-Request-Headers", "Authorization, Content-Type"))
+                .andReturn().response
+            assertEquals(200, allowed.status, path)
+            assertEquals("http://localhost:3000", allowed.getHeader("Access-Control-Allow-Origin"))
+            assertEquals("true", allowed.getHeader("Access-Control-Allow-Credentials"))
+            assertTrue(allowed.getHeader("Access-Control-Allow-Headers")!!.contains("Authorization"))
+
+            val denied = mvc.perform(request(HttpMethod.OPTIONS, path)
+                .header("Origin", "https://unlisted.example")
+                .header("Access-Control-Request-Method", "POST"))
+                .andReturn().response
+            assertEquals(403, denied.status, path)
+            assertEquals(null, denied.getHeader("Access-Control-Allow-Origin"))
+        }
+        val actual = mvc.perform(request(HttpMethod.GET, "/categories")
+            .header("Origin", "http://localhost:5173")).andReturn().response
+        assertEquals(200, actual.status)
+        assertEquals("http://localhost:5173", actual.getHeader("Access-Control-Allow-Origin"))
+        assertEquals("true", actual.getHeader("Access-Control-Allow-Credentials"))
+        assertEquals(401, call(HttpMethod.POST, "/admin/actions/categories").status)
     }
 
     @Test
@@ -83,6 +115,8 @@ class ModernMvcSecurityTest {
             HttpMethod.POST to "/auth/login", HttpMethod.POST to "/auth/refresh",
             HttpMethod.GET to "/product/42", HttpMethod.GET to "/giveaways/active",
             HttpMethod.GET to "/giveaways/products/42",
+            HttpMethod.GET to "/swagger-ui.html", HttpMethod.GET to "/swagger-ui/index.html",
+            HttpMethod.GET to "/v3/api-docs", HttpMethod.GET to "/v3/api-docs/swagger-config",
         )
         public.forEach { (method, path) -> assertEquals(200, call(method, path).status, "$method $path") }
         val protected = listOf(
@@ -109,12 +143,15 @@ class ModernMvcSecurityTest {
             HttpMethod.POST to "/giveaways/active", HttpMethod.PUT to "/giveaways/active",
             HttpMethod.DELETE to "/giveaways/products/42", HttpMethod.HEAD to "/giveaways/products/42",
             HttpMethod.POST to "/admin/actions/categories",
+            HttpMethod.GET to "/error",
+            HttpMethod.POST to "/v3/api-docs", HttpMethod.PUT to "/swagger-ui/index.html",
         )
         protected.forEach { (method, path) ->
             val result = call(method, path)
             assertEquals(401, result.status, "$method $path: ${result.body}")
         }
-        listOf("/product//42", "/product/42%2Fextra", "/product/42%5Cextra", "/product/42%252Fextra").forEach { path ->
+        listOf("/product//42", "/product/42%2Fextra", "/product/42%5Cextra",
+            "/product/42%252Fextra", "/product/42;mode=admin").forEach { path ->
             assertTrue(call(HttpMethod.GET, path).status in setOf(400, 401), path)
         }
         listOf("/giveaways/products//42", "/giveaways/products/42%2Fextra",
@@ -142,6 +179,27 @@ class ModernMvcSecurityTest {
         assertEquals(200, underContext(HttpMethod.GET, "/giveaways/products/42"))
         assertEquals(401, underContext(HttpMethod.GET, "/giveaways/products/42/extra"))
         assertEquals(401, underContext(HttpMethod.POST, "/giveaways/active"))
+    }
+
+    @Test
+    fun `raw product matcher rejects matrix and encoded paths independently of firewall`() {
+        val method = ModernPlatformConfiguration::class.java.getDeclaredMethod("singleProductSegment")
+        method.isAccessible = true
+        val matcher = method.invoke(ModernPlatformConfiguration()) as RequestMatcher
+        fun matches(path: String, verb: String = "GET", contextPath: String = ""): Boolean {
+            val request = MockHttpServletRequest(verb, "$contextPath$path")
+            request.contextPath = contextPath
+            return matcher.matches(request)
+        }
+        assertTrue(matches("/product/42"))
+        assertTrue(matches("/product/42", contextPath = "/store"))
+        assertTrue(matches("/product/not-a-number")) // MVC supplies the legacy 400.
+        listOf("/product/", "/product//42", "/product/42/", "/product/42/extra",
+            "/product/42\\extra", "/product/42;mode=admin", "/product/42%2Fextra",
+            "/product/42%5cextra", "/product/42%252Fextra", "/product/42%255cextra").forEach {
+            assertFalse(matches(it), it)
+        }
+        assertFalse(matches("/product/42", verb = "POST"))
     }
 
     @Test

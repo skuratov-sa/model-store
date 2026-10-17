@@ -1,20 +1,17 @@
 package com.model_store.modern.identity.participant.api
 
 import com.model_store.modern.identity.participant.domain.*
+import com.model_store.modern.shared.api.MvcApiError
+import com.model_store.modern.shared.api.mvcApiError
 import org.springframework.context.annotation.Profile
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
-import org.springframework.http.ResponseEntity
 import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
-import java.time.OffsetDateTime
 
-data class ParticipantError(
-    val code: String, val message: String, val status: Int, val timestamp: String,
-    val details: Any? = null,
-)
+typealias ParticipantError = MvcApiError
 
 @RestControllerAdvice(assignableTypes = [ParticipantController::class])
 @Profile("modern")
@@ -50,11 +47,10 @@ class ParticipantErrorHandler {
     fun invalid(ex: IllegalArgumentException) = error(HttpStatus.BAD_REQUEST, "BAD_REQUEST", ex.message.orEmpty())
 
     @ExceptionHandler(MethodArgumentNotValidException::class)
-    fun validation(ex: MethodArgumentNotValidException) = ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
-        ParticipantError("VALIDATION_ERROR", "Ошибка валидации", 400, OffsetDateTime.now().toString(),
-            mapOf("errors" to ex.bindingResult.fieldErrors.map { "${it.field}: ${it.defaultMessage}" })),
-    )
+    fun validation(ex: MethodArgumentNotValidException) = mvcApiError(HttpStatus.BAD_REQUEST,
+        "VALIDATION_ERROR", "Ошибка валидации",
+        mapOf("errors" to ex.bindingResult.fieldErrors.map { "${it.field}: ${it.defaultMessage}" }))
 
     private fun error(status: HttpStatus, code: String, message: String) =
-        ResponseEntity.status(status).body(ParticipantError(code, message, status.value(), OffsetDateTime.now().toString()))
+        mvcApiError(status, code, message)
 }

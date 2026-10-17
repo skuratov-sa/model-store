@@ -1,9 +1,12 @@
 package com.model_store.modern.shared.config
 
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.boot.context.properties.bind.Bindable
+import org.springframework.boot.context.properties.bind.Binder
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Profile
+import org.springframework.core.env.Environment
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.http.HttpMethod
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator
@@ -21,9 +24,12 @@ import org.springframework.security.core.GrantedAuthority
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter
 import org.springframework.security.web.util.matcher.RequestMatcher
+import org.springframework.web.cors.CorsConfiguration
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.filter.OncePerRequestFilter
 import jakarta.servlet.FilterChain
+import jakarta.servlet.DispatcherType
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import java.nio.file.Files
@@ -39,6 +45,23 @@ import com.model_store.modern.shared.domain.TokenType
 @Configuration(proxyBeanMethods = false)
 @Profile("modern")
 class ModernPlatformConfiguration {
+    @Bean
+    fun modernCorsConfigurationSource(environment: Environment): UrlBasedCorsConfigurationSource {
+        val allowAll = environment.getProperty("app.cors-allow-all", Boolean::class.java, false)
+        val origins = Binder.get(environment)
+            .bind("app.allowed-origins", Bindable.listOf(String::class.java))
+            .orElse(emptyList())
+            .orEmpty()
+            .filter { it.isNotBlank() }
+        val configuration = CorsConfiguration().apply {
+            allowedOriginPatterns = if (allowAll) listOf("*") else origins
+            allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
+            allowedHeaders = listOf("Authorization", "Content-Type", "X-Requested-With")
+            allowCredentials = true
+        }
+        return UrlBasedCorsConfigurationSource().apply { registerCorsConfiguration("/**", configuration) }
+    }
+
     @Bean
     fun jwtDecoder(@Value("\${app.public-key-path}") publicKeyPath: String): JwtDecoder {
         val path = Path.of(publicKeyPath)
@@ -102,9 +125,11 @@ class ModernPlatformConfiguration {
         http: HttpSecurity,
         decoder: JwtDecoder,
         converter: Converter<Jwt, AbstractAuthenticationToken>,
+        cors: UrlBasedCorsConfigurationSource,
     ): SecurityFilterChain = http
         .securityMatcher(exact(HttpMethod.POST, "/products/find"))
         .csrf { it.disable() }
+        .cors { it.configurationSource(cors) }
         .addFilterBefore(OptionalSearchActorFilter(decoder, converter), AnonymousAuthenticationFilter::class.java)
         .authorizeHttpRequests { it.anyRequest().permitAll() }
         .build()
@@ -115,9 +140,12 @@ class ModernPlatformConfiguration {
         http: HttpSecurity,
         decoder: JwtDecoder,
         converter: Converter<Jwt, AbstractAuthenticationToken>,
+        cors: UrlBasedCorsConfigurationSource,
     ): SecurityFilterChain = http
         .csrf { it.disable() }
+        .cors { it.configurationSource(cors) }
         .authorizeHttpRequests {
+            it.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
             it.requestMatchers(exact(HttpMethod.GET, "/modern/check/public")).permitAll()
                 .requestMatchers(exact(HttpMethod.GET, "/categories"), exact(HttpMethod.GET, "/dictionary"),
                     exact(HttpMethod.GET, "/images"), exact(HttpMethod.GET, "/images/default"),
@@ -128,6 +156,10 @@ class ModernPlatformConfiguration {
                     exact(HttpMethod.POST, "/auth/verify-code"), exact(HttpMethod.POST, "/products/names/find")).permitAll()
                 .requestMatchers(singleProductSegment()).permitAll()
                 .requestMatchers(exact(HttpMethod.GET, "/giveaways/active"), singleGiveawayProductSegment()).permitAll()
+                .requestMatchers(exact(HttpMethod.GET, "/swagger-ui.html"),
+                    exact(HttpMethod.GET, "/v3/api-docs"), exact(HttpMethod.GET, "/v3/api-docs.yaml"),
+                    publicGetPrefix("/swagger-ui/"), publicGetPrefix("/webjars/"),
+                    publicGetPrefix("/v3/api-docs/")).permitAll()
                 .requestMatchers(exact(HttpMethod.GET, "/modern/check/admin")).hasAuthority("SCOPE_ADMIN")
                 .requestMatchers(adminActions()).hasAuthority("SCOPE_ADMIN")
                 .anyRequest().authenticated()
@@ -143,8 +175,7 @@ class ModernPlatformConfiguration {
         val path = request.requestURI.removePrefix(request.contextPath)
         val segment = path.removePrefix("/product/")
         request.method == HttpMethod.GET.name() && path.startsWith("/product/") &&
-            segment.isNotEmpty() && '/' !in segment && '\\' !in segment &&
-            !segment.contains("%2f", ignoreCase = true) && !segment.contains("%5c", ignoreCase = true)
+            segment.isNotEmpty() && '/' !in segment && '\\' !in segment && '%' !in segment && ';' !in segment
     }
 
     private fun singleGiveawayProductSegment(): RequestMatcher = RequestMatcher { request ->
@@ -156,6 +187,11 @@ class ModernPlatformConfiguration {
 
     private fun participantId(jwt: Jwt): Long? =
         (jwt.claims["id"] as? Number)?.toString()?.toLongOrNull()?.takeIf { it > 0 }
+
+    private fun publicGetPrefix(prefix: String): RequestMatcher = RequestMatcher { request ->
+        request.method == HttpMethod.GET.name() &&
+            request.requestURI.removePrefix(request.contextPath).startsWith(prefix)
+    }
 
     private fun adminActions(): RequestMatcher = RequestMatcher { request ->
         val path = request.requestURI.removePrefix(request.contextPath)

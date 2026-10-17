@@ -6,6 +6,8 @@ import com.model_store.modern.catalog.category.domain.CategoryRuleViolation
 import com.model_store.modern.catalog.category.domain.CategoryInvalidReference
 import com.model_store.modern.catalog.category.domain.CategoryIntegrityFailure
 import com.model_store.modern.shared.domain.Actor
+import com.model_store.modern.shared.api.MvcApiError
+import com.model_store.modern.shared.api.mvcApiError
 import org.springframework.context.annotation.Profile
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -19,7 +21,6 @@ import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.server.ResponseStatusException
-import java.time.OffsetDateTime
 
 data class CategoryResponse(val id: Long, val name: String?, val childs: List<CategoryResponse>) {
     constructor(branch: CategoryBranch) : this(branch.id, branch.name, branch.children.map(::CategoryResponse))
@@ -55,41 +56,28 @@ class CategoryController(private val cases: CategoryUseCases) {
 @RestControllerAdvice(assignableTypes = [CategoryController::class])
 @Profile("modern")
 class CategoryErrorHandler {
-    data class ErrorResponse(val code: String, val message: String?, val status: Int, val timestamp: String, val details: Any?)
-
     @ExceptionHandler(CategoryRuleViolation::class)
-    fun invalid(error: CategoryRuleViolation): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
-            ErrorResponse(
-                if (error is CategoryInvalidReference) "INVALID_REFERENCE" else "BAD_REQUEST",
-                if (error is CategoryInvalidReference) "Указана ссылка на несуществующий объект" else error.message,
-                400, OffsetDateTime.now().toString(), null,
-            ),
-        )
+    fun invalid(error: CategoryRuleViolation): ResponseEntity<MvcApiError> = mvcApiError(
+        HttpStatus.BAD_REQUEST,
+        if (error is CategoryInvalidReference) "INVALID_REFERENCE" else "BAD_REQUEST",
+        if (error is CategoryInvalidReference) "Указана ссылка на несуществующий объект" else error.message,
+    )
 
     @ExceptionHandler(CategoryIntegrityFailure::class)
-    fun corruptTree(error: CategoryIntegrityFailure): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
-            ErrorResponse("INTERNAL_ERROR", "Внутренняя ошибка", 500, OffsetDateTime.now().toString(), null),
-        )
+    fun corruptTree(error: CategoryIntegrityFailure): ResponseEntity<MvcApiError> =
+        mvcApiError(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Внутренняя ошибка")
 
     @ExceptionHandler(DataIntegrityViolationException::class)
-    fun databaseConstraint(error: DataIntegrityViolationException): ResponseEntity<ErrorResponse> {
+    fun databaseConstraint(error: DataIntegrityViolationException): ResponseEntity<MvcApiError> {
         val detail = generateSequence(error as Throwable) { it.cause }.last().message.orEmpty()
         val invalidReference = detail.contains("foreign key constraint", ignoreCase = true)
         val status = if (invalidReference) HttpStatus.BAD_REQUEST else HttpStatus.CONFLICT
-        return ResponseEntity.status(status).body(
-            ErrorResponse(
-                if (invalidReference) "INVALID_REFERENCE" else "DUPLICATE_KEY",
-                if (invalidReference) "Указана ссылка на несуществующий объект" else "Нарушено ограничение уникальности",
-                status.value(), OffsetDateTime.now().toString(), mapOf("dbMessage" to detail),
-            ),
-        )
+        return mvcApiError(status,
+            if (invalidReference) "INVALID_REFERENCE" else "DUPLICATE_KEY",
+            if (invalidReference) "Указана ссылка на несуществующий объект" else "Нарушено ограничение уникальности")
     }
 
     @ExceptionHandler(ResponseStatusException::class)
-    fun forbidden(error: ResponseStatusException): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(error.statusCode).body(
-            ErrorResponse("ACCESS_DENIED", error.reason, error.statusCode.value(), OffsetDateTime.now().toString(), null),
-        )
+    fun forbidden(error: ResponseStatusException): ResponseEntity<MvcApiError> =
+        mvcApiError(error.statusCode, "ACCESS_DENIED", error.reason)
 }

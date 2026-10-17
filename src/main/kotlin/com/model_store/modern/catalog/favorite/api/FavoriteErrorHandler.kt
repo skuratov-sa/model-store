@@ -2,15 +2,13 @@ package com.model_store.modern.catalog.favorite.api
 
 import com.model_store.modern.catalog.favorite.domain.FavoriteAccessDenied
 import com.model_store.modern.catalog.favorite.domain.FavoriteTargetNotFound
+import com.model_store.modern.shared.api.MvcApiError
+import com.model_store.modern.shared.api.mvcApiError
 import org.springframework.http.HttpStatus
-import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
-import java.time.OffsetDateTime
 
-data class FavoriteErrorResponse(
-    val code: String, val message: String, val status: Int, val timestamp: String, val details: Any? = null,
-)
+typealias FavoriteErrorResponse = MvcApiError
 
 @RestControllerAdvice(assignableTypes = [FavoriteController::class])
 class FavoriteErrorHandler {
@@ -20,6 +18,5 @@ class FavoriteErrorHandler {
     @ExceptionHandler(FavoriteAccessDenied::class)
     fun denied(error: FavoriteAccessDenied) = response(HttpStatus.FORBIDDEN, "ACCESS_DENIED", error.message.orEmpty())
 
-    private fun response(status: HttpStatus, code: String, message: String) = ResponseEntity.status(status)
-        .body(FavoriteErrorResponse(code, message, status.value(), OffsetDateTime.now().toString()))
+    private fun response(status: HttpStatus, code: String, message: String) = mvcApiError(status, code, message)
 }

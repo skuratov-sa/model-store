@@ -1,16 +1,15 @@
 package com.model_store.modern.seller.account.api
 
 import com.model_store.modern.seller.account.domain.*
+import com.model_store.modern.shared.api.MvcApiError
+import com.model_store.modern.shared.api.mvcApiError
 import org.springframework.context.annotation.Profile
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
-import java.time.OffsetDateTime
 
-data class AccountErrorResponse(
-    val code: String, val message: String, val status: Int, val timestamp: String, val details: Any? = null,
-)
+typealias AccountErrorResponse = MvcApiError
 
 @RestControllerAdvice(assignableTypes = [ModernAccountController::class])
 @Profile("modern")
@@ -27,6 +26,5 @@ class AccountErrorHandler {
     @ExceptionHandler(AgentAccountDenied::class)
     fun agentDenied(): ResponseEntity<Void> = ResponseEntity.status(HttpStatus.FORBIDDEN).build()
 
-    private fun response(status: HttpStatus, code: String, message: String) = ResponseEntity.status(status)
-        .body(AccountErrorResponse(code, message, status.value(), OffsetDateTime.now().toString()))
+    private fun response(status: HttpStatus, code: String, message: String) = mvcApiError(status, code, message)
 }
