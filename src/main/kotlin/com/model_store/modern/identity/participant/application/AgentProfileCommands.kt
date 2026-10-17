@@ -42,6 +42,7 @@ class AgentProfileService(
     private val store: ParticipantStore,
     private val images: ParticipantImagePort,
     private val profiles: ParticipantProfileRead,
+    private val accessLock: AgentAccessLockService,
 ) : AgentProfileCommands {
     @Transactional("transactionManager", readOnly = true)
     override fun read(callerAdminId: Long, agentId: Long): AgentProfileSnapshot {
@@ -51,9 +52,7 @@ class AgentProfileService(
 
     @Transactional("transactionManager")
     override fun update(callerAdminId: Long, agentId: Long, patch: AgentProfilePatch): AgentProfileSnapshot {
-        // Lock the caller first so a concurrent role/status revocation cannot authorize this command.
-        requireAdmin(store.findForUpdate(callerAdminId))
-        val agent = requireAgent(store.findForUpdate(agentId), agentId)
+        val agent = accessLock.lockAndRequireAgent(callerAdminId, agentId)
         validateDeadline(patch.deadlineSending, "deadlineSending")
         validateDeadline(patch.deadlinePayment, "deadlinePayment")
         if (patch.imageId != null) images.replace(agentId, patch.imageId)
