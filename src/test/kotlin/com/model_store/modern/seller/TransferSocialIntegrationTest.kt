@@ -130,7 +130,8 @@ class TransferSocialIntegrationTest {
             val value = "seller-method-$id"
             Mockito.`when`(jwtDecoder.decode(value)).thenReturn(
                 Jwt.withTokenValue(value).header("alg", "RS256")
-                    .claim("id", id).claim("role", role).claim("login", "user$id").build(),
+                    .claim("id", id).claim("role", role).claim("login", "user$id")
+                    .claim("type", "access").build(),
             )
             return "Bearer $value"
         }

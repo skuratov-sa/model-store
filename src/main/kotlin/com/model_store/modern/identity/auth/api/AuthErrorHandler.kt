@@ -1,15 +1,16 @@
 package com.model_store.modern.identity.auth.api
 
 import com.model_store.modern.identity.auth.domain.AuthFailure
+import com.model_store.modern.shared.api.MvcApiError
+import com.model_store.modern.shared.api.mvcApiError
 import org.springframework.context.annotation.Profile
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
-import java.time.OffsetDateTime
 
-data class AuthApiError(val code: String, val message: String, val status: Int, val timestamp: String, val details: Any? = null)
+typealias AuthApiError = MvcApiError
 
 @RestControllerAdvice(assignableTypes = [AuthController::class])
 @Profile("modern")
@@ -27,7 +28,5 @@ class AuthErrorHandler {
     fun invalidRefresh(ex: AuthFailure.InvalidRefresh) =
         error(HttpStatus.UNAUTHORIZED, "TOKEN_INVALID_OR_EXPIRED", ex.message.orEmpty())
 
-    private fun error(status: HttpStatus, code: String, message: String) = ResponseEntity.status(status).body(
-        AuthApiError(code, message, status.value(), OffsetDateTime.now().toString()),
-    )
+    private fun error(status: HttpStatus, code: String, message: String) = mvcApiError(status, code, message)
 }

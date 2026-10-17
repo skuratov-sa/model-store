@@ -1,14 +1,15 @@
 package com.model_store.modern.seller.social.api
 
 import com.model_store.modern.seller.social.domain.*
+import com.model_store.modern.shared.api.MvcApiError
+import com.model_store.modern.shared.api.mvcApiError
 import org.springframework.context.annotation.Profile
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
-import java.time.OffsetDateTime
 
-data class SocialNetworkError(val code: String, val message: String, val status: Int, val timestamp: String, val details: Any? = null)
+typealias SocialNetworkError = MvcApiError
 
 @RestControllerAdvice(assignableTypes = [SocialNetworkController::class])
 @Profile("modern")
@@ -26,5 +27,5 @@ class SocialNetworkErrorHandler {
     fun invalid(error: IllegalArgumentException) = response(HttpStatus.BAD_REQUEST, "BAD_REQUEST", error.message.orEmpty())
 
     private fun response(status: HttpStatus, code: String, message: String): ResponseEntity<SocialNetworkError> =
-        ResponseEntity.status(status).body(SocialNetworkError(code, message, status.value(), OffsetDateTime.now().toString()))
+        mvcApiError(status, code, message)
 }

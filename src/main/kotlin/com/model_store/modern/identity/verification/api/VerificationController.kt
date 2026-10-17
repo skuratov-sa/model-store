@@ -6,13 +6,16 @@ import com.model_store.modern.identity.verification.domain.VerificationMailNotFo
 import com.model_store.modern.identity.verification.domain.VerificationParticipantNotFound
 import com.model_store.modern.identity.verification.domain.VerificationRateLimited
 import com.model_store.modern.identity.verification.domain.VerificationCodeInvalid
+import com.model_store.modern.shared.api.MvcApiError
+import com.model_store.modern.shared.api.mvcApiError
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.annotation.Profile
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.bind.annotation.*
-import java.time.OffsetDateTime
 
 @RestController
 @Profile("modern")
@@ -48,13 +51,18 @@ class VerifyCodeController(
     }
 }
 
-data class VerificationApiError(
-    val code: String, val message: String, val status: Int, val timestamp: String, val details: Any? = null,
-)
+typealias VerificationApiError = MvcApiError
 
 @RestControllerAdvice(assignableTypes = [VerificationController::class, VerifyCodeController::class])
 @Profile("modern")
 class VerificationErrorHandler {
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun unreadable() = error(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "Failed to read HTTP message")
+
+    @ExceptionHandler(MissingServletRequestParameterException::class)
+    fun missingQuery(ex: MissingServletRequestParameterException) = error(HttpStatus.BAD_REQUEST,
+        "BAD_REQUEST", "Required query parameter '${ex.parameterName}' is not present.")
+
     @ExceptionHandler(VerificationMailNotFound::class)
     fun missing(ex: VerificationMailNotFound) = error(HttpStatus.BAD_REQUEST, "BAD_REQUEST", ex.message.orEmpty())
 
@@ -71,7 +79,5 @@ class VerificationErrorHandler {
     @ExceptionHandler(Exception::class)
     fun failure() = error(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Внутренняя ошибка")
 
-    private fun error(status: HttpStatus, code: String, message: String) = ResponseEntity.status(status).body(
-        VerificationApiError(code, message, status.value(), OffsetDateTime.now().toString()),
-    )
+    private fun error(status: HttpStatus, code: String, message: String) = mvcApiError(status, code, message)
 }

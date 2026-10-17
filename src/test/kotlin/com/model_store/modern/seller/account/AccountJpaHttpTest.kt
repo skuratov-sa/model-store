@@ -137,7 +137,8 @@ class AccountJpaHttpTest {
     }
 
     private fun jwt(token: String, id: Long) = Jwt.withTokenValue(token).header("alg", "RS256")
-        .claim("id", id).claim("login", "user$id").claim("role", "USER").build()
+        .claim("id", id).claim("login", "user$id").claim("role", "USER")
+        .claim("type", "access").build()
 
     companion object {
         private val postgres = EmbeddedPostgres.start()

@@ -1,14 +1,14 @@
 package com.model_store.modern.identity.agent.api
 
 import com.model_store.modern.identity.agent.domain.AgentTokenFailure
+import com.model_store.modern.shared.api.MvcApiError
+import com.model_store.modern.shared.api.mvcApiError
 import org.springframework.context.annotation.Profile
 import org.springframework.http.HttpStatus
-import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
-import java.time.OffsetDateTime
 
-data class AgentTokenError(val code: String, val message: String, val status: Int, val timestamp: String, val details: Any? = null)
+typealias AgentTokenError = MvcApiError
 
 @RestControllerAdvice(assignableTypes = [AgentTokenController::class])
 @Profile("modern")
@@ -22,7 +22,5 @@ class AgentTokenErrorHandler {
     @ExceptionHandler(AgentTokenFailure.AgentInactive::class, AgentTokenFailure.AccessDenied::class)
     fun denied(ex: AgentTokenFailure) = error(HttpStatus.FORBIDDEN, "ACCESS_DENIED", ex.message.orEmpty())
 
-    private fun error(status: HttpStatus, code: String, message: String) = ResponseEntity.status(status).body(
-        AgentTokenError(code, message, status.value(), OffsetDateTime.now().toString()),
-    )
+    private fun error(status: HttpStatus, code: String, message: String) = mvcApiError(status, code, message)
 }
