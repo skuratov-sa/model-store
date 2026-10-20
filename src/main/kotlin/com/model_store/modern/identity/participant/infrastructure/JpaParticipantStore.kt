@@ -24,7 +24,11 @@ interface ParticipantJpaRepository : JpaRepository<ParticipantEntity, Long> {
 @Repository
 class JpaParticipantStore(private val repository: ParticipantJpaRepository, private val entityManager: EntityManager) : ParticipantStore {
     override fun find(id: Long): Participant? = repository.findById(id).orElse(null)?.toDomain()
-    override fun findForUpdate(id: Long): Participant? = repository.findForUpdate(id)?.toDomain()
+    override fun findForUpdate(id: Long): Participant? = repository.findForUpdate(id)?.let { entity ->
+        // A pessimistic query can return an already managed, stale instance after waiting on a row lock.
+        entityManager.refresh(entity, LockModeType.PESSIMISTIC_WRITE)
+        entity.toDomain()
+    }
     override fun findActive(id: Long): Participant? = repository.findByIdAndStatus(id, ParticipantStatus.ACTIVE)?.toDomain()
     override fun mailExists(mail: String) = repository.existsByMail(mail)
     override fun loginExistsForAnother(login: String, id: Long) = repository.existsByLoginAndIdNot(login, id)
