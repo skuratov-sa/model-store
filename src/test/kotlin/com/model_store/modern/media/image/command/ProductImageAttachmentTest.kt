@@ -4,6 +4,7 @@ import com.model_store.modern.media.image.command.application.ProductImageAttach
 import com.model_store.modern.media.image.command.application.ProductImageAttachmentProblem
 import com.model_store.modern.media.image.command.infrastructure.JdbcProductImageAttachment
 import com.model_store.modern.media.image.command.infrastructure.JdbcImageCommandRows
+import com.model_store.modern.media.image.command.domain.ImageCommandNotFound
 import com.model_store.modern.media.storage.domain.StorageLocation
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
 import org.junit.jupiter.api.Assertions.*
@@ -12,8 +13,9 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
-import java.sql.SQLException
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import javax.sql.DataSource
 
@@ -121,54 +123,92 @@ class ProductImageAttachmentTest {
     }
 
     @Test
-    fun `opposing media and product lock order resolves without deadlock`() = database { jdbc, port, tx, dataSource ->
+    fun `media waits for product before image and owner delete retains NOWAIT rollback`() = database { jdbc, port, tx, dataSource ->
         val attached = image(jdbc, 1, status = "ACTIVE", entityId = 10)
         val mediaRows = JdbcImageCommandRows(NamedParameterJdbcTemplate(dataSource),
             DataSourceTransactionManager(dataSource))
         val pool = Executors.newSingleThreadExecutor()
+        val mediaPid = ArrayBlockingQueue<Int>(1)
+        lateinit var mediaDelete: Future<Throwable?>
         try {
-            val conflict = assertThrows(ProductImageAttachmentFailure::class.java) {
-                tx.executeWithoutResult {
-                    jdbc.queryForObject("SELECT id FROM product WHERE id=10 FOR UPDATE", Long::class.java)
-                    val mediaDelete = pool.submit<Unit> {
+            tx.executeWithoutResult {
+                jdbc.execute("SET LOCAL lock_timeout='8s'")
+                val productPid = jdbc.queryForObject("SELECT pg_backend_pid()", Int::class.java)!!
+                jdbc.queryForObject("SELECT id FROM product WHERE id=10 FOR UPDATE", Long::class.java)
+                mediaDelete = pool.submit<Throwable?> {
+                    try { tx.executeWithoutResult {
+                        jdbc.execute("SET LOCAL lock_timeout='8s'")
+                        mediaPid.put(jdbc.queryForObject("SELECT pg_backend_pid()", Int::class.java)!!)
                         mediaRows.markDeleted(listOf(attached), StorageLocation.PRODUCT, 1)
-                    }
-                    awaitImageLock(dataSource, attached)
-                    try {
-                        port.markProductImagesDeleted(10)
-                    } finally {
-                        // The media transaction is waiting for this product transaction to roll back.
-                        assertFalse(mediaDelete.isDone)
-                    }
+                    }; null } catch (failure: Throwable) { failure }
                 }
+                awaitBlocked(dataSource, mediaPid.poll(5, TimeUnit.SECONDS)!!, productPid)
+                // An independent connection proves media has NOT locked the image before product.
+                dataSource.connection.use { observer ->
+                    observer.autoCommit = false
+                    try {
+                        observer.prepareStatement("SELECT id FROM image WHERE id=? FOR UPDATE NOWAIT").use { statement ->
+                            statement.setLong(1, attached)
+                            statement.executeQuery().use { assertTrue(it.next()) }
+                        }
+                    } finally { observer.rollback() }
+                }
+                port.markProductImagesDeleted(10)
             }
-            assertEquals(ProductImageAttachmentProblem.IMAGE_BUSY, conflict.problem)
-            pool.shutdown()
-            assertTrue(pool.awaitTermination(5, TimeUnit.SECONDS))
+            // The earlier owner deletion wins; a later media delete retains its normal 404.
+            assertInstanceOf(ImageCommandNotFound::class.java, mediaDelete.get(10, TimeUnit.SECONDS))
             assertEquals("DELETE", jdbc.queryForObject("SELECT status::text FROM image WHERE id=?",
                 String::class.java, attached))
+            assertEquals(10L, jdbc.queryForObject("SELECT entity_id FROM image WHERE id=?", Long::class.java, attached))
+            assertEquals(1L, jdbc.queryForObject("SELECT uploaded_by FROM image WHERE id=?", Long::class.java, attached))
+            assertEquals("ACTIVE", jdbc.queryForObject("SELECT status::text FROM product WHERE id=10", String::class.java))
+
+            // Preserve the replaced test's markProductImagesDeleted IMAGE_BUSY coverage separately
+            // from the successful lock-order scenario and the independent claim contention test.
+            val busy = image(jdbc, 1, status = "ACTIVE", entityId = 10)
+            dataSource.connection.use { holder ->
+                holder.autoCommit = false
+                try {
+                    holder.prepareStatement("SELECT id FROM image WHERE id=? FOR UPDATE").use { statement ->
+                        statement.setLong(1, busy)
+                        statement.executeQuery().use { assertTrue(it.next()) }
+                    }
+                    val conflict = assertThrows(ProductImageAttachmentFailure::class.java) {
+                        tx.executeWithoutResult {
+                            jdbc.execute("SET LOCAL lock_timeout='8s'")
+                            jdbc.update("UPDATE product SET status='DELETED' WHERE id=10")
+                            port.markProductImagesDeleted(10)
+                        }
+                    }
+                    assertEquals(ProductImageAttachmentProblem.IMAGE_BUSY, conflict.problem)
+                } finally { holder.rollback() }
+            }
+            assertEquals("ACTIVE", jdbc.queryForObject("SELECT status::text FROM product WHERE id=10", String::class.java))
+            assertEquals("ACTIVE", jdbc.queryForObject("SELECT status::text FROM image WHERE id=?", String::class.java, busy))
+            assertEquals("DELETE", jdbc.queryForObject("SELECT status::text FROM image WHERE id=?", String::class.java, attached))
+            assertEquals(2, jdbc.queryForObject("SELECT count(*) FROM image WHERE tag='PRODUCT' AND entity_id=10", Int::class.java))
         } finally {
             pool.shutdownNow()
+            assertTrue(pool.awaitTermination(10, TimeUnit.SECONDS))
         }
     }
 
-    private fun awaitImageLock(dataSource: DataSource, imageId: Long) {
+    private fun awaitBlocked(dataSource: DataSource, waiter: Int, blocker: Int) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
         while (System.nanoTime() < deadline) {
-            try {
-                dataSource.connection.use { connection ->
-                    connection.prepareStatement("SELECT id FROM image WHERE id=? FOR UPDATE NOWAIT").use { statement ->
-                        statement.setLong(1, imageId)
-                        statement.executeQuery().use { assertTrue(it.next()) }
+            dataSource.connection.use { connection ->
+                connection.prepareStatement("SELECT ?=ANY(pg_blocking_pids(?))").use { statement ->
+                    statement.setInt(1, blocker)
+                    statement.setInt(2, waiter)
+                    statement.executeQuery().use { result ->
+                        assertTrue(result.next())
+                        if (result.getBoolean(1)) return
                     }
                 }
-            } catch (error: SQLException) {
-                if (error.sqlState == "55P03") return
-                throw error
             }
-            Thread.sleep(20)
+            Thread.yield()
         }
-        fail<Unit>("Media delete did not lock the image")
+        fail<Unit>("Media backend $waiter did not block behind product backend $blocker")
     }
 
     private fun database(block: (JdbcTemplate, JdbcProductImageAttachment, TransactionTemplate, DataSource) -> Unit) {

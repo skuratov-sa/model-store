@@ -56,7 +56,7 @@ class JdbcProductImageAttachment(
 
     override fun markProductImagesDeleted(productId: Long) {
         requireTransaction()
-        // Media delete locks image before product. NOWAIT resolves the opposing order without deadlock.
+        // Media delete locks product before image too; NOWAIT still bounds independent image contention.
         val ids = imageLock {
             jdbc.query("""SELECT id FROM image WHERE tag='PRODUCT' AND entity_id=:id
                            ORDER BY id FOR UPDATE NOWAIT""", mapOf("id" to productId)) { rs, _ -> rs.getLong(1) }
