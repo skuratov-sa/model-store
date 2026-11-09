@@ -424,7 +424,7 @@ class AdminGiveawayHttpTest {
             }
             val block = pool.submit {
                 gate.await()
-                productCommands.changeStatus(id, ProductState.BLOCKED)
+                productCommands.changeStatus(id, ProductState.BLOCKED, admin)
             }
             gate.countDown()
             enable.get(15, TimeUnit.SECONDS)

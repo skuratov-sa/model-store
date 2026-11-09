@@ -1,6 +1,8 @@
 package com.model_store.modern.catalog.product.command.application
 
 import com.model_store.modern.catalog.product.command.domain.*
+import com.model_store.modern.identity.participant.application.CurrentAdminLock
+import com.model_store.modern.identity.participant.application.CurrentAdminForbidden
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Service
@@ -45,6 +47,7 @@ class ProductCommands(
     private val seller: SellerEligibilityPort,
     private val images: ProductImageLink,
     @Value("\${app.product-expiration-days}") private val expirationDays: Long,
+    private val currentAdmin: CurrentAdminLock,
 ) {
     @Transactional
     fun create(ownerId: Long, role: String?, changes: ProductChanges): Long {
@@ -119,8 +122,15 @@ class ProductCommands(
         store.update(product.copy(status = ProductState.ACTIVE, expirationDate = expiration()))
     }
 
-    @Transactional
-    fun changeStatus(id: Long, status: ProductState) {
+    @Transactional(transactionManager = "transactionManager")
+    fun changeStatus(id: Long, status: ProductState, callerId: Long) {
+        try {
+            currentAdmin.lockActiveAdmin(callerId)
+        } catch (_: CurrentAdminForbidden) {
+            denied("Доступ запрещён")
+        }
+        // Status is an administrative operation for any owner. Only the caller participates
+        // in authorization; acquire no further participant locks after the product frontier.
         if (status == ProductState.AWAITING_GIVEAWAY) invalid("Статус ожидания задаётся датой начала розыгрыша")
         val product = store.lockProduct(id, LockMode.NON_DELETED)
             ?: missing("Не удалось выполнить операцию: не достаточно прав или его не существует")

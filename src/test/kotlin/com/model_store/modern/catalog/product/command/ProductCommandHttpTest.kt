@@ -335,9 +335,9 @@ class ProductCommandHttpTest {
         val changes = ProductChanges(name = "Command16 shared", price = 10f, currency = "RUB",
             availability = ProductAvailability.PURCHASABLE)
         val first = commands.create(admin, "ADMIN", changes)
-        commands.changeStatus(first, com.model_store.modern.catalog.product.command.domain.ProductState.BLOCKED)
+        commands.changeStatus(first, com.model_store.modern.catalog.product.command.domain.ProductState.BLOCKED, admin)
         val second = commands.create(admin, "ADMIN", changes)
-        commands.changeStatus(second, com.model_store.modern.catalog.product.command.domain.ProductState.BLOCKED)
+        commands.changeStatus(second, com.model_store.modern.catalog.product.command.domain.ProductState.BLOCKED, admin)
         val mvc = mvc()
         val pool = Executors.newFixedThreadPool(2)
         try {

@@ -107,6 +107,6 @@ class AdminProductStatusController(private val commands: ProductCommands) {
                @AuthenticationPrincipal actor: Actor?) {
         if (actor?.role != "ADMIN" || actor.isAgentAccess || actor.participantId == null)
             throw ProductCommandFailure(FailureKind.FORBIDDEN, "ACCESS_DENIED", "Доступ запрещён")
-        commands.changeStatus(id, productStatus)
+        commands.changeStatus(id, productStatus, actor.participantId)
     }
 }
