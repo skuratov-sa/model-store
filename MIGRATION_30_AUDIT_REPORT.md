@@ -221,3 +221,55 @@ connection-refused сохранён в полном broad log, не выдаёт
 Commit не создан; master/remotes неизменны. Следующий этап ожидает отдельного
 поручения координатора. Команды настоящего сжатия/счётчика в доступных tools нет;
 ранее отдельно подтверждённая недоступность не подменялась сводкой.
+
+## Точечный ремонт fixture после root reproduction
+
+Отдельное поручение координатора после локального commit
+`b6ad22bc020ffa72eaba1d88a9a613a9d7fe5e69`, 10.11.2026. Координатор сообщил:
+combined root run на `42ab0aa`, сессия17187, обнаружил IOException →
+FileNotFoundException в SchedulingBootJarTest на ProcessBuilder.start.
+Относительный `build/migration-30` существовал после worker-проверок, но отсутствовал
+в чистой root-сборке. Это предоставленное root reproduction; root-процесс здесь
+не останавливался/не дублировался, root-дерево не изменялось.
+
+Изменены ровно два файла: собственный SchedulingBootJarTest.kt и этот audit report.
+Единственная code delta: `Files.createDirectories(log.parent)` сразу после
+вычисления log path и до redirect/start. Оба actual profiles, frozen JAR SHA,
+readiness/registration assertions и cleanup сохранены, skip/обхода проверки нет.
+Production/runtime/Gradle/Flyway/прочие sources и отчёт реализации не менялись.
+
+Standalone regression выполнена только для SchedulingBootJarTest: приватная новая
+рабочая папка содержит копию того же JAR и только test RSA fixtures. До запуска
+designated `fixture-.../build/migration-30` проверен как отсутствующий; тест сам
+создал его, сохранил legacy/modern logs и прошёл оба реальных запуска. Для этой
+проверки локальный ignored init script задаёт test workingDir и JVM user.dir;
+репозиторная конфигурация не менялась. Первый вызов с одним workingDir также дал
+exit0/1test, но JVM разрешила пути от исходного каталога; этот вызов **не считается**
+доказательством missing-parent regression. Его log/XML сохранены отдельно.
+
+Окончательный узкий запуск: непосредственно наблюдённый **exit0**, BUILD SUCCESSFUL
+1m3s, **1 test /0 failures/errors/skipped**. В чистой output-папке получены три
+старых registration lines для legacy и одна line с тремя modern methods. Это
+повтор того же test ID, не добавочный уникальный тест. Прежние125 neighboring и31
+final-own проверка сохраняют свой ранее описанный provenance; новый156 run не заявляется.
+
+Evidence: `build/migration-30/output-parent-fix/verification.log`, `.exitcode`,
+`completed-results/*.xml`, `fixture-before.json`, `verification-metadata.json`,
+`source-manifest.json`, `initial-working-dir.log`/`.exitcode`, `initial-results/`.
+Actual logs находятся в указанном fixtureWorkingDirectory/build/migration-30.
+XML скопирован только после завершения процесса. Старые evidence directories
+не удалялись, production keys/services/Docker не использовались.
+
+После запуска проверены579 sources:0 mismatches с новым manifest; относительно
+предыдущего audited manifest отличается только SchedulingBootJarTest.kt.
+Новый source manifest SHA-256:
+`575c1e5f3ebf3882e24a4aad7a893f0f7a4b60f3296e8980a423e2deb00d359d`.
+Тот же JAR и его private copy имеют SHA-256:
+`c977c1ed14e2bb0d5e70724da9ce420b8c779ef89740f709980614308711512c`.
+Test source SHA-256:
+`91c5d524c5fd222b40d94d5a04c2bfa0feabcaca3ad18443f7e80e0aa44a6a69`.
+
+Самостоятельная проверка delta: путь literal и принадлежит test output; создание
+каталога идемпотентно, не удаляет/не перемещает данные и не добавляет пользовательский
+input или runtime side effects. Assertions/error propagation не ослаблены.
+Дополнительный commit не создавался, ожидается отдельное поручение.

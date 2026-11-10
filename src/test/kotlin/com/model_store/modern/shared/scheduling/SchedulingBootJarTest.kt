@@ -31,6 +31,7 @@ class SchedulingBootJarTest {
                     EmbeddedPostgres.start().use { postgres ->
                         val child = Files.createDirectory(directory.resolve(profile))
                         val log = Path.of("build/migration-30/bootjar-$profile.log").toAbsolutePath()
+                        Files.createDirectories(log.parent)
                         val url = "jdbc:postgresql://127.0.0.1:${postgres.port}/postgres"
                         val args = listOf(Path.of(System.getProperty("java.home"), "bin/java.exe").toString(),
                             "-Dcom.amazonaws.sdk.disableEc2Metadata=true", "-Dcom.amazonaws.regions.RegionUtils.disableRemote=true",
