@@ -13,28 +13,40 @@ internal fun ResultSet.nullFloat(column: String): Float? = getFloat(column).take
 /** Scalar SQL read models reproduce the legacy enrichers without importing foreign entities or services. */
 @Repository
 @Profile("modern")
-class JdbcLifecycleRead(private val jdbc: NamedParameterJdbcTemplate) : LifecycleRead {
+class JdbcLifecycleRead(private val jdbc: NamedParameterJdbcTemplate) : LifecycleRead, SelectedOrderRead {
     override fun orders(participantId: Long, seller: Boolean): List<OrderView> {
         val column = if (seller) "seller_id" else "customer_id"
         return jdbc.query("""SELECT * FROM "order" WHERE $column=:id""", mapOf("id" to participantId)) { rs, _ ->
-            val id = rs.getLong("id")
-            val owner = rs.getObject("seller_id", Long::class.javaObjectType)
-            val counterparty = rs.getObject(if (seller) "customer_id" else "seller_id", Long::class.javaObjectType)
-                ?: throw LifecycleFailure(LifecycleProblem.PARTICIPANT_NOT_FOUND)
-            val productId = rs.getObject("product_id", Long::class.javaObjectType)
-                ?: throw LifecycleFailure(LifecycleProblem.PRODUCT_NOT_FOUND)
-            val transferId = rs.getObject("transfer_id", Long::class.javaObjectType)
-                ?: throw LifecycleFailure(LifecycleProblem.TRANSFER_NOT_FOUND)
-            val addressId = rs.getObject("address_id", Long::class.javaObjectType)
-                ?: throw LifecycleFailure(LifecycleProblem.TRANSFER_NOT_FOUND)
-            val history = jdbc.query("""SELECT status,comment,changed_at FROM order_status_history
-                WHERE order_id=:id ORDER BY changed_at""", mapOf("id" to id)) { h, _ ->
-                HistoryView(h.getString(1), h.getString(2), h.getTimestamp(3)?.toInstant()) }
-            OrderView(id, rs.getString("status"), rs.nullFloat("total_price"),
-                rs.nullFloat("prepayment_amount"), owner, rs.getTimestamp("created_at")?.toInstant()?.toString(),
-                user(counterparty), product(productId, owner, rs), transfer(transferId, addressId),
-                images(id, "ORDER"), rs.getObject("image_payment_proof_id", Long::class.javaObjectType), rs.getString("delivery_url"), history)
+            project(rs, seller)
         }
+    }
+
+    override fun ordersByIds(ids: List<Long>, seller: Boolean): List<OrderView> {
+        require(ids.size <= 100) { "Selected order projection is limited to 100 IDs" }
+        if (ids.isEmpty()) return emptyList()
+        return jdbc.query("""SELECT * FROM "order" WHERE id IN (:ids)""", mapOf("ids" to ids)) { rs, _ ->
+            project(rs, seller)
+        }
+    }
+
+    private fun project(rs: ResultSet, seller: Boolean): OrderView {
+        val id = rs.getLong("id")
+        val owner = rs.getObject("seller_id", Long::class.javaObjectType)
+        val counterparty = rs.getObject(if (seller) "customer_id" else "seller_id", Long::class.javaObjectType)
+            ?: throw LifecycleFailure(LifecycleProblem.PARTICIPANT_NOT_FOUND)
+        val productId = rs.getObject("product_id", Long::class.javaObjectType)
+            ?: throw LifecycleFailure(LifecycleProblem.PRODUCT_NOT_FOUND)
+        val transferId = rs.getObject("transfer_id", Long::class.javaObjectType)
+            ?: throw LifecycleFailure(LifecycleProblem.TRANSFER_NOT_FOUND)
+        val addressId = rs.getObject("address_id", Long::class.javaObjectType)
+            ?: throw LifecycleFailure(LifecycleProblem.TRANSFER_NOT_FOUND)
+        val history = jdbc.query("""SELECT status,comment,changed_at FROM order_status_history
+            WHERE order_id=:id ORDER BY changed_at""", mapOf("id" to id)) { h, _ ->
+            HistoryView(h.getString(1), h.getString(2), h.getTimestamp(3)?.toInstant()) }
+        return OrderView(id, rs.getString("status"), rs.nullFloat("total_price"),
+            rs.nullFloat("prepayment_amount"), owner, rs.getTimestamp("created_at")?.toInstant()?.toString(),
+            user(counterparty), product(productId, owner, rs), transfer(transferId, addressId),
+            images(id, "ORDER"), rs.getObject("image_payment_proof_id", Long::class.javaObjectType), rs.getString("delivery_url"), history)
     }
 
     private fun images(entity: Long, tag: String): List<Long> = jdbc.query("""SELECT id FROM image
