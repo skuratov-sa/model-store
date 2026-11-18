@@ -116,6 +116,8 @@ class MaintenanceIntegrationTest {
         val deleted = product(owner, "DELETED")
         val giveaway = product(owner, availability = "GIVEAWAY")
         val dueOffset = product(owner)
+        val noExpiry = product(owner)
+        jdbc.update("UPDATE product SET expiration_date=NULL WHERE id=?", noExpiry)
         jdbc.update("UPDATE product SET expiration_date='2001-01-01T03:00:00+03:00' WHERE id IN (?,?,?,?)",
             due, deleted, giveaway, dueOffset)
         jdbc.update("UPDATE product SET expiration_date='2100-01-01T00:00:00Z' WHERE id=?", future)
@@ -125,10 +127,12 @@ class MaintenanceIntegrationTest {
         assertEquals("ACTIVE", productStatus(future))
         assertEquals("DELETED", productStatus(deleted))
         assertEquals("ACTIVE", productStatus(giveaway))
+        assertEquals("ACTIVE", productStatus(noExpiry))
         assertEquals(0, products.expireDueOrdinary())
         // Exact equality is deterministic in one PG transaction because CURRENT_TIMESTAMP is stable.
         tx.executeWithoutResult {
-            jdbc.execute("SET LOCAL TIME ZONE 'Pacific/Auckland'")
+            // Fixed offsets work even when embedded PostgreSQL has no IANA timezone data on Windows.
+            jdbc.execute("SET LOCAL TIME ZONE INTERVAL '+13:00' HOUR TO MINUTE")
             jdbc.update("UPDATE product SET expiration_date=CURRENT_TIMESTAMP WHERE id=?", future)
             assertEquals(true, jdbc.queryForObject("SELECT expiration_date<=CURRENT_TIMESTAMP FROM product WHERE id=?", Boolean::class.java, future))
         }

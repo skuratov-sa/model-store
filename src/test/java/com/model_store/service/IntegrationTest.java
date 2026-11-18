@@ -14,6 +14,7 @@ import com.model_store.model.constant.SellerStatus;
 import com.model_store.repository.ParticipantRepository;
 import com.model_store.repository.ProductRepository;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -26,6 +27,7 @@ import reactor.core.publisher.Mono;
 import java.time.Instant;
 
 @SpringBootTest
+@Tag("integration")
 @ExtendWith(SpringExtension.class)
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)

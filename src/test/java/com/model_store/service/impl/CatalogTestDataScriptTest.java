@@ -3,6 +3,7 @@ package com.model_store.service.impl;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -13,6 +14,7 @@ import java.sql.Statement;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Tag("integration")
 class CatalogTestDataScriptTest {
 
     @Test

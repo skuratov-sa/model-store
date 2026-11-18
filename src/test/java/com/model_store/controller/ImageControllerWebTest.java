@@ -1,5 +1,8 @@
 package com.model_store.controller;
 
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.GetObjectRequest;
+import com.amazonaws.services.s3.model.S3Object;
 import com.model_store.configuration.property.ApplicationProperties;
 import com.model_store.model.base.Image;
 import com.model_store.model.constant.ImageStatus;
@@ -12,6 +15,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.r2dbc.core.DatabaseClient;
 import org.springframework.test.web.reactive.server.WebTestClient;
+
+import java.io.ByteArrayInputStream;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 @AutoConfigureWebTestClient
 class ImageControllerWebTest extends IntegrationTest {
@@ -27,6 +35,9 @@ class ImageControllerWebTest extends IntegrationTest {
 
     @Autowired
     private DatabaseClient databaseClient;
+
+    @Autowired
+    private AmazonS3 amazonS3;
 
     @BeforeEach
     void cleanUp() {
@@ -97,11 +108,23 @@ class ImageControllerWebTest extends IntegrationTest {
     }
 
     @Test
-    void getLegacyImages_stillWorks_returns200() {
+    void getLegacyImages_activeProductImage_returnsContent() {
+        Image saved = imageRepository.save(Image.builder().filename("legacy.jpg")
+                .tag(ImageTag.PRODUCT).status(ImageStatus.ACTIVE).build()).block();
+        S3Object object = new S3Object();
+        object.getObjectMetadata().setContentType("image/jpeg");
+        object.setObjectContent(new ByteArrayInputStream(new byte[]{1, 2, 3}));
+        when(amazonS3.getObject(any(GetObjectRequest.class))).thenReturn(object);
+
         webTestClient.get()
-                .uri("/images?ids=999999")
+                .uri("/images?ids=" + saved.getId())
                 .exchange()
-                .expectStatus().isOk();
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.length()").isEqualTo(1)
+                .jsonPath("$[0].fileName").isEqualTo("original/legacy.jpg")
+                .jsonPath("$[0].contentType").isEqualTo("image/jpeg")
+                .jsonPath("$[0].imageData").isEqualTo("AQID");
     }
 
     @Test

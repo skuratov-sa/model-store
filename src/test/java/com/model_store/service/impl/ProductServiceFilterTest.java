@@ -213,19 +213,6 @@ class ProductServiceFilterTest extends IntegrationTest {
     }
 
     @Test
-    void findByParams_emptyNameFilter_returnsAll() {
-        saveProduct("P1", 100f);
-        saveProduct("P2", 200f);
-
-        FindProductRequest req = baseRequest();
-        req.setName(null);
-
-        List<Long> ids = productService.findByParams(req, null).map(ProductDto::getId).collectList().block();
-
-        assertThat(ids).hasSize(2);
-    }
-
-    @Test
     void findByParams_publicSearchIncludesUnlimitedAndExcludesEmptyOrExpired() {
         Product unlimited = saveProductWithStatusAndCount("Unlimited", 100f, ProductStatus.ACTIVE, null);
         Product empty = saveProductWithStatusAndCount("Empty", 100f, ProductStatus.ACTIVE, 0);

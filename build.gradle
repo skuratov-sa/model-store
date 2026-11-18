@@ -125,7 +125,39 @@ dependencies {
     testImplementation 'io.zonky.test:embedded-postgres:2.0.7'
 }
 
-test {
+tasks.withType(Test).configureEach {
     useJUnitPlatform()
     jvmArgs '-Dnet.bytebuddy.experimental=true'
+}
+
+// Keep `test`/`check` as the complete suite; these tasks provide focused local runs.
+tasks.register('javaTest', Test) {
+    group = 'verification'
+    description = 'Runs all Java tests, including database and HTTP integration tests.'
+    testClassesDirs = files(tasks.named('compileTestJava').flatMap { it.destinationDirectory })
+    classpath = sourceSets.test.runtimeClasspath
+}
+
+tasks.register('javaUnitTest', Test) {
+    group = 'verification'
+    description = 'Runs Java unit tests without Spring contexts or PostgreSQL.'
+    testClassesDirs = files(tasks.named('compileTestJava').flatMap { it.destinationDirectory })
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { excludeTags 'integration' }
+}
+
+tasks.register('javaIntegrationTest', Test) {
+    group = 'verification'
+    description = 'Runs Java database, HTTP and migration integration tests.'
+    testClassesDirs = files(tasks.named('compileTestJava').flatMap { it.destinationDirectory })
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'integration' }
+    shouldRunAfter tasks.named('javaUnitTest')
+}
+
+tasks.register('kotlinTest', Test) {
+    group = 'verification'
+    description = 'Runs Kotlin tests, including integration and packaged application tests.'
+    testClassesDirs = files(tasks.named('compileTestKotlin').flatMap { it.destinationDirectory })
+    classpath = sourceSets.test.runtimeClasspath
 }

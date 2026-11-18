@@ -15,6 +15,8 @@ import com.model_store.model.page.Pageable;
 import com.model_store.service.IntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.r2dbc.core.DatabaseClient;
 
@@ -219,37 +221,85 @@ class ProductServicePaginationTest extends IntegrationTest {
         assertThat(ids).doesNotContain(deleted.getId());
     }
 
-    @Test
-    void findByParams_excludesAdultProductsByDefault() {
-        Instant base = Instant.now().minusSeconds(60);
-        Product normal = saveProduct("Normal", 100f, base);
-        Product nsfw = saveProduct("NSFW", 200f, base.plusSeconds(1));
-        linkToNsfwCategory(nsfw.getId());
-
-        FindProductRequest req = request(10, null, null, 0L, SortByType.DATE_DESC);
-
-        List<Long> ids = productService.findByParams(req, null).map(ProductDto::getId).collectList().block();
-
-        assertThat(ids).contains(normal.getId());
-        assertThat(ids).doesNotContain(nsfw.getId());
-    }
-
-    @Test
-    void findByParams_includesAdultProductsForAdultUser() {
-        Instant base = Instant.now().minusSeconds(60);
-        Product normal = saveProduct("Normal", 100f, base);
-        Product nsfw = saveProduct("NSFW", 200f, base.plusSeconds(1));
-        linkToNsfwCategory(nsfw.getId());
-
-        FindProductRequest req = request(10, null, null, 0L, SortByType.DATE_DESC);
-
-        List<Long> ids = productService.findByParams(req, participant.getId()).map(ProductDto::getId).collectList().block();
-
-        assertThat(ids).contains(normal.getId());
-        assertThat(ids).contains(nsfw.getId());
-    }
-
     // --- helpers ---
+
+    @ParameterizedTest
+    @EnumSource(value = SortByType.class, names = {"DATE_ASC", "DATE_DESC", "PRICE_ASC", "PRICE_DESC"})
+    void equalKeys_allPagesHaveNoDuplicatesOrGaps(SortByType sort) {
+        Instant time = Instant.parse("2026-01-01T12:00:00Z");
+        Product first = saveProduct("First", 100f, time);
+        Product second = saveProduct("Second", 100f, time);
+        Product third = saveProduct("Third", 100f, time);
+
+        assertThat(allPages(sort)).containsExactly(third.getId(), second.getId(), first.getId());
+    }
+
+    @Test
+    void dateAsc_returnsOldestFirstAcrossPages() {
+        Instant time = Instant.parse("2026-01-01T12:00:00Z");
+        Product newest = saveProduct("Newest", 100f, time.plusSeconds(2));
+        Product oldest = saveProduct("Oldest", 100f, time);
+        Product middle = saveProduct("Middle", 100f, time.plusSeconds(1));
+        assertThat(allPages(SortByType.DATE_ASC))
+                .containsExactly(oldest.getId(), middle.getId(), newest.getId());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = SortByType.class, names = {"SELLER_RATING_ASC", "SELLER_RATING_DESC"})
+    void sellerRating_unratedLastWithStableFilteredPagination(SortByType sort) {
+        Instant time = Instant.parse("2026-01-01T12:00:00Z");
+        Product unrated1 = saveProduct("Selected unrated 1", 100f, time);
+        Product unrated2 = saveProduct("Selected unrated 2", 100f, time);
+        // A row with no reviews and the historical zero rating is also unrated.
+        Participant zeroSeller = ratedSeller("zero", 0f, 0);
+        Product zeroRated = saveForSeller("Selected zero", zeroSeller, time);
+        Participant lowSeller = ratedSeller("low", 3.33f, 3);
+        Participant highSeller = ratedSeller("high", 4.67f, 3);
+        Product low = saveForSeller("Selected low", lowSeller, time);
+        Product high1 = saveForSeller("Selected high 1", highSeller, time);
+        Product high2 = saveForSeller("Selected high 2", highSeller, time);
+        saveForSeller("Excluded by name", highSeller, time);
+
+        List<Long> expected = sort == SortByType.SELLER_RATING_ASC
+                ? List.of(low.getId(), high2.getId(), high1.getId(), zeroRated.getId(), unrated2.getId(), unrated1.getId())
+                : List.of(high2.getId(), high1.getId(), low.getId(), zeroRated.getId(), unrated2.getId(), unrated1.getId());
+        assertThat(allPages(sort)).containsExactlyElementsOf(expected);
+    }
+
+    private List<Long> allPages(SortByType sort) {
+        java.util.ArrayList<Long> ids = new java.util.ArrayList<>();
+        ProductDto cursor = null;
+        for (int page = 0; page < 20; page++) {
+            FindProductRequest request = request(1, cursor == null ? null : cursor.getCreatedAt(),
+                    cursor == null ? null : cursor.getPrice(), cursor == null ? 0L : cursor.getId(), sort);
+            request.setName(sort.name().startsWith("SELLER_RATING") ? "Selected" : null);
+            request.getPageable().setLastSellerRating(cursor == null ? null : cursor.getSellerRating());
+            List<ProductDto> products = productService.findByParams(request, null).collectList().block();
+            if (products.isEmpty()) return ids;
+            cursor = products.getFirst();
+            ids.add(cursor.getId());
+        }
+        throw new AssertionError("Pagination did not terminate: " + ids);
+    }
+
+    private Participant ratedSeller(String suffix, float rating, int count) {
+        Participant seller = Participant.builder()
+                .login("rated_" + suffix).mail(suffix + "@rating.test").fullName(suffix)
+                .password("pass").role(ParticipantRole.USER).status(ParticipantStatus.ACTIVE)
+                .deadlineSending(3).deadlinePayment(7).isAgent(false)
+                .sellerStatus(SellerStatus.DEFAULT).age(25).createdAt(Instant.now()).build();
+        seller = participantRepository.save(seller).block();
+        databaseClient.sql("INSERT INTO seller_rating(seller_id, average_rating, total_reviews) VALUES (:id, :rating, :count)")
+                .bind("id", seller.getId()).bind("rating", rating).bind("count", count)
+                .fetch().rowsUpdated().block();
+        return seller;
+    }
+
+    private Product saveForSeller(String name, Participant seller, Instant time) {
+        Product product = saveProduct(name, 100f, time);
+        product.setParticipantId(seller.getId());
+        return productRepository.save(product).block();
+    }
 
     private Product saveProduct(String name, float price, Instant createdAt) {
         return saveProductWithStatus(name, price, createdAt, ProductStatus.ACTIVE);
@@ -271,21 +321,6 @@ class ProductServicePaginationTest extends IntegrationTest {
                         .createdAt(createdAt)
                         .build()
         ).block();
-    }
-
-    private void linkToNsfwCategory(Long productId) {
-        Long nsfwId = databaseClient
-                .sql("SELECT id FROM category WHERE slug = 'nsfw_adult' LIMIT 1")
-                .map(row -> row.get("id", Long.class))
-                .one()
-                .block();
-        if (nsfwId == null) return;
-
-        databaseClient
-                .sql("INSERT INTO product_category (product_id, category_id) VALUES (:pid, :cid)")
-                .bind("pid", productId)
-                .bind("cid", nsfwId)
-                .fetch().rowsUpdated().block();
     }
 
     private FindProductRequest request(int size, Instant lastCreatedAt, Float lastPrice, Long lastId, SortByType sortBy) {

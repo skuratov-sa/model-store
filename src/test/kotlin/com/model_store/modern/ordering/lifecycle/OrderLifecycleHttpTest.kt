@@ -3,6 +3,7 @@ package com.model_store.modern.ordering.lifecycle
 import com.amazonaws.services.s3.AmazonS3
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.model_store.modern.shared.JavaReleaseOrderContract
 import io.jsonwebtoken.Jwts
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
 import org.junit.jupiter.api.Assertions.*
@@ -12,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.core.io.ClassPathResource
+import org.springframework.core.env.Environment
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.mail.javamail.JavaMailSender
 import org.springframework.test.context.ActiveProfiles
@@ -40,6 +42,8 @@ abstract class LifecycleHttpContract {
     @Value("\${local.server.port}") var port: Int = 0
     @Autowired lateinit var jdbc: JdbcTemplate
     @Autowired lateinit var json: ObjectMapper
+    @Autowired lateinit var environment: Environment
+    private val javaRelease get() = "modern" !in environment.activeProfiles
     @MockitoBean lateinit var s3: AmazonS3
     @MockitoBean lateinit var mail: JavaMailSender
     private val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build()
@@ -93,6 +97,8 @@ abstract class LifecycleHttpContract {
             assertEquals(f.buyer, view["userInfo"]["id"].asLong())
             assertTrue(view["sellerLogin"].isNull)
             parity("completed-$availability",view)
+            val customerView = list(f.buyer, false).single { it["orderId"].asLong() == f.order }
+            JavaReleaseOrderContract.assertResponse(customerView, javaRelease, canLeaveReview = true)
         }
     }
 
@@ -178,7 +184,7 @@ abstract class LifecycleHttpContract {
         jdbc.update("INSERT INTO product_category(product_id,category_id) VALUES (?,?)", f.product, category)
         jdbc.update("UPDATE product SET name='changed',price=99,external_url='https://ignored.test',used=true WHERE id=?", f.product)
         val view = list(f.buyer, false).single { it["orderId"].asLong() == f.order }
-        assertEquals(setOf("orderId","actualStatus","totalPrice","prepaymentAmount","sellerId","sellerLogin","createdAt","userInfo","product","transfer","images","paymentProofImageId","deliveryUrl","histories"), view.fieldNames().asSequence().toSet())
+        JavaReleaseOrderContract.assertResponse(view, javaRelease)
         assertEquals("snapshot", view["product"]["name"].asText())
         assertEquals(10f, view["product"]["price"].floatValue())
         assertEquals(1, view["product"]["count"].asInt())
@@ -353,6 +359,7 @@ abstract class LifecycleHttpContract {
     fun encode(value: String) = URLEncoder.encode(value, Charsets.UTF_8)
 
     private fun parity(scenario: String, original: JsonNode) {
+        JavaReleaseOrderContract.assertResponse(original, javaRelease)
         fun canonical(node: JsonNode, field: String = ""): JsonNode {
             if(node.isNull) return node
             if(field in setOf("id","orderId","sellerId","transferId","addressId","imageId","paymentProofImageId"))
@@ -366,9 +373,9 @@ abstract class LifecycleHttpContract {
             if(node.isArray) return json.createArrayNode().also { result -> node.forEach { result.add(canonical(it,if(field=="images") "id" else "")) } }
             return node
         }
-        val normalized=canonical(original)
+        val normalized=canonical(JavaReleaseOrderContract.migratedResponse(original))
         val other=paritySnapshots.putIfAbsent(scenario,normalized)
-        if(other!=null) assertEquals(other,normalized,"Full legacy/modern JSON parity: $scenario")
+        if(other!=null) assertEquals(other,normalized,"Migrated legacy/modern JSON parity (Java-only B08 checked separately): $scenario")
     }
 
     companion object {

@@ -3,6 +3,7 @@ package com.model_store.modern.seller.agent.order
 import com.amazonaws.services.s3.AmazonS3
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.model_store.modern.shared.JavaReleaseOrderContract
 import io.jsonwebtoken.Jwts
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
 import org.junit.jupiter.api.Assertions.*
@@ -12,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.core.io.ClassPathResource
+import org.springframework.core.env.Environment
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.mail.javamail.JavaMailSender
 import org.springframework.test.context.ActiveProfiles
@@ -40,6 +42,8 @@ abstract class AgentOrderFixture {
     @Value("\${local.server.port}") var port: Int = 0
     @Autowired lateinit var jdbc: JdbcTemplate
     @Autowired lateinit var json: ObjectMapper
+    @Autowired lateinit var environment: Environment
+    protected val javaRelease get() = "modern" !in environment.activeProfiles
     @MockitoBean lateinit var s3: AmazonS3
     @MockitoBean lateinit var mail: JavaMailSender
     private val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build()
@@ -187,8 +191,7 @@ abstract class AgentOrderHttpContract : AgentOrderFixture() {
         val response=queue(a,f.seller,query="?size=1&page=1"); ok(response)
         val view=json.readTree(response.body()).single()
         assertEquals(f.order,view["orderId"].asLong())
-        assertEquals(setOf("orderId","actualStatus","totalPrice","prepaymentAmount","sellerId","sellerLogin","createdAt",
-            "userInfo","product","transfer","images","paymentProofImageId","deliveryUrl","histories"),view.fieldNames().asSequence().toSet())
+        JavaReleaseOrderContract.assertResponse(view, javaRelease)
         assertEquals(f.buyer,view["userInfo"]["id"].asLong())
         assertEquals("snapshot",view["product"]["name"].asText())
         assertEquals("BOOKED",view["histories"].last()["status"].asText())
@@ -201,6 +204,13 @@ abstract class AgentOrderHttpContract : AgentOrderFixture() {
         assertEquals("[]",queue(a,f.seller,"?status=COMPLETED").body())
         assertEquals("[]",queue(a,f.seller,"?page=2147483647&size=100").body())
         error(queue(a,f.seller,"?size=101"),400,"INVALID_REQUEST","Некорректная страница или размер страницы")
+        jdbc.update("UPDATE \"order\" SET status='COMPLETED' WHERE id=?", f.order)
+        val reviewId = jdbc.queryForObject("""INSERT INTO review(order_id,product_id,reviewer_id,seller_id,rating)
+            VALUES (?,?,?,?,5) RETURNING id""", Long::class.java, f.order, f.product, f.buyer, f.seller)!!
+        val reviewedResponse = queue(a, f.seller, "?status=COMPLETED"); ok(reviewedResponse)
+        val reviewed = json.readTree(reviewedResponse.body()).single()
+        assertEquals(f.order, reviewed["orderId"].asLong())
+        JavaReleaseOrderContract.assertResponse(reviewed, javaRelease, reviewId = reviewId)
     }
 
     @Test

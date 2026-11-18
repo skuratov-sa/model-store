@@ -1,5 +1,7 @@
 package com.model_store.service.impl;
 
+import com.model_store.exception.ApiException;
+import com.model_store.exception.constant.ErrorCode;
 import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.FindProductRequest;
 import com.model_store.model.base.Participant;
@@ -19,6 +21,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -231,40 +234,12 @@ public class ProductServiceImplTest extends IntegrationTest {
 
     @Test
     void extendExpirationDate_ownerExtendsDate_newDateIsLater() {
-        var result = newParticipant()
-                .flatMap(p -> createPurchasableProduct(ProductStatus.ACTIVE, p.getId())
-                        .flatMap(saved -> {
-                            Instant originalExpiry = saved.getExpirationDate();
-                            return productService.extendExpirationDate(saved.getId(), p.getId())
-                                    .then(productRepository.findById(saved.getId()))
-                                    .doOnNext(updated ->
-                                            assertThat(updated.getExpirationDate()).isAfterOrEqualTo(originalExpiry)
-                                    );
-                        })
-                );
-
-        StepVerifier.create(result)
-                .assertNext(updated -> assertThat(updated.getExpirationDate()).isNotNull())
-                .verifyComplete();
+        assertExpirationRenewed(ProductStatus.ACTIVE);
     }
 
     @Test
     void extendExpirationDate_timeExpiredProduct_setsActiveAndExtendsDate() {
-        var result = newParticipant()
-                .flatMap(p -> createPurchasableProduct(ProductStatus.TIME_EXPIRED, p.getId())
-                        .flatMap(saved -> {
-                            Instant originalExpiry = saved.getExpirationDate();
-                            return productService.extendExpirationDate(saved.getId(), p.getId())
-                                    .then(productRepository.findById(saved.getId()))
-                                    .doOnNext(updated ->
-                                            assertThat(updated.getExpirationDate()).isAfterOrEqualTo(originalExpiry)
-                                    );
-                        })
-                );
-
-        StepVerifier.create(result)
-                .assertNext(updated -> assertThat(updated.getStatus()).isEqualTo(ProductStatus.ACTIVE))
-                .verifyComplete();
+        assertExpirationRenewed(ProductStatus.TIME_EXPIRED);
     }
 
     @Test
@@ -285,21 +260,43 @@ public class ProductServiceImplTest extends IntegrationTest {
 
     @Test
     void decrementCountIfSufficient_insufficientStock_doesNotChangeCount() {
-        var result = newParticipant()
-                .flatMap(p -> createPurchasableProduct(ProductStatus.ACTIVE, p.getId())
-                        .flatMap(saved ->
-                                productService.decrementCountIfSufficient(saved.getId(), 999)
-                                        .onErrorResume(e -> Mono.empty())
-                                        .then(productRepository.findById(saved.getId()))
-                        )
-                );
+        Product product = newParticipant()
+                .flatMap(p -> createPurchasableProduct(ProductStatus.ACTIVE, p.getId())).block();
 
-        StepVerifier.create(result)
-                .assertNext(product -> assertThat(product.getCount()).isEqualTo(10))
-                .verifyComplete();
+        StepVerifier.create(productService.decrementCountIfSufficient(product.getId(), 999))
+                .expectErrorSatisfies(error -> {
+                    assertThat(error).isInstanceOf(ApiException.class);
+                    assertThat(((ApiException) error).getCode()).isEqualTo(ErrorCode.OUT_OF_STOCK);
+                }).verify();
+        assertThat(productRepository.findById(product.getId()).block().getCount()).isEqualTo(10);
     }
 
     // --- helpers ---
+
+    private void assertExpirationRenewed(ProductStatus initialStatus) {
+        Participant owner = newParticipant().block();
+        // INSERT returns the entity with its generated ID, but not DB defaults such as created_at.
+        Product product = createPurchasableProduct(initialStatus, owner.getId())
+                .flatMap(saved -> productRepository.findById(saved.getId())).block();
+        assertThat(product).isNotNull();
+        assertThat(product.getCreatedAt()).isNotNull();
+        Instant previousExpiry = initialStatus == ProductStatus.ACTIVE
+                ? Instant.now().plus(1, ChronoUnit.DAYS).truncatedTo(ChronoUnit.MICROS)
+                : Instant.now().minus(1, ChronoUnit.DAYS).truncatedTo(ChronoUnit.MICROS);
+        product.setExpirationDate(previousExpiry);
+        productRepository.save(product).block();
+
+        Instant startedAt = Instant.now();
+        StepVerifier.create(productService.extendExpirationDate(product.getId(), owner.getId())).verifyComplete();
+        Instant completedAt = Instant.now();
+        Product updated = productRepository.findById(product.getId()).block();
+        assertThat(updated.getStatus()).isEqualTo(ProductStatus.ACTIVE);
+        assertThat(updated.getCreatedAt()).isEqualTo(product.getCreatedAt());
+        assertThat(updated.getExpirationDate()).isAfter(previousExpiry)
+                .isBetween(startedAt.plus(properties.getProductExpirationDays(), ChronoUnit.DAYS)
+                                .truncatedTo(ChronoUnit.MICROS),
+                        completedAt.plus(properties.getProductExpirationDays(), ChronoUnit.DAYS).plusMillis(1));
+    }
 
     /** Creates a participant with auto-generated ID (no hardcoded IDs). */
     private Mono<Participant> newParticipant() {

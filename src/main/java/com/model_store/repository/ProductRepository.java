@@ -28,6 +28,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
     @Query("""
             SELECT p.*
             FROM product p
+            LEFT JOIN seller_rating sr ON sr.seller_id = p.participant_id
             WHERE
                 (:includeGiveaways IS TRUE OR p.availability <> 'GIVEAWAY') AND
                 (:includeCountEmpty IS TRUE OR p.count is NULL OR p.count > 0) AND
@@ -62,15 +63,25 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                     (:sortBy = 'DATE_DESC' AND (:lastCreatedAt IS NULL OR (p.created_at < :lastCreatedAt OR (p.created_at = :lastCreatedAt AND p.id < :lastId)))) OR
             
                         -- Условие пагинации для сортировки по возрастанию цены
-                    (:sortBy = 'PRICE_ASC' AND (:lastPrice IS NULL OR (p.price > :lastPrice OR (p.price = :lastPrice AND p.id > :lastId)))) OR
+                    (:sortBy = 'PRICE_ASC' AND (:lastPrice IS NULL OR (p.price > :lastPrice OR (p.price = :lastPrice AND p.id < :lastId)))) OR
             
                         -- Условие пагинации для сортировки по убыванию цены
-                    (:sortBy = 'PRICE_DESC' AND (:lastPrice IS NULL OR (p.price < :lastPrice OR (p.price = :lastPrice AND p.id < :lastId))))
+                    (:sortBy = 'PRICE_DESC' AND (:lastPrice IS NULL OR (p.price < :lastPrice OR (p.price = :lastPrice AND p.id < :lastId)))) OR
+                    (:sortBy = 'DATE_ASC' AND (:lastCreatedAt IS NULL OR (p.created_at > :lastCreatedAt OR (p.created_at = :lastCreatedAt AND p.id < :lastId)))) OR
+                    (:sortBy = 'SELLER_RATING_ASC' AND (:lastId = 0 OR
+                        COALESCE(NULLIF(sr.average_rating, 0), 6) > COALESCE(NULLIF(CAST(:lastSellerRating AS numeric(3,2)), 0), 6) OR
+                        (COALESCE(NULLIF(sr.average_rating, 0), 6) = COALESCE(NULLIF(CAST(:lastSellerRating AS numeric(3,2)), 0), 6) AND p.id < :lastId))) OR
+                    (:sortBy = 'SELLER_RATING_DESC' AND (:lastId = 0 OR
+                        COALESCE(NULLIF(sr.average_rating, 0), -1) < COALESCE(NULLIF(CAST(:lastSellerRating AS numeric(3,2)), 0), -1) OR
+                        (COALESCE(NULLIF(sr.average_rating, 0), -1) = COALESCE(NULLIF(CAST(:lastSellerRating AS numeric(3,2)), 0), -1) AND p.id < :lastId)))
                 )
             ORDER BY
                 CASE WHEN :sortBy = 'DATE_DESC' THEN p.created_at END DESC,
+                CASE WHEN :sortBy = 'DATE_ASC' THEN p.created_at END ASC,
                 CASE WHEN :sortBy = 'PRICE_ASC' THEN p.price END ASC,
                 CASE WHEN :sortBy = 'PRICE_DESC' THEN p.price END DESC,
+                CASE WHEN :sortBy = 'SELLER_RATING_ASC' THEN NULLIF(sr.average_rating, 0) END ASC NULLS LAST,
+                CASE WHEN :sortBy = 'SELLER_RATING_DESC' THEN NULLIF(sr.average_rating, 0) END DESC NULLS LAST,
                 p.id DESC
             LIMIT :limit
             """)
@@ -89,6 +100,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
             ProductStatus[] productStatuses,
             Instant lastCreatedAt,
             Float lastPrice,
+            Float lastSellerRating,
             Long lastId,
             SortByType sortBy,
             Boolean includeAdult,
@@ -138,6 +150,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 new ProductStatus[]{ProductStatus.ACTIVE},
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastCreatedAt).orElse(null),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastPrice).orElse(null),
+                Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastSellerRating).orElse(null),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastId).orElse(0L),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
                 includeAdult,
@@ -165,6 +178,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 new ProductStatus[]{ProductStatus.ACTIVE},
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastCreatedAt).orElse(null),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastPrice).orElse(null),
+                Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastSellerRating).orElse(null),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastId).orElse(0L),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
                 includeAdult,
@@ -191,6 +205,7 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
                 new ProductStatus[]{ProductStatus.ACTIVE, ProductStatus.AWAITING_GIVEAWAY, ProductStatus.BLOCKED, ProductStatus.TIME_EXPIRED},
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastCreatedAt).orElse(null),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastPrice).orElse(null),
+                Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastSellerRating).orElse(null),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getLastId).orElse(0L),
                 Optional.ofNullable(searchParams.getPageable()).map(Pageable::getSortBy).orElse(DATE_DESC),
                 true,

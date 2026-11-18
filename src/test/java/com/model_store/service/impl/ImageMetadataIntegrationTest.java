@@ -65,16 +65,17 @@ class ImageMetadataIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    void findImageMetadataByIds_temporaryImage_notReturned() {
-        Image saved = imageRepository.save(
-                Image.builder()
-                        .filename("temp_photo.jpg")
-                        .tag(ImageTag.PRODUCT)
-                        .status(ImageStatus.TEMPORARY)
-                        .build()
-        ).block();
+    void findImageMetadataByIds_temporaryAndDeletedImages_areExcludedFromMixedResult() {
+        Image active = imageRepository.save(Image.builder().filename("active.jpg")
+                .tag(ImageTag.PRODUCT).status(ImageStatus.ACTIVE).build()).block();
+        Image temporary = imageRepository.save(Image.builder().filename("temporary.jpg")
+                .tag(ImageTag.PRODUCT).status(ImageStatus.TEMPORARY).build()).block();
+        Image deleted = imageRepository.save(Image.builder().filename("deleted.jpg")
+                .tag(ImageTag.PRODUCT).status(ImageStatus.DELETE).build()).block();
 
-        StepVerifier.create(imageService.findImageMetadataByIds(java.util.List.of(saved.getId())))
+        StepVerifier.create(imageService.findImageMetadataByIds(
+                        java.util.List.of(temporary.getId(), active.getId(), deleted.getId())))
+                .assertNext(dto -> assertThat(dto.id()).isEqualTo(active.getId()))
                 .verifyComplete();
     }
 

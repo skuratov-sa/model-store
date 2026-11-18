@@ -46,7 +46,7 @@ services:
       retries: 5
       start_period: 10s
   backend:
-    image: ready555/model_store:v1.34
+    image: ready555/model_store:v1.38
     depends_on:
       db:
         condition: service_healthy
@@ -69,7 +69,12 @@ services:
       SPRING_R2DBC_POOL_VALIDATION_QUERY: "SELECT 1"
       SPRING_R2DBC_POOL_VALIDATION_DEPTH: "remote"
 
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/model_store
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+
       SPRING_FLYWAY_URL: jdbc:postgresql://db:5432/model_store
+      LOGGING_LEVEL_ORG_FLYWAYDB_CORE: ${LOGGING_LEVEL_ORG_FLYWAYDB_CORE:-INFO}
       SPRING_FLYWAY_USER: root
       SPRING_FLYWAY_PASSWORD: root
 

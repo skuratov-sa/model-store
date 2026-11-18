@@ -92,7 +92,7 @@ logging:
     org.springframework.web.server: DEBUG
     com.example.filter: INFO
     org.springdoc: WARN
-    org.flywaydb.core: WARN
+    org.flywaydb.core: INFO
     org.springframework.jdbc.core: WARN
     org.springframework.r2dbc.core: WARN
     org.hibernate.SQL: WARN

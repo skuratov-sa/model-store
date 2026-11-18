@@ -3,6 +3,7 @@ package com.model_store.service.impl;
 import com.model_store.exception.ApiException;
 import com.model_store.exception.constant.ErrorCode;
 import com.model_store.model.FindProductRequest;
+import com.model_store.model.ReviewRequestDto;
 import com.model_store.model.CreateOrUpdateProductRequest;
 import com.model_store.model.CustomUserDetails;
 import com.model_store.model.base.Address;
@@ -1425,6 +1426,93 @@ class OrderServiceImplTest extends IntegrationTest {
                 .fetch()
                 .rowsUpdated()
                 .block();
+    }
+
+    @Test
+    void reviews_orderResponsesExposeAvailabilityAndExistingReview() {
+        seller.setIsAgent(true);
+        participantRepository.save(seller).block();
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId())
+                .block().getFirst();
+        assertThat(orderService.getOrdersByCustomer(buyer.getId()).next().block().isCanLeaveReview()).isFalse();
+
+        Order order = orderRepository.findById(orderId).block();
+        order.setStatus(OrderStatus.COMPLETED);
+        orderRepository.save(order).block();
+        var before = orderService.getOrdersByCustomer(buyer.getId()).next().block();
+        assertThat(before.isCanLeaveReview()).isTrue();
+        assertThat(before.getReviewId()).isNull();
+        assertThat(orderService.getOrdersBySeller(seller.getId()).next().block().isCanLeaveReview()).isFalse();
+        assertThat(orderService.getAgentOrders(seller.getId(), null, 50, 0).next().block().isCanLeaveReview()).isFalse();
+
+        ReviewRequestDto request = reviewRequest(orderId);
+        Long reviewId = reviewService.addReview(request, buyer.getId()).block();
+        var after = orderService.getOrdersByCustomer(buyer.getId()).next().block();
+        assertThat(after.isCanLeaveReview()).isFalse();
+        assertThat(after.getReviewId()).isEqualTo(reviewId);
+        assertThat(orderService.getOrdersBySeller(seller.getId()).next().block().getReviewId()).isEqualTo(reviewId);
+        assertThat(orderService.getAgentOrders(seller.getId(), null, 50, 0).next().block().getReviewId()).isEqualTo(reviewId);
+        StepVerifier.create(reviewService.addReview(request, buyer.getId()))
+                .expectErrorMatches(e -> e instanceof ApiException api && api.getCode() == ErrorCode.REVIEW_ALREADY_EXIST)
+                .verify();
+
+        reviewService.deleteReview(reviewId, buyer.getId()).block();
+        assertThat(orderService.getOrdersByCustomer(buyer.getId()).next().block().isCanLeaveReview()).isTrue();
+        assertThat(reviewService.addReview(request, buyer.getId()).block()).isNotEqualTo(reviewId);
+    }
+
+    @Test
+    void reviews_failedOrderAllowsReviewButCancelledAndActiveOrdersDoNot() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId())
+                .block().getFirst();
+        for (OrderStatus status : List.of(OrderStatus.BOOKED, OrderStatus.CANCELLED, OrderStatus.FAILED)) {
+            Order order = orderRepository.findById(orderId).block();
+            order.setStatus(status);
+            orderRepository.save(order).block();
+            assertThat(orderService.getOrdersByCustomer(buyer.getId()).next().block().isCanLeaveReview())
+                    .isEqualTo(status == OrderStatus.FAILED);
+            if (status != OrderStatus.FAILED) {
+                StepVerifier.create(reviewService.addReview(reviewRequest(orderId), buyer.getId()))
+                        .expectErrorMatches(e -> e instanceof ApiException api && api.getCode() == ErrorCode.ORDER_NOT_TERMINATED)
+                        .verify();
+            }
+        }
+        StepVerifier.create(reviewService.addReview(reviewRequest(orderId), seller.getId()))
+                .expectErrorMatches(e -> e instanceof ApiException api && api.getCode() == ErrorCode.ORDER_NOT_FOUND)
+                .verify();
+        assertThat(reviewService.addReview(reviewRequest(orderId), buyer.getId()).block()).isNotNull();
+    }
+
+    @Test
+    void reviews_concurrentCreationPersistsOnlyOneReview() throws Exception {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId())
+                .block().getFirst();
+        Order order = orderRepository.findById(orderId).block();
+        order.setStatus(OrderStatus.COMPLETED);
+        orderRepository.save(order).block();
+        List<Signal<Long>> results = raceWhileOrderRowLocked(orderId,
+                reviewService.addReview(reviewRequest(orderId), buyer.getId()),
+                reviewService.addReview(reviewRequest(orderId), buyer.getId()));
+        assertThat(results.stream().filter(Signal::isOnNext).count()).isEqualTo(1);
+        assertThat(results.stream().filter(Signal::isOnError).map(Signal::getThrowable).toList())
+                .singleElement().satisfies(e -> {
+                    assertThat(e).isInstanceOf(ApiException.class);
+                    assertThat(((ApiException) e).getCode()).isEqualTo(ErrorCode.REVIEW_ALREADY_EXIST);
+                });
+        Long count = databaseClient.sql("SELECT count(*) AS count FROM review WHERE order_id = :id")
+                .bind("id", orderId).map(row -> row.get("count", Long.class)).one().block();
+        assertThat(count).isEqualTo(1);
+    }
+
+    private ReviewRequestDto reviewRequest(Long orderId) {
+        ReviewRequestDto request = new ReviewRequestDto();
+        request.setOrderId(orderId);
+        request.setRating(5);
+        request.setComment("Good seller");
+        return request;
     }
 
     private Participant newParticipant(String prefix) {

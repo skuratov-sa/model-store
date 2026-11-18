@@ -17,6 +17,8 @@ public interface OrderMapper {
     Order toOrder(CreateOrderRequest request);
 
     @Mapping(target = "orderId", source = "id")
+    @Mapping(target = "canLeaveReview", ignore = true)
+    @Mapping(target = "reviewId", ignore = true)
     @Mapping(target = "actualStatus", source = "status")
     @Mapping(target = "paymentProofImageId", source = "imagePaymentProofId")
     @Mapping(target = "sellerId", source = "sellerId")
@@ -32,6 +34,8 @@ public interface OrderMapper {
     FindOrderResponse toFindOrderResponseBySeller(Order order);
 
     @Mapping(target = "orderId", source = "id")
+    @Mapping(target = "canLeaveReview", ignore = true)
+    @Mapping(target = "reviewId", ignore = true)
     @Mapping(target = "actualStatus", source = "status")
     @Mapping(target = "paymentProofImageId", source = "imagePaymentProofId")
     @Mapping(target = "sellerId", source = "sellerId")

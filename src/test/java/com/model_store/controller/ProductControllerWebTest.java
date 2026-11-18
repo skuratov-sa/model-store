@@ -14,7 +14,6 @@ import com.model_store.model.constant.ProductAvailabilityType;
 import com.model_store.model.constant.ProductStatus;
 import com.model_store.model.constant.SellerStatus;
 import com.model_store.model.constant.SortByType;
-import com.model_store.model.dto.ProductDto;
 import com.model_store.model.page.Pageable;
 import com.model_store.service.IntegrationTest;
 import com.model_store.service.JwtService;
@@ -176,17 +175,34 @@ class ProductControllerWebTest extends IntegrationTest {
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
-                .jsonPath("$").isArray();
+                .jsonPath("$").isArray()
+                .jsonPath("$.length()").isEqualTo(0);
     }
 
     @Test
-    void findProducts_nonPreorderFlagIsAcceptedInJson() {
+    void findProducts_nonPreorderFlagFiltersProductsFromJsonRequest() {
+        Long sellerId = jwtService.getIdByAccessToken(userToken);
+        Product purchasable = saveProduct("Available", sellerId);
+        Product external = saveProduct("External", sellerId);
+        external.setAvailability(ProductAvailabilityType.EXTERNAL_PRODUCT);
+        external.setExternalUrl("https://t.me/source");
+        productRepository.save(external).block();
+        Product preorder = saveProduct("Preorder", sellerId);
+        preorder.setAvailability(ProductAvailabilityType.PREORDER);
+        preorder.setPrepaymentAmount(50f);
+        productRepository.save(preorder).block();
+
         webTestClient.post()
                 .uri("/products/find")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"catalogFlags\":[\"NON_PREORDER\"]}")
                 .exchange()
-                .expectStatus().isOk();
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.length()").isEqualTo(2)
+                .jsonPath("$[?(@.id == " + purchasable.getId() + ")]").isNotEmpty()
+                .jsonPath("$[?(@.id == " + external.getId() + ")]").isNotEmpty()
+                .jsonPath("$[?(@.id == " + preorder.getId() + ")]").isEmpty();
     }
 
     @Test
@@ -235,19 +251,16 @@ class ProductControllerWebTest extends IntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON);
         if (authorization != null) requestSpec.header("Authorization", authorization);
 
-        List<ProductDto> products = requestSpec.bodyValue(body)
+        WebTestClient.BodyContentSpec response = requestSpec.bodyValue(body)
                 .exchange()
                 .expectStatus().isOk()
-                .expectBodyList(ProductDto.class)
-                .returnResult()
-                .getResponseBody();
-        assertThat(products).isNotNull();
-        List<Long> ids = products.stream().map(ProductDto::getId).toList();
-        assertThat(ids).contains(normalId);
+                .expectBody()
+                .jsonPath("$").isArray();
+        response.jsonPath("$[?(@.id == " + normalId + ")]").isNotEmpty();
         if (shouldIncludeAdult) {
-            assertThat(ids).contains(restrictedId);
+            response.jsonPath("$[?(@.id == " + restrictedId + ")]").isNotEmpty();
         } else {
-            assertThat(ids).doesNotContain(restrictedId);
+            response.jsonPath("$[?(@.id == " + restrictedId + ")]").isEmpty();
         }
     }
 

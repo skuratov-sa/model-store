@@ -25,4 +25,8 @@ public class FindOrderResponse {
     private Long paymentProofImageId;
     private String deliveryUrl;
     private List<OrderStatusHistoryDto> histories;
+    @Schema(description = "Whether the current buyer can create a review")
+    private boolean canLeaveReview;
+    @Schema(description = "Existing review ID, or null when no review has been left")
+    private Long reviewId;
 }

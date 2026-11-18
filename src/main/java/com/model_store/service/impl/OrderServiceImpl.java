@@ -16,6 +16,7 @@ import com.model_store.model.dto.GetRequiredODataOrderDto;
 import com.model_store.model.dto.ProductDto;
 import com.model_store.repository.OrderCaseRepository;
 import com.model_store.repository.OrderRepository;
+import com.model_store.repository.ReviewRepository;
 import com.model_store.service.AddressService;
 import com.model_store.service.BasketService;
 import com.model_store.service.ImageService;
@@ -61,6 +62,7 @@ import static java.util.Objects.nonNull;
 public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final OrderCaseRepository orderCaseRepository;
+    private final ReviewRepository reviewRepository;
     private final ProductService productService;
     private final ParticipantService participantService;
     private final OrderStatusHistoryService orderHistoryService;
@@ -253,7 +255,10 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Flux<FindOrderResponse> getOrdersByCustomer(Long customerId) {
-        return enrichOrders(updateFindOrderByOrderCustomer(customerId));
+        return enrichOrders(updateFindOrderByOrderCustomer(customerId))
+                .doOnNext(response -> response.setCanLeaveReview(response.getReviewId() == null
+                        && (response.getActualStatus() == OrderStatus.COMPLETED
+                        || response.getActualStatus() == OrderStatus.FAILED)));
     }
 
     private Flux<FindOrderResponse> enrichOrders(Flux<FindOrderResponse> source) {
@@ -262,7 +267,14 @@ public class OrderServiceImpl implements OrderService {
                 .concatMap(this::findOrderByHistory)
                 .concatMap(this::findOrderByUser)
                 .concatMap(this::findOrderByProduct)
-                .concatMap(this::findOrderByTransfer);
+                .concatMap(this::findOrderByTransfer)
+                .concatMap(this::findOrderReview);
+    }
+
+    private Mono<FindOrderResponse> findOrderReview(FindOrderResponse response) {
+        return reviewRepository.findFirstByOrderIdOrderByIdAsc(response.getOrderId())
+                .doOnNext(review -> response.setReviewId(review.getId()))
+                .thenReturn(response);
     }
 
     @Override

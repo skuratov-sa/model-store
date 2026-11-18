@@ -26,8 +26,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -85,6 +84,8 @@ class ImageServiceMetadataUnitTest {
                     assertThat(dto.height()).isEqualTo(800);
                 })
                 .verifyComplete();
+
+        verifyNoInteractions(s3Service);
     }
 
     @Test
@@ -93,46 +94,6 @@ class ImageServiceMetadataUnitTest {
 
         StepVerifier.create(imageService.findImageMetadataByIds(List.of(999L)))
                 .verifyComplete();
-    }
-
-    @Test
-    void findImageMetadataByIds_temporaryImage_notReturned() {
-        Image image = Image.builder()
-                .id(2L)
-                .filename("temp_photo.jpg")
-                .tag(ImageTag.PRODUCT)
-                .status(ImageStatus.TEMPORARY)
-                .build();
-
-        when(imageRepository.findActiveByIds(any())).thenReturn(Flux.empty());
-
-        StepVerifier.create(imageService.findImageMetadataByIds(List.of(2L)))
-                .verifyComplete();
-    }
-
-    @Test
-    void findImageMetadataByIds_deletedImage_notReturned() {
-        Image image = Image.builder()
-                .id(3L)
-                .filename("deleted_photo.jpg")
-                .tag(ImageTag.PRODUCT)
-                .status(ImageStatus.DELETE)
-                .build();
-
-        when(imageRepository.findActiveByIds(any())).thenReturn(Flux.empty());
-
-        StepVerifier.create(imageService.findImageMetadataByIds(List.of(3L)))
-                .verifyComplete();
-    }
-
-    @Test
-    void findImageMetadataByIds_doesNotCallS3() {
-        when(imageRepository.findActiveByIds(any())).thenReturn(Flux.empty());
-
-        StepVerifier.create(imageService.findImageMetadataByIds(List.of(1L)))
-                .verifyComplete();
-
-        verify(s3Service, never()).getFile(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test

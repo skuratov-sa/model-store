@@ -8,6 +8,7 @@ import reactor.core.publisher.Mono;
 
 @Repository
 public interface ReviewRepository extends ReactiveCrudRepository<Review, Long> {
+    Mono<Review> findFirstByOrderIdOrderByIdAsc(Long orderId);
 
     Flux<Review> findBySellerIdOrderByCreatedAtDesc(Long sellerId);
 
