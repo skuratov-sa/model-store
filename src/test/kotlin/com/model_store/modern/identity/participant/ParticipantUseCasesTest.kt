@@ -71,10 +71,14 @@ class ParticipantUseCasesTest {
         password.execute(7, "new-secret", "after-delete")
         assertTrue(BCryptPasswordEncoder().matches("after-delete", store.find(7)?.passwordHash))
         assertThrows(ParticipantAdminForbidden::class.java) {
-            BlockParticipant(store).execute(Actor(7, "user7", "USER"), 7)
+            BlockParticipant(store, object : AdminParticipantStatusLock {
+                override fun lockActiveAdminAndTarget(callerId: Long, targetId: Long) = Unit
+            }).execute(Actor(7, "user7", "USER"), 7)
         }
         assertThrows(ParticipantStatusUnavailable::class.java) {
-            BlockParticipant(store).execute(Actor(8, "admin", "ADMIN"), 7)
+            BlockParticipant(store, object : AdminParticipantStatusLock {
+                override fun lockActiveAdminAndTarget(callerId: Long, targetId: Long) = Unit
+            }).execute(Actor(8, "admin", "ADMIN"), 7)
         }
     }
 

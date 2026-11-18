@@ -2,6 +2,8 @@ package com.model_store.modern.identity.participant.application
 
 import com.model_store.modern.identity.participant.domain.*
 import com.model_store.modern.shared.domain.Actor
+import com.model_store.modern.shared.domain.TokenType
+import org.springframework.context.annotation.Profile
 import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -51,10 +53,19 @@ class DeleteParticipant(private val store: ParticipantStore) {
 }
 
 @Service
-class BlockParticipant(private val store: ParticipantStore) {
+@Profile("modern")
+class BlockParticipant(private val store: ParticipantStore, private val access: AdminParticipantStatusLock) {
     @Transactional("transactionManager")
     fun execute(actor: Actor, id: Long) {
-        if (actor.role != "ADMIN") throw ParticipantAdminForbidden()
+        val callerId = actor.participantId
+        if (actor.role != "ADMIN" || actor.tokenType != TokenType.ACCESS || callerId == null || callerId <= 0)
+            throw ParticipantAdminForbidden()
+        try {
+            access.lockActiveAdminAndTarget(callerId, id)
+        } catch (_: CurrentAdminForbidden) {
+            throw ParticipantAdminForbidden()
+        }
+        // The port already holds this existing target; refresh its owner snapshot before mutation.
         store.save((store.findForUpdate(id) ?: throw ParticipantStatusUnavailable(id)).blocked())
     }
 }
