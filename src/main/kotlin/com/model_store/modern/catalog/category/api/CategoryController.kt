@@ -1,6 +1,11 @@
 package com.model_store.modern.catalog.category.api
 
 import com.model_store.modern.catalog.category.application.CategoryUseCases
+import com.model_store.modern.catalog.category.application.AdminCategoryCommands
+import com.model_store.modern.identity.participant.application.CurrentAdminForbidden
+import com.model_store.modern.shared.domain.TokenType
+import jakarta.servlet.http.HttpServletRequest
+import org.springframework.web.bind.annotation.ModelAttribute
 import com.model_store.modern.catalog.category.domain.CategoryBranch
 import com.model_store.modern.catalog.category.domain.CategoryRuleViolation
 import com.model_store.modern.catalog.category.domain.CategoryInvalidReference
@@ -28,7 +33,13 @@ data class CategoryResponse(val id: Long, val name: String?, val childs: List<Ca
 
 @RestController
 @Profile("modern")
-class CategoryController(private val cases: CategoryUseCases) {
+class CategoryController(private val cases: CategoryUseCases, private val admin: AdminCategoryCommands) {
+    // Only POST/PUT mappings are administrative; the public GET has no caller gate.
+    @ModelAttribute
+    fun authorizeAdminRoute(@AuthenticationPrincipal actor: Actor?, request: HttpServletRequest) {
+        if (request.method == "POST" || request.method == "PUT") requireAdmin(actor)
+    }
+
     @GetMapping("/categories")
     fun categories(): List<CategoryResponse> = cases.tree().map(::CategoryResponse)
 
@@ -38,18 +49,19 @@ class CategoryController(private val cases: CategoryUseCases) {
         @RequestParam name: String,
         @RequestParam(required = false) parentId: Long?,
     ): Long {
-        requireAdmin(actor)
-        return cases.create(name, parentId)
+        return admin.create(requireAdmin(actor), name, parentId)
     }
 
     @PutMapping("/admin/actions/categories")
     fun rename(@AuthenticationPrincipal actor: Actor?, @RequestParam categoryId: Long, @RequestParam name: String) {
-        requireAdmin(actor)
-        cases.rename(categoryId, name)
+        admin.rename(requireAdmin(actor), categoryId, name)
     }
 
-    private fun requireAdmin(actor: Actor?) {
-        if (actor?.role != "ADMIN") throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
+    private fun requireAdmin(actor: Actor?): Long {
+        if (actor?.role != "ADMIN" || actor.tokenType != TokenType.ACCESS ||
+            actor.participantId == null || actor.participantId <= 0)
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
+        return actor.participantId
     }
 }
 
@@ -76,6 +88,10 @@ class CategoryErrorHandler {
             if (invalidReference) "INVALID_REFERENCE" else "DUPLICATE_KEY",
             if (invalidReference) "Указана ссылка на несуществующий объект" else "Нарушено ограничение уникальности")
     }
+
+    @ExceptionHandler(CurrentAdminForbidden::class)
+    fun revoked(error: CurrentAdminForbidden): ResponseEntity<MvcApiError> =
+        mvcApiError(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "Access denied")
 
     @ExceptionHandler(ResponseStatusException::class)
     fun forbidden(error: ResponseStatusException): ResponseEntity<MvcApiError> =
