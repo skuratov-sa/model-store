@@ -49,9 +49,10 @@ class ProductCommands(
     @Value("\${app.product-expiration-days}") private val expirationDays: Long,
     private val currentAdmin: CurrentAdminLock,
 ) {
-    @Transactional
+    @Transactional(transactionManager = "transactionManager")
     fun create(ownerId: Long, role: String?, changes: ProductChanges): Long {
         if (role != "USER" && role != "ADMIN") denied("Доступ запрещён")
+        if (role == "ADMIN") lockAdminPrivilege(ownerId)
         val availability = changes.availability ?: invalid("Укажите тип товара")
         if (role != "ADMIN" && availability !in setOf(ProductAvailability.PURCHASABLE, ProductAvailability.PREORDER))
             denied("Этот тип товара доступен только администратору")
@@ -71,9 +72,10 @@ class ProductCommands(
         return id
     }
 
-    @Transactional
+    @Transactional(transactionManager = "transactionManager")
     fun update(id: Long, ownerId: Long, role: String?, changes: ProductChanges) {
         if (role != "USER" && role != "ADMIN") denied("Доступ запрещён")
+        if (role == "ADMIN") lockAdminPrivilege(ownerId)
         if (role != "ADMIN" && changes.availability != null &&
             changes.availability !in setOf(ProductAvailability.PURCHASABLE, ProductAvailability.PREORDER))
             denied("Этот тип товара доступен только администратору")
@@ -139,6 +141,15 @@ class ProductCommands(
                 expiration() else product.expirationDate,
             giveawayEnabled = if (product.availability == ProductAvailability.GIVEAWAY && status != ProductState.ACTIVE)
                 false else product.giveawayEnabled))
+    }
+
+    private fun lockAdminPrivilege(callerId: Long) {
+        if (callerId <= 0) denied("Доступ запрещён")
+        try {
+            currentAdmin.lockActiveAdmin(callerId)
+        } catch (_: CurrentAdminForbidden) {
+            denied("Доступ запрещён")
+        }
     }
 
     private fun build(ownerId: Long, changes: ProductChanges, availability: ProductAvailability): ProductRecord {

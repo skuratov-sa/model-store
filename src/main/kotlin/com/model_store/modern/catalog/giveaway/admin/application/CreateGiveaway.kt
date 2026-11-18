@@ -20,13 +20,11 @@ class CreateGiveaway(
     private val products: ProductCommandStore,
     private val images: ProductImageLink,
     @Value("\${app.product-expiration-days}") private val expirationDays: Long,
+    private val access: GiveawayAdminAccess,
 ) {
-    @Transactional
+    @Transactional(transactionManager = "transactionManager")
     fun create(caller: GiveawayCaller, request: GiveawayCreate): Long {
-        if (caller.role != "ADMIN" || caller.agentAccess || caller.participantId == null || caller.participantId <= 0)
-            throw GiveawayFailure(GiveawayFailureKind.FORBIDDEN, "ACCESS_DENIED",
-            "Этот тип товара доступен только администратору")
-        val ownerId = caller.participantId
+        val ownerId = access.lock(caller, "Этот тип товара доступен только администратору")
         if (request.count != null && request.count <= 0) badRequest("Введено некорректное кол-во товаров")
         if (request.prepaymentAmount != null && (request.prepaymentAmount < 0 || request.price == null ||
                     request.prepaymentAmount > request.price)) badRequest("Предоплата указана неверно")

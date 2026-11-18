@@ -9,6 +9,7 @@ import com.model_store.modern.catalog.giveaway.admin.domain.GiveawayCreate
 import com.model_store.modern.catalog.giveaway.admin.domain.GiveawayCaller
 import com.model_store.modern.catalog.giveaway.admin.api.GiveawaySettingsRequest
 import com.model_store.modern.shared.domain.Actor
+import com.model_store.modern.shared.domain.TokenType
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import org.springframework.context.annotation.Profile
 import org.springframework.http.HttpStatus
@@ -45,13 +46,15 @@ class ProductCommandController(private val commands: ProductCommands,
     @PostMapping("/products")
     fun create(@AuthenticationPrincipal actor: Actor?, @RequestBody request: ProductCommandRequest): Long {
         val ownerId = requireActor(actor)
+        requireAdminAccess(actor)
         if (request.availability == ProductAvailability.GIVEAWAY) {
             val create = GiveawayCreate(request.name, request.description, request.price,
                 request.prepaymentAmount, request.count, request.currency?.name, request.originality,
                 request.used, request.externalUrl, request.categoryIds, request.imageIds,
                 request.giveaway?.settings())
             try {
-                return createGiveaway.create(GiveawayCaller(ownerId, actor!!.role, actor.isAgentAccess), create)
+                return createGiveaway.create(GiveawayCaller(ownerId, actor!!.role,
+                    actor.tokenType != TokenType.ACCESS), create)
             } catch (error: GiveawayFailure) {
                 throw ProductCommandFailure(FailureKind.valueOf(error.kind.name), error.code,
                     error.message.orEmpty())
@@ -64,13 +67,15 @@ class ProductCommandController(private val commands: ProductCommands,
     fun update(@PathVariable id: Long, @AuthenticationPrincipal actor: Actor?,
                @RequestBody request: ProductCommandRequest) {
         val ownerId = requireActor(actor)
+        requireAdminAccess(actor)
         if (actor!!.role == "ADMIN" && updateGiveaway.handles(id, request.availability)) {
             val changes = GiveawayCreate(request.name, request.description, request.price,
                 request.prepaymentAmount, request.count, request.currency?.name, request.originality,
                 request.used, request.externalUrl, request.categoryIds, request.imageIds,
                 request.giveaway?.settings())
             try {
-                updateGiveaway.update(id, GiveawayCaller(ownerId, actor.role, actor.isAgentAccess),
+                updateGiveaway.update(id, GiveawayCaller(ownerId, actor.role,
+                    actor.tokenType != TokenType.ACCESS),
                     request.availability, changes)
             } catch (error: GiveawayFailure) {
                 throw ProductCommandFailure(FailureKind.valueOf(error.kind.name), error.code,
@@ -88,6 +93,12 @@ class ProductCommandController(private val commands: ProductCommands,
     @PostMapping("/products/extend/{id}")
     fun extend(@PathVariable id: Long, @AuthenticationPrincipal actor: Actor?) =
         commands.extend(id, requireActor(actor))
+
+    private fun requireAdminAccess(actor: Actor?) {
+        if (actor?.role == "ADMIN" && (actor.participantId == null || actor.participantId <= 0 ||
+                actor.tokenType != TokenType.ACCESS))
+            throw ProductCommandFailure(FailureKind.FORBIDDEN, "ACCESS_DENIED", "Доступ запрещён")
+    }
 
     private fun requireActor(actor: Actor?): Long {
         if (actor?.participantId == null) throw ProductCommandFailure(FailureKind.FORBIDDEN,

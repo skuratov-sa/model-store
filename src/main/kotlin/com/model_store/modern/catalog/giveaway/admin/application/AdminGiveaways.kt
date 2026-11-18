@@ -28,23 +28,25 @@ interface AdminGiveawayStore {
 
 @Service
 @Profile("modern")
-class AdminGiveaways(private val store: AdminGiveawayStore) {
+class AdminGiveaways(private val store: AdminGiveawayStore, private val access: GiveawayAdminAccess) {
+    @Transactional(transactionManager = "transactionManager")
     fun history(caller: GiveawayCaller, page: Int, size: Int): List<AdminGiveaway> {
-        val adminId = admin(caller)
+        val adminId = access.lock(caller)
         if (page < 0 || size !in 1..100) bad("Некорректная страница истории")
         return store.history(adminId, size, page.toLong() * size).map(::effective)
     }
 
+    @Transactional(transactionManager = "transactionManager")
     fun details(id: Long, caller: GiveawayCaller): AdminGiveawayDetails {
-        val adminId = admin(caller)
+        val adminId = access.lock(caller)
         val product = store.find(id, adminId) ?: missing()
         val (images, categories) = store.details(id)
         return AdminGiveawayDetails(effective(product), images, categories)
     }
 
-    @Transactional
+    @Transactional(transactionManager = "transactionManager")
     fun update(id: Long, caller: GiveawayCaller, settings: GiveawaySettings?) {
-        val adminId = admin(caller)
+        val adminId = access.lock(caller)
         if (settings == null) bad("Пустые настройки розыгрыша")
         // Match legacy's dictionary-before-product order for schedule writes.
         store.lockActivation()
@@ -59,11 +61,6 @@ class AdminGiveaways(private val store: AdminGiveawayStore) {
                 "Период розыгрыша пересекается с другим запланированным розыгрышем")
         store.saveSettings(next)
     }
-
-    private fun admin(caller: GiveawayCaller): Long = caller.participantId
-        ?.takeIf { it > 0 && caller.role == "ADMIN" && !caller.agentAccess }
-        ?: throw GiveawayFailure(GiveawayFailureKind.FORBIDDEN, "ACCESS_DENIED",
-            "Управление розыгрышами доступно только администратору")
 
     companion object {
         fun applySettings(original: AdminGiveaway, settings: GiveawaySettings?, entering: Boolean): AdminGiveaway {

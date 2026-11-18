@@ -24,14 +24,14 @@ class UpdateGiveawayProduct(
     private val seller: SellerEligibilityPort,
     private val images: ProductImageLink,
     @Value("\${app.product-expiration-days}") private val expirationDays: Long,
+    private val access: GiveawayAdminAccess,
 ) {
     fun handles(id: Long, requested: ProductAvailability?): Boolean =
         requested == ProductAvailability.GIVEAWAY || giveaways.isGiveaway(id)
 
-    @Transactional
+    @Transactional(transactionManager = "transactionManager")
     fun update(id: Long, caller: GiveawayCaller, requested: ProductAvailability?, changes: GiveawayCreate) {
-        val ownerId = caller.participantId?.takeIf { it > 0 && caller.role == "ADMIN" && !caller.agentAccess }
-            ?: throw GiveawayFailure(GiveawayFailureKind.FORBIDDEN, "ACCESS_DENIED", "Доступ запрещён")
+        val ownerId = access.lock(caller, "Доступ запрещён")
         if (seller.isAgent(ownerId))
             throw GiveawayFailure(GiveawayFailureKind.FORBIDDEN, "ACCESS_DENIED",
                 "Товары бота редактирует администратор")

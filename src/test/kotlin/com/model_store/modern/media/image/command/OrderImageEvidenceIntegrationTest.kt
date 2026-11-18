@@ -75,8 +75,10 @@ class OrderImageEvidenceIntegrationTest {
         assertEquals(ids.first(), jdbc.queryForObject(
             "SELECT image_payment_proof_id FROM \"order\" WHERE id=?", Long::class.java, order))
         verifyNoInteractions(s3, mail)
-        assertEquals(29, jdbc.queryForObject(
+        assertEquals(30, jdbc.queryForObject(
             "SELECT count(*) FROM flyway_schema_history WHERE success AND version IS NOT NULL", Int::class.java))
+        assertEquals(1, jdbc.queryForObject(
+            "SELECT count(*) FROM flyway_schema_history WHERE success AND version='1.29' AND checksum=666162279", Int::class.java))
     }
 
     @Test

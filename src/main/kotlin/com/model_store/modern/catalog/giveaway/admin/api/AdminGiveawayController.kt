@@ -5,6 +5,20 @@ import com.model_store.modern.catalog.giveaway.admin.domain.*
 import com.model_store.modern.shared.api.MvcApiError
 import com.model_store.modern.shared.api.mvcApiError
 import com.model_store.modern.shared.domain.Actor
+import com.model_store.modern.shared.domain.TokenType
+import com.model_store.modern.catalog.product.command.api.ProductCommandController
+import com.model_store.modern.catalog.product.command.application.FailureKind
+import com.model_store.modern.catalog.product.command.application.ProductCommandFailure
+import com.model_store.modern.identity.participant.application.AgentDirectoryQuery
+import com.model_store.modern.identity.participant.application.AgentProfileFailure
+import jakarta.servlet.http.HttpServletRequest
+import jakarta.servlet.http.HttpServletResponse
+import org.springframework.context.annotation.Configuration
+import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.web.method.HandlerMethod
+import org.springframework.web.servlet.HandlerInterceptor
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import org.springframework.context.annotation.Profile
 import org.springframework.dao.DataIntegrityViolationException
@@ -83,7 +97,42 @@ class AdminGiveawayController(private val giveaways: AdminGiveaways) {
         giveaways.update(productId, caller(actor), request?.settings())
 
     private fun caller(actor: Actor?) = GiveawayCaller(actor?.participantId, actor?.role,
-        actor?.isAgentAccess == true)
+        actor?.tokenType != TokenType.ACCESS)
+}
+
+/** Reject obsolete ADMIN claims before binding paths, query parameters or JSON.
+ * This snapshot is only an early gate: each operation still takes CurrentAdminLock.
+ */
+@Configuration
+@Profile("modern")
+class GiveawayAdminPrebinding(private val directory: AgentDirectoryQuery) : WebMvcConfigurer {
+    override fun addInterceptors(registry: InterceptorRegistry) {
+        registry.addInterceptor(object : HandlerInterceptor {
+            override fun preHandle(request: HttpServletRequest, response: HttpServletResponse,
+                                   handler: Any): Boolean {
+                val method = handler as? HandlerMethod ?: return true
+                val actor = SecurityContextHolder.getContext().authentication?.principal as? Actor
+                val giveaway = method.beanType == AdminGiveawayController::class.java
+                val productAdmin = method.beanType == ProductCommandController::class.java &&
+                    method.method.name in setOf("create", "update") && actor?.role == "ADMIN"
+                if (!giveaway && !productAdmin) return true
+                fun denied(): Nothing {
+                    if (giveaway) throw GiveawayFailure(GiveawayFailureKind.FORBIDDEN,
+                        "ACCESS_DENIED", "Доступ запрещён")
+                    throw ProductCommandFailure(FailureKind.FORBIDDEN, "ACCESS_DENIED", "Доступ запрещён")
+                }
+                val principal = actor ?: denied()
+                val id = principal.participantId?.takeIf { it > 0 && principal.role == "ADMIN" &&
+                    principal.tokenType == TokenType.ACCESS } ?: denied()
+                try {
+                    directory.requireActiveAdmin(id)
+                } catch (_: AgentProfileFailure.AdminForbidden) {
+                    denied()
+                }
+                return true
+            }
+        })
+    }
 }
 
 @RestControllerAdvice(assignableTypes = [AdminGiveawayController::class])
