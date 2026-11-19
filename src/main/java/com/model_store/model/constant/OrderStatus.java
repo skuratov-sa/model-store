@@ -22,6 +22,7 @@ public enum OrderStatus {
      * Заказ находится в процессе сборки
      */
     ASSEMBLING,
+    AWAITING_PAYMENT_APPROVAL,
     /**
      * В пути следования
      */

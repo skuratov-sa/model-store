@@ -48,7 +48,7 @@ public class ParticipantController {
     @PostMapping(path = "/participant")
     public Mono<Long> createParticipant(@Valid @RequestBody CreateParticipantRequest request) {
         return participantService.createParticipant(request)
-                .flatMap(participantId -> emailService.sendVerificationWithoutLimitCode(request.getMail()));
+                .flatMap(participantId -> emailService.sendVerificationWithoutLimitCode(request.getMail().strip().toLowerCase(java.util.Locale.ROOT)));
     }
 
     @Operation(summary = "Обновить пользователя по id")

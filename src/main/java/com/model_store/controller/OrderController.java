@@ -35,6 +35,7 @@ import java.util.List;
 @RequestMapping("/order")
 public class OrderController {
     private final OrderService orderService;
+    private final com.model_store.service.impl.OrderTermsService terms;
     private final JwtService jwtService;
     private final ParticipantRepository participantRepository;
     private final OrderCaseService orderCaseService;
@@ -86,25 +87,30 @@ public class OrderController {
     @Operation(summary = "3.1.Покупатель подтверждает предоплату")
     @PostMapping("/{orderId}/AWAITING_PREPAYMENT_APPROVAL")
     public Mono<Long> prepaymentOrder(@RequestHeader("Authorization") String authorizationHeader,
-                                      @PathVariable Long orderId, @RequestParam(required = false) Long imageId, @RequestParam(required = false) String comment) {
+                                      @PathVariable Long orderId, @RequestParam(required = false) Long imageId, @RequestParam(required = false) String comment,
+                                      @RequestParam(required = false) Long expectedVersion) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        return orderService.prepaymentOrder(orderId, imageId, comment, participantId);
+        return terms.submit(orderId, participantId, new com.model_store.model.dto.OrderPaymentRequest(expectedVersion,imageId,comment),true);
     }
 
     @Operation(summary = "3.2.Продавец подтверждает предзаказ")
     @PostMapping("/{orderId}/AWAITING_PAYMENT")
     public Mono<Long> sellerConfirmsPreorder(@RequestHeader("Authorization") String authorizationHeader,
-                                             @PathVariable Long orderId, @RequestParam(required = false) String comment) {
+                                             @PathVariable Long orderId, @RequestParam(required = false) String comment,
+                                             @RequestParam(required = false) Long expectedVersion) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        return rejectBotSeller(participantId).then(orderService.sellerConfirmsPreorder(orderId, comment, participantId));
+        return rejectBotSeller(participantId).then(terms.review(orderId, participantId, participantId,
+                new com.model_store.model.dto.OrderPaymentRequest(expectedVersion, null, comment), true,
+                com.model_store.model.constant.OrderStatus.AWAITING_PREPAYMENT_APPROVAL));
     }
 
     @Operation(summary = "3.3.Покупатель подтверждает оплату")
     @PostMapping("/{orderId}/ASSEMBLING")
     public Mono<Long> confirmPayment(@RequestHeader("Authorization") String authorizationHeader,
-                                     @PathVariable Long orderId, @RequestParam(required = false) Long imageId, @RequestParam(required = false) String comment) {
+                                     @PathVariable Long orderId, @RequestParam(required = false) Long imageId, @RequestParam(required = false) String comment,
+                                      @RequestParam(required = false) Long expectedVersion) {
         Long participantId = jwtService.getIdByAccessToken(authorizationHeader);
-        return orderService.paymentOrder(orderId, imageId, comment, participantId);
+        return terms.submit(orderId, participantId, new com.model_store.model.dto.OrderPaymentRequest(expectedVersion,imageId,comment),false);
     }
 
     @Operation(summary = "4.Продавец отправляет товар")

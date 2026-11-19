@@ -95,6 +95,15 @@ class OrderServiceImplTest extends IntegrationTest {
     private OrderCaseService orderCaseService;
 
     @Autowired
+    private OrderTermsService orderTermsService;
+
+    private void approveFullPayment(Long orderId) {
+        Long version = orderRepository.findById(orderId).block().getTermsVersion();
+        orderTermsService.review(orderId, seller.getId(), seller.getId(),
+                new com.model_store.model.dto.OrderPaymentRequest(version, null, null), true).block();
+    }
+
+    @Autowired
     private ProductBasketRepository productBasketRepository;
 
     @Autowired
@@ -596,6 +605,48 @@ class OrderServiceImplTest extends IntegrationTest {
     }
 
     @Test
+    void profileDeliveryEditsDoNotChangeBookedOrderOrItsCalculation() {
+        Product product = savePurchasableProduct(5);
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)),
+                buyer.getId()).block().getFirst();
+        sellerTransfer.setPrice(900);
+        buyerAddress.setStreet("Изменённая улица");
+        transferRepository.save(sellerTransfer).block();
+        addressRepository.save(buyerAddress).block();
+
+        var order = orderService.getOrdersByCustomer(buyer.getId())
+                .filter(response -> response.getOrderId().equals(orderId)).next().block();
+        assertThat(order.getDeliveryAddress()).contains("Lenina").doesNotContain("Изменённая улица");
+        assertThat(order.getCalculation().deliveryAmount()).isEqualByComparingTo("200.00");
+        assertThat(order.getTermsVersion()).isZero();
+    }
+
+    @Test
+    void orderPhotoSurvivesProductDeletionInAllOrderLists() {
+        seller.setIsAgent(true);
+        participantRepository.save(seller).block();
+        Product product = savePurchasableProduct(5);
+        Image image = imageRepository.save(Image.builder().entityId(product.getId())
+                .tag(ImageTag.PRODUCT).status(ImageStatus.ACTIVE)
+                .filename("historic-photo.jpg").build()).block();
+        Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)),
+                buyer.getId()).block().getFirst();
+
+        productService.deleteProduct(product.getId(), seller.getId()).block();
+        assertThat(imageService.prepareExpiredImagesForDeletion().collectList().block())
+                .noneMatch(candidate -> candidate.getId().equals(image.getId()));
+        assertThat(productRepository.deleteDeletedWithoutImages(new Long[]{product.getId()}).block()).isEqualTo(1);
+        assertThat(orderService.getOrdersBySeller(seller.getId()).next().block().getProduct().getImageId())
+                .isEqualTo(image.getId());
+        assertThat(orderService.getOrdersByCustomer(buyer.getId()).next().block().getProduct().getImageId())
+                .isEqualTo(image.getId());
+        assertThat(orderService.getAgentOrders(seller.getId(), OrderStatus.BOOKED, 50, 0)
+                .filter(order -> order.getOrderId().equals(orderId)).next().block().getProduct().getImageId())
+                .isEqualTo(image.getId());
+        assertThat(imageService.findImageMetadataByIds(List.of(image.getId())).collectList().block()).hasSize(1);
+    }
+
+    @Test
     void closureOrder_bookedPurchasableProduct_restoresStock() {
         Product product = savePurchasableProduct(5);
         Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().get(0);
@@ -610,40 +661,40 @@ class OrderServiceImplTest extends IntegrationTest {
     }
 
     @Test
-    void closureOrder_awaitingPaymentPurchasableProduct_isRejected() {
+    void closureOrder_awaitingPaymentPurchasableProduct_cancelsBeforeConfirmation() {
         Product product = savePurchasableProduct(5);
         Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().get(0);
         orderService.agreementOrder(orderId, "seller agrees", seller.getId()).block();
 
         StepVerifier.create(orderService.closureOrder(orderId, closeRequest(), buyer.getId()))
-                .expectError(IllegalArgumentException.class).verify();
+                .expectNext(orderId).verifyComplete();
 
         Product restored = productRepository.findById(product.getId()).block();
-        assertThat(restored.getCount()).isEqualTo(3);
+        assertThat(restored.getCount()).isEqualTo(5);
     }
 
     @Test
-    void closureOrder_preorderAwaitingPrepayment_isRejected() {
+    void closureOrder_preorderAwaitingPrepayment_cancelsBeforeConfirmation() {
         Product product = savePreorderProduct(500f);
         Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().get(0);
         orderService.agreementOrder(orderId, "seller agrees", seller.getId()).block();
 
         StepVerifier.create(orderService.closureOrder(orderId, closeRequest(), buyer.getId()))
-                .expectError(IllegalArgumentException.class).verify();
+                .expectNext(orderId).verifyComplete();
 
         Product unchanged = productRepository.findById(product.getId()).block();
         assertThat(unchanged.getCount()).isNull();
     }
 
     @Test
-    void closureOrder_preorderAwaitingPrepaymentApproval_isRejected() {
+    void closureOrder_preorderAwaitingPrepaymentApproval_cancelsBeforeConfirmation() {
         Product product = savePreorderProduct(500f);
         Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().get(0);
         orderService.agreementOrder(orderId, "seller agrees", seller.getId()).block();
         orderService.prepaymentOrder(orderId, saveOrderImage().getId(), "prepaid", buyer.getId()).block();
 
         StepVerifier.create(orderService.closureOrder(orderId, closeRequest(), buyer.getId()))
-                .expectError(IllegalArgumentException.class).verify();
+                .expectNext(orderId).verifyComplete();
 
         Product unchanged = productRepository.findById(product.getId()).block();
         assertThat(unchanged.getCount()).isNull();
@@ -655,6 +706,8 @@ class OrderServiceImplTest extends IntegrationTest {
         Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().get(0);
         orderService.agreementOrder(orderId, "seller agrees", seller.getId()).block();
         orderService.paymentOrder(orderId, saveOrderImage().getId(), "paid", buyer.getId()).block();
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.AWAITING_PAYMENT_APPROVAL);
+        approveFullPayment(orderId);
 
         StepVerifier.create(orderService.closureOrder(orderId, closeRequest(), buyer.getId()))
                 .expectError()
@@ -672,8 +725,23 @@ class OrderServiceImplTest extends IntegrationTest {
         Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
         orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
         orderService.paymentOrder(orderId, saveOrderImage().getId(), "paid", buyer.getId()).block();
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.AWAITING_PAYMENT_APPROVAL);
+        approveFullPayment(orderId);
         orderService.transferOrder(orderId, "https://example.com/track", "shipped", seller.getId()).block();
         Long caseId = orderCaseService.openDispute(orderId, seller.getId(), "Покупатель сообщил об оплате", List.of()).block();
+
+        webTestClient.get().uri("/admin/actions/order-cases?state=OPEN&limit=1&offset=0")
+                .header("Authorization", accessToken(admin)).exchange().expectStatus().isOk()
+                .expectBody().jsonPath("$[0].caseId").isEqualTo(caseId.intValue())
+                .jsonPath("$[0].kind").isEqualTo("DISPUTE");
+        webTestClient.get().uri("/admin/actions/order-cases?state=OPEN&limit=1&offset=1")
+                .header("Authorization", accessToken(admin)).exchange().expectStatus().isOk()
+                .expectBody().json("[]");
+        webTestClient.get().uri("/admin/actions/order-cases/{id}", caseId)
+                .header("Authorization", accessToken(admin)).exchange().expectStatus().isOk()
+                .expectBody().jsonPath("$.orderCase.previousOrderStatus").isEqualTo("ON_THE_WAY");
+        webTestClient.get().uri("/admin/actions/order-cases/{id}", caseId)
+                .header("Authorization", accessToken(buyer)).exchange().expectStatus().isForbidden();
 
         assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.DISPUTED);
         Product changedProduct = productRepository.findById(product.getId()).block();
@@ -803,6 +871,8 @@ class OrderServiceImplTest extends IntegrationTest {
         Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
         orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
         orderService.paymentOrder(orderId, saveOrderImage().getId(), "paid", buyer.getId()).block();
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.AWAITING_PAYMENT_APPROVAL);
+        approveFullPayment(orderId);
         Image image = saveOrderImage();
 
         StepVerifier.create(orderCaseService.openDispute(orderId, seller.getId(),
@@ -909,6 +979,26 @@ class OrderServiceImplTest extends IntegrationTest {
     }
 
     @Test
+    void directAndExpiredPreordersDoNotCreateStockAfterConversionToPurchasable() {
+        Product product = savePreorderProduct(500f);
+        var request = orderRequest(product.getId(), 1);
+        Long directId = orderService.createOrders(List.of(request), buyer.getId()).block().getFirst();
+        Long expiredId = orderService.createOrders(List.of(request), buyer.getId()).block().getFirst();
+        product.setAvailability(ProductAvailabilityType.PURCHASABLE);
+        product.setCount(7);
+        productRepository.save(product).block();
+
+        orderService.closureOrder(directId, closeRequest(), buyer.getId()).block();
+        databaseClient.sql("UPDATE \"order\" SET created_at = now() - interval '2 days' WHERE id = :id")
+                .bind("id", expiredId).fetch().rowsUpdated().block();
+        databaseClient.sql("SELECT process_expired_booked_orders()").fetch().all().collectList().block();
+
+        assertThat(orderRepository.findById(directId).block().getStatus()).isEqualTo(OrderStatus.CANCELLED);
+        assertThat(orderRepository.findById(expiredId).block().getStatus()).isEqualTo(OrderStatus.CANCELLED);
+        assertThat(productRepository.findById(product.getId()).block().getCount()).isEqualTo(7);
+    }
+
+    @Test
     void expiredBookedOrder_restoresStockOnlyOnce() {
         Product product = savePurchasableProduct(5);
         Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 2)), buyer.getId()).block().getFirst();
@@ -923,20 +1013,26 @@ class OrderServiceImplTest extends IntegrationTest {
     }
 
     @Test
-    void concurrentPaymentAndCancellationRequest_leavesNoOpenCancellationCase() throws Exception {
+    void concurrentPaymentAndCancellationRequest_onlyOneWins() throws Exception {
         Product product = savePurchasableProduct(5);
         Long orderId = orderService.createOrders(List.of(orderRequest(product.getId(), 1)), buyer.getId()).block().getFirst();
         orderService.agreementOrder(orderId, "agreed", seller.getId()).block();
         Image proof = saveOrderImage();
 
-        raceWhileOrderRowLocked(orderId,
+        var results = raceWhileOrderRowLocked(orderId,
                 orderService.paymentOrder(orderId, proof.getId(), "paid", buyer.getId()),
                 orderCaseService.requestCancellation(orderId, seller.getId(), "Отменить до оплаты"));
 
+        assertThat(results.stream().filter(Signal::isOnNext).count()).isEqualTo(1);
         Order order = orderRepository.findById(orderId).block();
-        assertThat(order.getStatus()).isEqualTo(OrderStatus.ASSEMBLING);
-        assertThat(order.getImagePaymentProofId()).isEqualTo(proof.getId());
-        assertThat(orderCaseRepository.findOpenByOrderId(orderId).block()).isNull();
+        if (order.getStatus() == OrderStatus.AWAITING_PAYMENT_APPROVAL) {
+            assertThat(order.getImagePaymentProofId()).isEqualTo(proof.getId());
+            assertThat(orderCaseRepository.findOpenByOrderId(orderId).block()).isNull();
+        } else {
+            assertThat(order.getStatus()).isEqualTo(AWAITING_PAYMENT);
+            assertThat(order.getImagePaymentProofId()).isNull();
+            assertThat(orderCaseRepository.findOpenByOrderId(orderId).block()).isNotNull();
+        }
         assertThat(productRepository.findById(product.getId()).block().getCount()).isEqualTo(4);
     }
 
@@ -1330,8 +1426,24 @@ class OrderServiceImplTest extends IntegrationTest {
         orderService.sellerConfirmsPreorder(orderId, "prepayment confirmed", seller.getId()).block();
         assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(AWAITING_PAYMENT);
 
-        // AWAITING_PAYMENT → ASSEMBLING
-        orderService.paymentOrder(orderId, saveOrderImage().getId(), "full payment sent", buyer.getId()).block();
+        Long version = orderRepository.findById(orderId).block().getTermsVersion();
+        Long proofId = saveOrderImage().getId();
+        webTestClient.post().uri("/order/{id}/payments/full", orderId)
+                .header("Authorization", accessToken(buyer))
+                .bodyValue(new com.model_store.model.dto.OrderPaymentRequest(version, proofId, null))
+                .exchange().expectStatus().isOk();
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.AWAITING_PAYMENT_APPROVAL);
+
+        webTestClient.post().uri("/order/{id}/payments/review/return", orderId)
+                .header("Authorization", accessToken(seller))
+                .bodyValue(new com.model_store.model.dto.OrderPaymentRequest(version + 1, null, "Чек не читается"))
+                .exchange().expectStatus().isOk();
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(AWAITING_PAYMENT);
+        webTestClient.post().uri("/order/{id}/payments/full", orderId)
+                .header("Authorization", accessToken(buyer))
+                .bodyValue(new com.model_store.model.dto.OrderPaymentRequest(version + 2, saveOrderImage().getId(), null))
+                .exchange().expectStatus().isOk();
+        approveFullPayment(orderId);
         assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo(OrderStatus.ASSEMBLING);
     }
 

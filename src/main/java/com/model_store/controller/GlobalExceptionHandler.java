@@ -56,6 +56,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleDbIntegrity(Exception ex) {
         String msg = rootMessage(ex);
 
+        if (msg != null && (msg.contains("uq_participant_normalized_mail") || msg.contains("participant_mail_key"))) {
+            return build(HttpStatus.NOT_FOUND, ErrorCode.PARTICIPANT_ALREADY_EXISTS.name(),
+                    "Пользователь с таким email уже зарегистрирован", null);
+        }
+
         if (msg != null && msg.contains("uq_product_one_client")) {
             return build(HttpStatus.CONFLICT, "PRODUCT_ALREADY_EXISTS", "Товар с такими параметрами уже существует", null);
         }

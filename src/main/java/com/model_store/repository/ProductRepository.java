@@ -302,7 +302,8 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
     @Query("""
             SELECT p.id FROM product p
             WHERE p.status = 'DELETED'
-              AND NOT EXISTS (SELECT 1 FROM image i WHERE i.tag = 'PRODUCT' AND i.entity_id = p.id)
+                AND NOT EXISTS (SELECT 1 FROM image i WHERE i.tag = 'PRODUCT' AND i.entity_id = p.id
+                    AND NOT EXISTS (SELECT 1 FROM "order" o WHERE o.product_image_id = i.id))
             ORDER BY p.id
             LIMIT :limit
             FOR UPDATE SKIP LOCKED
@@ -325,7 +326,8 @@ public interface ProductRepository extends ReactiveCrudRepository<Product, Long>
     @Query("""
             DELETE FROM product p
             WHERE p.id = ANY(:productIds) AND p.status = 'DELETED'
-              AND NOT EXISTS (SELECT 1 FROM image i WHERE i.tag = 'PRODUCT' AND i.entity_id = p.id)
+                AND NOT EXISTS (SELECT 1 FROM image i WHERE i.tag = 'PRODUCT' AND i.entity_id = p.id
+                    AND NOT EXISTS (SELECT 1 FROM "order" o WHERE o.product_image_id = i.id))
             """)
     Mono<Integer> deleteDeletedWithoutImages(Long[] productIds);
 

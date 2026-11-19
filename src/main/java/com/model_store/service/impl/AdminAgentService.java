@@ -32,6 +32,7 @@ import java.util.Objects;
 @Service
 @RequiredArgsConstructor
 public class AdminAgentService {
+    private final OrderTermsService terms;
     private final ParticipantRepository participants;
     private final ProductRepository products;
     private final OrderRepository orders;
@@ -104,14 +105,29 @@ public class AdminAgentService {
     @Transactional
     public Mono<Long> actOnOrder(Long adminId, Long agentId, Long orderId, String action,
                                  String comment, String deliveryUrl) {
-        return requireAgent(agentId)
+        return actOnOrder(adminId, agentId, orderId, action, comment, deliveryUrl, null);
+    }
+
+    @Transactional
+    public Mono<Long> actOnOrder(Long adminId, Long agentId, Long orderId, String action,
+                                 String comment, String deliveryUrl, Long expectedVersion) {
+        return participants.findById(adminId)
+                .filter(p -> p.getRole() == com.model_store.model.constant.ParticipantRole.ADMIN
+                        && p.getStatus() == com.model_store.model.constant.ParticipantStatus.ACTIVE)
+                .switchIfEmpty(Mono.error(ApiErrors.forbidden(ErrorCode.ACCESS_DENIED,"Требуется действующий администратор")))
+                .then(requireAgent(agentId))
                 .then(orders.findById(orderId))
                 .filter(order -> Objects.equals(order.getSellerId(), agentId))
                 .switchIfEmpty(Mono.error(ApiErrors.notFound(ErrorCode.INVALID_REQUEST, "Заказ бота не найден")))
                 .flatMap(order -> {
                     Mono<Long> transition = switch (action) {
                         case "CONFIRM" -> orderService.agreementOrder(orderId, comment, agentId);
-                        case "CONFIRM_PREPAYMENT" -> orderService.sellerConfirmsPreorder(orderId, comment, agentId);
+                        case "CONFIRM_PREPAYMENT", "CONFIRM_PAYMENT" -> terms.review(orderId, agentId, adminId,
+                                new com.model_store.model.dto.OrderPaymentRequest(expectedVersion, null, comment), true,
+                                action.equals("CONFIRM_PREPAYMENT") ? OrderStatus.AWAITING_PREPAYMENT_APPROVAL
+                                        : OrderStatus.AWAITING_PAYMENT_APPROVAL);
+                        case "RETURN_PAYMENT" -> terms.review(orderId, agentId, adminId,
+                                new com.model_store.model.dto.OrderPaymentRequest(expectedVersion,null,comment),false);
                         case "SHIP" -> orderService.transferOrder(orderId, deliveryUrl, comment, agentId);
                         case "CANCEL" -> {
                             CloseOrderRequest close = new CloseOrderRequest();
@@ -120,15 +136,31 @@ public class AdminAgentService {
                         }
                         default -> Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Неизвестное действие с заказом"));
                     };
-                    return transition.flatMap(id -> {
-                        AdminAgentOrderAction record = new AdminAgentOrderAction();
-                        record.setAdminId(adminId);
-                        record.setAgentId(agentId);
-                        record.setOrderId(orderId);
-                        record.setAction(action);
-                        record.setCreatedAt(Instant.now());
-                        return audit.save(record).thenReturn(id);
-                    });
+                    return transition.flatMap(id -> recordAction(adminId, agentId, id, action));
                 });
+    }
+
+    @Transactional
+    public Mono<Long> changeDelivery(Long adminId, Long agentId, Long orderId,
+                                    com.model_store.model.dto.OrderTermsRequest request) {
+        return terms.delivery(orderId, agentId, adminId, request)
+                .flatMap(id -> recordAction(adminId, agentId, id, "CHANGE_DELIVERY"));
+    }
+
+    @Transactional
+    public Mono<Long> reviewPayment(Long adminId, Long agentId, Long orderId,
+                                    com.model_store.model.dto.OrderPaymentRequest request, boolean approve) {
+        return terms.review(orderId, agentId, adminId, request, approve)
+                .flatMap(id -> recordAction(adminId, agentId, id, approve ? "APPROVE_PAYMENT" : "RETURN_PAYMENT"));
+    }
+
+    private Mono<Long> recordAction(Long adminId, Long agentId, Long orderId, String action) {
+        AdminAgentOrderAction record = new AdminAgentOrderAction();
+        record.setAdminId(adminId);
+        record.setAgentId(agentId);
+        record.setOrderId(orderId);
+        record.setAction(action);
+        record.setCreatedAt(Instant.now());
+        return audit.save(record).thenReturn(orderId);
     }
 }

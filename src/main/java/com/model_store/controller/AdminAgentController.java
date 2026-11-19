@@ -108,9 +108,10 @@ public class AdminAgentController {
                                   @PathVariable Long agentId, @PathVariable Long orderId,
                                   @PathVariable String action,
                                   @RequestParam(required = false) String comment,
-                                  @RequestParam(required = false) String deliveryUrl) {
+                                  @RequestParam(required = false) String deliveryUrl,
+                                  @RequestParam(required = false) Long expectedVersion) {
         return agents.actOnOrder(jwtService.getIdByAccessToken(authorizationHeader),
-                agentId, orderId, action, comment, deliveryUrl);
+                agentId, orderId, action, comment, deliveryUrl, expectedVersion);
     }
 
     @GetMapping("/agents/{agentId}/social-networks")

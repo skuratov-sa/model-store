@@ -20,7 +20,15 @@ public interface ParticipantRepository extends ReactiveCrudRepository<Participan
 
     Mono<Participant> findByLogin(String login);
 
+    @Query("""
+            SELECT * FROM participant p WHERE lower(btrim(p.mail)) = lower(btrim(:mail))
+              AND NOT EXISTS (SELECT 1 FROM participant other
+                  WHERE lower(btrim(other.mail)) = lower(btrim(:mail)) AND other.id <> p.id)
+            """)
     Mono<Participant> findByMail(String mail);
+
+    @Query("SELECT EXISTS (SELECT 1 FROM participant WHERE lower(btrim(mail)) = lower(btrim(:mail)))")
+    Mono<Boolean> existsByNormalizedMail(String mail);
 
     @Query("SELECT full_name FROM participant WHERE id = :id")
     Mono<String> findFullNameById(@Param("id") Long id);

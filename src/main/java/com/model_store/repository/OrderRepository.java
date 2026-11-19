@@ -53,6 +53,14 @@ public interface OrderRepository extends ReactiveCrudRepository<Order, Long> {
     @Query("SELECT EXISTS (SELECT 1 FROM \"order\" WHERE product_id = :productId AND status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED'))")
     Mono<Boolean> existsActiveOrderForProduct(Long productId);
 
+    @Query("""
+            SELECT EXISTS (SELECT 1 FROM "order"
+                WHERE product_id = :productId AND status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED')
+                  AND (stock_reserved IS TRUE OR (stock_reserved IS NULL
+                      AND (product_availability IS NULL OR product_availability = 'PURCHASABLE'))))
+            """)
+    Mono<Boolean> existsActiveStockReservation(Long productId);
+
     Flux<Order> findBySellerId(Long sellerId);
 
     @Query("""
@@ -66,6 +74,11 @@ public interface OrderRepository extends ReactiveCrudRepository<Order, Long> {
             """)
     Flux<Order> findAgentOrders(Long agentId, OrderStatus status, int limit, long offset);
 
+    @Query("""
+            SELECT o.*, EXISTS (SELECT 1 FROM order_case c
+                WHERE c.order_id = o.id AND c.state = 'OPEN') AS open_case
+            FROM "order" o WHERE o.customer_id = :customerId
+            """)
     Flux<Order> findByCustomerId(Long customerId);
 
     @Query("SELECT COUNT(*) FROM \"order\" WHERE seller_id = :sellerId AND status = 'COMPLETED'")

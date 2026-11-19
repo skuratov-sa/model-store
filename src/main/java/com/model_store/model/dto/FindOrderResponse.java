@@ -11,6 +11,12 @@ import java.util.List;
 @Builder
 public class FindOrderResponse {
     private Long orderId;
+    private OrderCalculation calculation;
+    private String deliveryCarrier;
+    private String deliveryAddress;
+    private Long termsVersion;
+    private boolean canCancel;
+    private Boolean hasConfirmedPayment;
     private OrderStatus actualStatus;
     private Float totalPrice;
     private Float prepaymentAmount;

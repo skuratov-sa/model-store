@@ -35,13 +35,36 @@ class AdminAgentServiceTest {
     @Mock ProductService productService;
     @Mock OrderService orderService;
     @Mock ImageService imageService;
+    @Mock OrderTermsService terms;
 
     private AdminAgentService service;
 
     @BeforeEach
     void setUp() {
-        service = new AdminAgentService(participants, products, orders, audit,
+        Participant admin = new Participant();
+        admin.setId(42L);
+        admin.setRole(com.model_store.model.constant.ParticipantRole.ADMIN);
+        admin.setStatus(com.model_store.model.constant.ParticipantStatus.ACTIVE);
+        org.mockito.Mockito.lenient().when(participants.findById(42L)).thenReturn(Mono.just(admin));
+        service = new AdminAgentService(terms, participants, products, orders, audit,
                 productService, orderService, imageService);
+    }
+
+    @Test
+    void directAgentPaymentReviewRecordsExistingAudit() {
+        var request = new com.model_store.model.dto.OrderPaymentRequest(2L, null, "Нужен новый чек");
+        when(terms.review(11L, 7L, 42L, request, false)).thenReturn(Mono.just(11L));
+        when(audit.save(any(AdminAgentOrderAction.class))).thenAnswer(call -> {
+            AdminAgentOrderAction entry = call.getArgument(0);
+            assertThat(entry.getOrderId()).isEqualTo(11L);
+            assertThat(entry.getAdminId()).isEqualTo(42L);
+            assertThat(entry.getAgentId()).isEqualTo(7L);
+            assertThat(entry.getAction()).isEqualTo("RETURN_PAYMENT");
+            return Mono.just(entry);
+        });
+        StepVerifier.create(service.reviewPayment(42L, 7L, 11L, request, false))
+                .expectNext(11L).verifyComplete();
+        verify(audit).save(any(AdminAgentOrderAction.class));
     }
 
     @Test

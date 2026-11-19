@@ -34,7 +34,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class OrderCaseService {
     private static final Set<OrderStatus> PAID = Set.of(OrderStatus.AWAITING_PREPAYMENT_APPROVAL,
-            OrderStatus.AWAITING_PAYMENT, OrderStatus.ASSEMBLING, OrderStatus.ON_THE_WAY);
+            OrderStatus.AWAITING_PAYMENT, OrderStatus.AWAITING_PAYMENT_APPROVAL, OrderStatus.ASSEMBLING, OrderStatus.ON_THE_WAY);
     private static final Set<OrderStatus> UNPAID = Set.of(OrderStatus.AWAITING_PREPAYMENT,
             OrderStatus.AWAITING_PAYMENT);
 
@@ -42,7 +42,7 @@ public class OrderCaseService {
     private final OrderCaseRepository cases;
     private final ImageRepository images;
     private final ImageService imageService;
-    private final ProductService productService;
+    private final OrderStockRestoration stockRestoration;
     private final ParticipantRepository participants;
     private final DatabaseClient db;
 
@@ -62,9 +62,9 @@ public class OrderCaseService {
         requireComment(comment);
         return requirePartyForUpdate(orderId, participantId)
                 .flatMap(order -> ensureNoOpenCase(orderId).thenReturn(order))
-                .filter(order -> order.getImagePaymentProofId() == null && UNPAID.contains(order.getStatus())
-                        && (order.getPrepaymentAmount() == null || order.getPrepaymentAmount() == 0
-                            || order.getStatus() == OrderStatus.AWAITING_PREPAYMENT))
+                .filter(order -> (order.getConfirmedPaidAmount() != null && order.getConfirmedPaidAmount().signum() > 0 && PAID.contains(order.getStatus())) || (order.getImagePaymentProofId() == null && UNPAID.contains(order.getStatus())
+                        && (!OrderTermsService.expectsPrepayment(order)
+                            || order.getStatus() == OrderStatus.AWAITING_PREPAYMENT)))
                 .switchIfEmpty(invalidTransition())
                 .flatMap(order -> createCase(order, "CANCELLATION_REQUEST", participantId, comment, List.of()));
     }
@@ -156,11 +156,7 @@ public class OrderCaseService {
             if (outcome != OrderCaseOutcome.CANCELLED) return invalidOutcome();
             if (order.getStatus() != c.getPreviousOrderStatus()) return invalidTransition();
             return transition(order, OrderStatus.CANCELLED, comment)
-                    .then(productService.findByIdForUpdate(order.getProductId())
-                            .filter(product -> product.getAvailability() == ProductAvailabilityType.PURCHASABLE
-                                    && product.getCount() != null)
-                            .flatMap(product -> productService.incrementCountIfLimited(product.getId(), order.getCount()))
-                            .then());
+                    .then(stockRestoration.restore(order));
         }
         return invalidOutcome();
     }

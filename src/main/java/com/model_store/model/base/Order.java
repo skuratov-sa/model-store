@@ -9,6 +9,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.ReadOnlyProperty;
 import org.springframework.data.relational.core.mapping.Table;
 
 import java.time.Instant;
@@ -24,6 +25,18 @@ public class Order {
      */
     @Id
     private Long id;
+    private String deliveryCarrier;
+    private String deliveryAddress;
+    private java.math.BigDecimal goodsAmount;
+    private java.math.BigDecimal plannedPrepaymentAmount;
+    private java.math.BigDecimal deliveryAmount;
+    private java.math.BigDecimal confirmedPaidAmount;
+    private Long termsVersion;
+    private Long productImageId;
+    private Boolean stockReserved;
+    @ReadOnlyProperty
+    private Boolean openCase;
+    private Boolean pricingKnown;
     /**
      * Идентификатор продавца
      */

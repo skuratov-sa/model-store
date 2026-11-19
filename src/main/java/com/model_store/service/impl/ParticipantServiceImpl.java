@@ -157,20 +157,23 @@ public class ParticipantServiceImpl implements ParticipantService {
     public Mono<Object> createParticipant(CreateParticipantRequest request) {
         Participant participant = participantMapper.toParticipant(request, ParticipantStatus.WAITING_VERIFY);
 
-        return participantRepository.findByMail(request.getMail())
-                .flatMap(existing ->
-                        Mono.<Participant>error(
-                                ApiErrors.notFound(PARTICIPANT_ALREADY_EXISTS, "Пользователь с таким email уже зарегистрирован")
-                        )
-                )
-                .switchIfEmpty(Mono.defer(() ->
-                        participantRepository.findNextParticipantIdSeq()
-                                .flatMap(seq -> {
-                                    participant.setLogin("user" + (seq + 1));
-                                    participant.setPassword(passwordEncoder.encode(request.getPassword()));
-                                    return participantRepository.save(participant);
-                                })
-                )).map(Participant::getId);
+        if (request.getMail() == null || request.getMail().isBlank()) {
+            return Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Укажите email"));
+        }
+        participant.setMail(request.getMail().strip().toLowerCase(java.util.Locale.ROOT));
+
+        return participantRepository.existsByNormalizedMail(participant.getMail())
+                .flatMap(exists -> {
+                    if (Boolean.TRUE.equals(exists)) {
+                        return Mono.error(ApiErrors.notFound(PARTICIPANT_ALREADY_EXISTS,
+                                "Пользователь с таким email уже зарегистрирован"));
+                    }
+                    return participantRepository.findNextParticipantIdSeq().flatMap(seq -> {
+                        participant.setLogin("user" + (seq + 1));
+                        participant.setPassword(passwordEncoder.encode(request.getPassword()));
+                        return participantRepository.save(participant);
+                    });
+                }).map(Participant::getId);
     }
 
     @Transactional

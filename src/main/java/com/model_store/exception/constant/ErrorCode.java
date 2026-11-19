@@ -1,6 +1,9 @@
 package com.model_store.exception.constant;
 
 public enum ErrorCode {
+    ORDER_TERMS_STALE,
+    ORDER_PAYMENT_INVALID,
+    ORDER_LEGACY_RECONCILIATION_REQUIRED,
     IMAGE_NOT_FOUND,
     PRODUCT_NOT_FOUND,
     PRODUCT_NOT_PURCHASABLE,

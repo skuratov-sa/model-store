@@ -605,6 +605,13 @@ public class ProductServiceImpl implements ProductService {
                                     ? Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST, "Товар с незавершёнными заказами нельзя перевести в розыгрыш"))
                                     : Mono.empty())
                             : Mono.empty();
+                    if (original.getCount() != null && product.getCount() == null) {
+                        noOrders = noOrders.then(orderRepository.existsActiveStockReservation(id)
+                                .flatMap(reserved -> reserved
+                                        ? Mono.error(ApiErrors.badRequest(ErrorCode.INVALID_REQUEST,
+                                                "Нельзя убрать ограниченный остаток, пока зарезервирован товар"))
+                                        : Mono.empty()));
+                    }
                     Mono<Void> validateGiveawayWindow = Boolean.TRUE.equals(product.getGiveawayEnabled())
                             ? ensureGiveawayWindowAvailable(product)
                             : Mono.empty();

@@ -18,9 +18,17 @@ public interface ImageRepository extends ReactiveCrudRepository<Image, Long> {
             SELECT *
             FROM image
             WHERE id = ANY(:ids)
-              AND status = 'ACTIVE'
+              AND (status = 'ACTIVE' OR (tag = 'PRODUCT' AND EXISTS (
+                  SELECT 1 FROM "order" o WHERE o.product_image_id = image.id)))
             """)
     Flux<Image> findActiveByIds(Long[] ids);
+
+    @Query("""
+            SELECT id FROM image
+            WHERE entity_id = :productId AND tag = 'PRODUCT' AND status = 'ACTIVE'
+            ORDER BY created_at, id LIMIT 1 FOR UPDATE
+            """)
+    Mono<Long> lockMainProductImage(Long productId);
 
     @Modifying
     @Query("UPDATE image SET status = :status WHERE id = :id")

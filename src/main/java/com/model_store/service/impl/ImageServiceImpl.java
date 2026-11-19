@@ -237,18 +237,21 @@ public class ImageServiceImpl implements ImageService {
     public Flux<Image> prepareExpiredImagesForDeletion() {
         return databaseClient.sql("""
                 UPDATE image SET status = 'DELETE'
-                WHERE (status = 'TEMPORARY' AND created_at <= now() - interval '24 hours')
+                WHERE ((status = 'TEMPORARY' AND created_at <= now() - interval '24 hours')
                    OR (tag = 'PRODUCT' AND status = 'ACTIVE' AND EXISTS (
                        SELECT 1 FROM product p WHERE p.id = image.entity_id AND p.status = 'DELETED'
-                   ))
+                   )))
+                  AND NOT EXISTS (SELECT 1 FROM "order" o WHERE o.product_image_id = image.id)
                 """)
                 .fetch().rowsUpdated()
                 .thenMany(databaseClient.sql("""
                 SELECT id, filename, tag::text AS tag FROM image
-                WHERE (status = 'DELETE' AND created_at <= now() - interval '24 hours')
+                WHERE status = 'DELETE'
+                  AND (created_at <= now() - interval '24 hours'
                    OR (tag = 'PRODUCT' AND EXISTS (
                        SELECT 1 FROM product p WHERE p.id = image.entity_id AND p.status = 'DELETED'
-                   ))
+                   )))
+                  AND NOT EXISTS (SELECT 1 FROM "order" o WHERE o.product_image_id = image.id)
                 """)
                 .map((row, metadata) -> Image.builder()
                         .id(row.get("id", Long.class))

@@ -10,6 +10,8 @@ public class CreateOrderRequest {
      * Идентификатор товара
      */
     private Long productId;
+    private String deliveryCarrier;
+    private String deliveryAddress;
     /**
      * Количество товара
      */
