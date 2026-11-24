@@ -112,31 +112,30 @@ public class ProductServiceImpl implements ProductService {
         this.orderRepository = orderRepository;
     }
 
-    public Mono<GetProductResponse> getProductById(Long productId) {
+    @Override
+    public Mono<GetProductResponse> getProductById(Long productId, Long viewerId) {
+        return productRepository.findActualProduct(productId)
+                .flatMap(product -> productCategoryRepository.isAdultProduct(productId)
+                        .flatMap(adultProduct -> adultProduct ? canViewAdultProducts(viewerId) : Mono.just(true))
+                        .flatMap(allowed -> allowed
+                                ? buildProductDetails(product)
+                                : Mono.error(ApiErrors.forbidden(ErrorCode.ADULT_CONTENT_RESTRICTED,
+                                        "This product is available only to users aged 18 or older."))));
+    }
+
+    private Mono<GetProductResponse> buildProductDetails(Product product) {
+        Long productId = product.getId();
         Mono<List<Long>> imageFindMono = imageService.findActualImages(productId, ImageTag.PRODUCT).collectList().defaultIfEmpty(List.of());
         Mono<List<ReviewResponseDto>> findReviewsMono = reviewService.findByProductId(productId).collectList().defaultIfEmpty(List.of());
+        Mono<String> loginMono = participantService.findLoginById(product.getParticipantId()).defaultIfEmpty("unknown");
+        Mono<SellerRating> ratingMono = sellerRatingService.findBySellarId(product.getParticipantId())
+                .defaultIfEmpty(new SellerRating(0L, 0f, 0));
 
-        Mono<Product> productFindMono = productRepository.findActualProduct(productId).cache();
-        Mono<Long> participantIdMono = productFindMono.map(Product::getParticipantId);
-        Mono<String> loginMono = participantIdMono.flatMap(participantService::findLoginById).defaultIfEmpty("unknown");
-        Mono<SellerRating> ratingMono = participantIdMono.flatMap(sellerRatingService::findBySellarId).defaultIfEmpty(new SellerRating(0L,0f, 0));
-
-
-        return Mono.zip(productFindMono, imageFindMono, findReviewsMono, loginMono, ratingMono)
-                .flatMap(tuple5 ->
-                        categoryService.findByProductId(tuple5.getT1().getId()).collectList()
-                                .map(categories ->
-                                        productMapper.toGetProductResponse(
-                                                tuple5.getT1(),
-                                                categories,
-                                                tuple5.getT2(),
-                                                tuple5.getT3(),
-                                                tuple5.getT4(),
-                                                tuple5.getT5().getAverageRating(),
-                                                tuple5.getT5().getTotalReviews()
-                                        )
-                                )
-                );
+        return Mono.zip(imageFindMono, findReviewsMono, loginMono, ratingMono)
+                .flatMap(details -> categoryService.findByProductId(productId).collectList()
+                        .map(categories -> productMapper.toGetProductResponse(
+                                product, categories, details.getT1(), details.getT2(), details.getT3(),
+                                details.getT4().getAverageRating(), details.getT4().getTotalReviews())));
     }
 
     @Override
@@ -155,13 +154,16 @@ public class ProductServiceImpl implements ProductService {
     }
 
     public Flux<ProductDto> findByParams(FindProductRequest searchParams, Long currentParticipantId) {
-        Mono<Boolean> includeAdult = currentParticipantId == null
+        return canViewAdultProducts(currentParticipantId).flatMapMany(allowed ->
+                buildProductDtos(productRepository.findByParams(searchParams, null, allowed)));
+    }
+
+    private Mono<Boolean> canViewAdultProducts(Long participantId) {
+        return participantId == null
                 ? Mono.just(false)
-                : participantService.findAgeById(currentParticipantId)
+                : participantService.findAgeById(participantId)
                         .map(age -> age >= 18)
                         .defaultIfEmpty(false);
-        return includeAdult.flatMapMany(allowed ->
-                buildProductDtos(productRepository.findByParams(searchParams, null, allowed)));
     }
 
     @Override

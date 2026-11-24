@@ -19,7 +19,11 @@ import java.util.List;
 
 public interface ProductService {
 
-    Mono<GetProductResponse> getProductById(Long productId);
+    default Mono<GetProductResponse> getProductById(Long productId) {
+        return getProductById(productId, null);
+    }
+
+    Mono<GetProductResponse> getProductById(Long productId, Long viewerId);
 
     Mono<Product> findById(Long productId);
 

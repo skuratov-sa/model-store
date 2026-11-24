@@ -13,6 +13,15 @@ public interface ProductCategoryRepository extends ReactiveCrudRepository<Produc
     Mono<Void> deleteByProductId(Long productId);
 
     @Query("""
+            SELECT EXISTS (
+                SELECT 1 FROM product_category pc
+                JOIN category c ON c.id = pc.category_id
+                WHERE pc.product_id = :productId AND c.slug = 'nsfw_adult'
+            )
+            """)
+    Mono<Boolean> isAdultProduct(Long productId);
+
+    @Query("""
             SELECT pc.product_id, c.id AS category_id, c.name AS category_name
             FROM product_category pc
                 JOIN category c ON c.id = pc.category_id

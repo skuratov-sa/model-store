@@ -2,6 +2,7 @@ package com.model_store.modern.catalog.product.detail
 
 import com.model_store.modern.catalog.product.detail.domain.DetailSort
 import com.model_store.modern.catalog.product.detail.domain.DetailFlag
+import com.model_store.modern.catalog.product.detail.domain.AdultProductRestricted
 import com.model_store.modern.catalog.product.detail.domain.MyProductsFilter
 import com.model_store.modern.catalog.product.detail.infrastructure.JdbcProductDetailReadPort
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
@@ -25,7 +26,16 @@ class JdbcProductDetailReadPortTest {
         assertNull(read.publicCard(2)) // giveaway
         assertNull(read.publicCard(3)) // blocked
         assertNull(read.publicCard(999))
-        assertNotNull(read.publicCard(4)) // adult category has no check on legacy detail endpoint
+    }
+
+    @Test
+    fun `direct adult card requires an active viewer aged at least eighteen`() = database { jdbc, read ->
+        seed(jdbc)
+        assertThrows(AdultProductRestricted::class.java) { read.publicCard(4) }
+        for (viewerId in listOf(11L, 12L, 13L, 999L)) {
+            assertThrows(AdultProductRestricted::class.java) { read.publicCard(4, viewerId) }
+        }
+        assertEquals("Adult", read.publicCard(4, 10)?.name)
     }
 
     @Test
@@ -85,9 +95,9 @@ class JdbcProductDetailReadPortTest {
     private fun database(block: (JdbcTemplate, JdbcProductDetailReadPort) -> Unit) {
         EmbeddedPostgres.start().use { postgres ->
             val jdbc = JdbcTemplate(postgres.postgresDatabase)
-            jdbc.execute("CREATE TABLE participant(id bigint PRIMARY KEY, login text, full_name text)")
+            jdbc.execute("CREATE TABLE participant(id bigint PRIMARY KEY, login text, full_name text, age integer, status text)")
             jdbc.execute("CREATE TABLE seller_rating(seller_id bigint PRIMARY KEY, average_rating numeric, total_reviews integer)")
-            jdbc.execute("CREATE TABLE category(id bigint PRIMARY KEY, name text)")
+            jdbc.execute("CREATE TABLE category(id bigint PRIMARY KEY, name text, slug text)")
             jdbc.execute("CREATE TABLE product_category(id bigserial PRIMARY KEY, product_id bigint, category_id bigint)")
             jdbc.execute("""CREATE TABLE product(id bigint PRIMARY KEY, name text, description text, price real,
                 prepayment_amount real, count integer, currency text, originality text, participant_id bigint,
@@ -100,9 +110,11 @@ class JdbcProductDetailReadPortTest {
     }
 
     private fun seed(jdbc: JdbcTemplate) {
-        jdbc.execute("INSERT INTO participant VALUES (10,'seller','Seller'),(11,'other','Other'),(12,'reviewer','Reviewer')")
+        jdbc.execute("""INSERT INTO participant VALUES
+            (10,'seller','Seller',18,'ACTIVE'),(11,'other','Other',17,'ACTIVE'),
+            (12,'reviewer','Reviewer',NULL,'ACTIVE'),(13,'blocked','Blocked',22,'BLOCKED')""")
         jdbc.execute("INSERT INTO seller_rating VALUES (10,4.5,2)")
-        jdbc.execute("INSERT INTO category VALUES (100,'Figures'),(101,'Adult')")
+        jdbc.execute("INSERT INTO category VALUES (100,'Figures','figures'),(101,'Adult','nsfw_adult')")
         jdbc.execute("""INSERT INTO product VALUES
             (1,'Ordinary','Description',20,NULL,2,'RUB',NULL,10,'ACTIVE','PURCHASABLE',false,now(),now() - interval '4 days',false,NULL,NULL),
             (2,'Giveaway',NULL,0,NULL,NULL,'RUB',NULL,10,'ACTIVE','GIVEAWAY',false,now(),now() - interval '3 days',true,now() - interval '1 day',now() + interval '1 day'),

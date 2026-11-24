@@ -103,6 +103,36 @@ class ProductControllerWebTest extends IntegrationTest {
     }
 
     @Test
+    void getProduct_directLinkRequiresAdultProfileForRestrictedCard() {
+        Participant adult = createParticipant(18, ParticipantStatus.ACTIVE);
+        Participant minor = createParticipant(17, ParticipantStatus.ACTIVE);
+        Participant withoutAge = createParticipant(null, ParticipantStatus.ACTIVE);
+        Participant blocked = createParticipant(22, ParticipantStatus.BLOCKED);
+        Product normal = saveProduct("Regular figure", adult.getId());
+        Product restricted = saveProduct("Restricted figure", adult.getId());
+        linkToNsfwCategory(restricted.getId());
+
+        webTestClient.get().uri("/product/{id}", normal.getId())
+                .exchange().expectStatus().isOk();
+        webTestClient.get().uri("/product/{id}", restricted.getId())
+                .exchange().expectStatus().isForbidden()
+                .expectBody().jsonPath("$.code").isEqualTo("ADULT_CONTENT_RESTRICTED")
+                .jsonPath("$.name").doesNotExist().jsonPath("$.imageIds").doesNotExist();
+
+        for (Participant viewer : List.of(minor, withoutAge, blocked)) {
+            webTestClient.get().uri("/product/{id}", restricted.getId())
+                    .header("Authorization", accessToken(viewer, Duration.ofMinutes(30)))
+                    .exchange().expectStatus().isForbidden()
+                    .expectBody().jsonPath("$.code").isEqualTo("ADULT_CONTENT_RESTRICTED");
+        }
+        webTestClient.get().uri("/product/{id}", restricted.getId())
+                .header("Authorization", accessToken(adult, Duration.ofMinutes(30)))
+                .exchange().expectStatus().isOk()
+                .expectHeader().valueEquals("Cache-Control", "no-store")
+                .expectBody().jsonPath("$.id").isEqualTo(restricted.getId().intValue());
+    }
+
+    @Test
     void giveawayRoutesAreSeparateAndAdminHistoryIsProtected() {
         CreateOrUpdateProductRequest request = new CreateOrUpdateProductRequest();
         request.setName("Figure Giveaway");

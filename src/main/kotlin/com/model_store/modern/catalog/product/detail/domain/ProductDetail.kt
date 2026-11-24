@@ -3,6 +3,8 @@ package com.model_store.modern.catalog.product.detail.domain
 import java.time.Instant
 import java.time.LocalDateTime
 
+class AdultProductRestricted : RuntimeException("This product is available only to users aged 18 or older.")
+
 data class DetailCategory(val id: Long, val name: String?)
 data class DetailReview(val id: Long, val rating: Int, val comment: String?, val reviewerName: String, val imageId: Long?, val createdAt: Instant?)
 

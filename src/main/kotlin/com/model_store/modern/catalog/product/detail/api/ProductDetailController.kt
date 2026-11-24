@@ -3,11 +3,14 @@ package com.model_store.modern.catalog.product.detail.api
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.model_store.modern.catalog.product.detail.application.ProductDetailQuery
 import com.model_store.modern.catalog.product.detail.domain.*
+import com.model_store.modern.shared.api.mvcApiError
 import com.model_store.modern.shared.domain.Actor
 import org.springframework.context.annotation.Profile
+import org.springframework.http.CacheControl
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -56,8 +59,14 @@ data class MyProductsRequest(
 @Profile("modern")
 class ProductDetailController(private val query: ProductDetailQuery) {
     @GetMapping("/product/{id}")
-    fun card(@PathVariable id: Long): ResponseEntity<ProductCardResponse> =
-        query.card(id)?.let { ResponseEntity.ok(it.response()) } ?: ResponseEntity.notFound().build()
+    fun card(@PathVariable id: Long, @AuthenticationPrincipal actor: Actor?): ResponseEntity<ProductCardResponse> =
+        query.card(id, actor?.participantId)
+            ?.let { ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(it.response()) }
+            ?: ResponseEntity.notFound().build()
+
+    @ExceptionHandler(AdultProductRestricted::class)
+    fun adultProductRestricted(error: AdultProductRestricted) =
+        mvcApiError(HttpStatus.FORBIDDEN, "ADULT_CONTENT_RESTRICTED", error.message.orEmpty())
 
     @PostMapping("/products/my")
     fun mine(@AuthenticationPrincipal actor: Actor?, @RequestBody request: MyProductsRequest): List<MyProductResponse> {

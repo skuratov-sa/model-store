@@ -9,6 +9,7 @@ import com.model_store.modern.catalog.product.detail.api.MyProductResponse
 import com.model_store.modern.catalog.product.detail.api.ProductDetailController
 import com.model_store.modern.catalog.product.detail.application.ProductDetailQuery
 import com.model_store.modern.catalog.product.detail.application.ProductDetailReadPort
+import com.model_store.modern.catalog.product.detail.domain.AdultProductRestricted
 import com.model_store.modern.catalog.product.detail.domain.MyProduct
 import com.model_store.modern.catalog.product.detail.domain.MyProductsFilter
 import com.model_store.modern.catalog.product.detail.domain.ProductCard
@@ -17,13 +18,23 @@ import com.model_store.modern.shared.domain.TokenType
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.springframework.http.HttpStatus
+import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.server.ResponseStatusException
 
 class ProductDetailControllerTest {
     private val port = object : ProductDetailReadPort {
         var owner: Long? = null
         var giveaways: Boolean? = null
-        override fun publicCard(id: Long): ProductCard? = null
+        var viewer: Long? = null
+        override fun publicCard(id: Long, viewerId: Long?): ProductCard? {
+            viewer = viewerId
+            if (id == 1L) throw AdultProductRestricted()
+            return null
+        }
         override fun myProducts(ownerId: Long, includeGiveaways: Boolean, filter: MyProductsFilter): List<MyProduct> {
             owner = ownerId
             giveaways = includeGiveaways
@@ -34,7 +45,24 @@ class ProductDetailControllerTest {
 
     @Test
     fun `public missing card returns 404`() {
-        assertEquals(HttpStatus.NOT_FOUND, controller.card(99).statusCode)
+        assertEquals(HttpStatus.NOT_FOUND, controller.card(99, null).statusCode)
+    }
+
+    @Test
+    fun `card passes verified actor id to the query`() {
+        controller.card(99, Actor(10, "buyer", "USER"))
+        assertEquals(10L, port.viewer)
+    }
+
+    @Test
+    fun `restricted card returns 403 with the adult content error code`() {
+        MockMvcBuilders.standaloneSetup(controller)
+            .setCustomArgumentResolvers(AuthenticationPrincipalArgumentResolver())
+            .build()
+            .perform(get("/product/1"))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.code").value("ADULT_CONTENT_RESTRICTED"))
+            .andExpect(jsonPath("$.imageIds").doesNotExist())
     }
 
     @Test

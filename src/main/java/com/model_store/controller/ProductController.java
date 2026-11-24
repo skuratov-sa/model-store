@@ -13,7 +13,10 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,6 +30,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
@@ -46,12 +50,20 @@ public class ProductController {
     private Long tryExtractParticipantId(String authorizationHeader) {
         if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) return null;
         try {
-            var claims = jwtService.parseAccessToken(authorizationHeader);
-            String tokenType = claims.get("type", String.class);
-            if (!"access".equals(tokenType) && !"agent_access".equals(tokenType)) return null;
-            Object id = claims.get("id");
-            return id == null ? null : Long.valueOf(id.toString());
+            return participantIdFromClaims(jwtService.parseAccessToken(authorizationHeader));
         } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Long participantIdFromClaims(Map<String, Object> claims) {
+        Object type = claims.get("type");
+        if (!"access".equals(type) && !"agent_access".equals(type)) return null;
+        Object id = claims.get("id");
+        if (id == null) return null;
+        try {
+            return Long.valueOf(id.toString());
+        } catch (NumberFormatException e) {
             return null;
         }
     }
@@ -81,9 +93,10 @@ public class ProductController {
 
     @Operation(summary = "Полная информация о товаре")
     @GetMapping(path = "/product/{id}")
-    public Mono<ResponseEntity<GetProductResponse>> getProduct(@PathVariable Long id) {
-        return productService.getProductById(id)
-                .map(ResponseEntity::ok)
+    public Mono<ResponseEntity<GetProductResponse>> getProduct(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
+        Long viewerId = jwt == null ? null : participantIdFromClaims(jwt.getClaims());
+        return productService.getProductById(id, viewerId)
+                .map(product -> ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(product))
                 .defaultIfEmpty(ResponseEntity.notFound().build());
     }
 

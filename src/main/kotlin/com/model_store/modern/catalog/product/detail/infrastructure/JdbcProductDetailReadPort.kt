@@ -6,20 +6,29 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
 import java.sql.ResultSet
+import java.sql.Types
 import java.time.Instant
 
 @Repository
 class JdbcProductDetailReadPort(private val jdbc: NamedParameterJdbcTemplate) : ProductDetailReadPort {
-    override fun publicCard(id: Long): ProductCard? {
-        // The legacy endpoint is public and has no viewer-specific adult-content check.
+    override fun publicCard(id: Long, viewerId: Long?): ProductCard? {
+        val params = MapSqlParameterSource("id", id).addValue("viewerId", viewerId, Types.BIGINT)
         val base = jdbc.query("""SELECT p.id, p.name, p.description, p.price, p.prepayment_amount, p.count,
             p.currency::text AS currency, p.originality, p.participant_id, p.status::text AS status,
             p.availability::text AS availability, p.used, s.login AS seller_login,
-            COALESCE(sr.average_rating, 0) AS seller_rating, COALESCE(sr.total_reviews, 0) AS total_reviews
+            COALESCE(sr.average_rating, 0) AS seller_rating, COALESCE(sr.total_reviews, 0) AS total_reviews,
+            EXISTS (
+                SELECT 1 FROM product_category pc JOIN category c ON c.id = pc.category_id
+                WHERE pc.product_id = p.id AND c.slug = 'nsfw_adult'
+            ) AND NOT EXISTS (
+                SELECT 1 FROM participant viewer
+                WHERE viewer.id = :viewerId AND viewer.status = 'ACTIVE' AND viewer.age >= 18
+            ) AS adult_restricted
             FROM product p LEFT JOIN participant s ON s.id = p.participant_id
             LEFT JOIN seller_rating sr ON sr.seller_id = p.participant_id
             WHERE p.id = :id AND p.status = 'ACTIVE' AND p.availability <> 'GIVEAWAY'""",
-            mapOf("id" to id)) { rs, _ ->
+            params) { rs, _ ->
+            if (rs.getBoolean("adult_restricted")) throw AdultProductRestricted()
             ProductCard(rs.getLong("id"), rs.getString("name"), rs.getString("description"),
                 rs.getFloat("price"), rs.nullableFloat("prepayment_amount"), rs.nullableInt("count"),
                 rs.getString("currency"), rs.getString("originality"), rs.getLong("participant_id"),

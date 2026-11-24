@@ -7,14 +7,14 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 interface ProductDetailReadPort {
-    fun publicCard(id: Long): ProductCard?
+    fun publicCard(id: Long, viewerId: Long? = null): ProductCard?
     fun myProducts(ownerId: Long, includeGiveaways: Boolean, filter: MyProductsFilter): List<MyProduct>
 }
 
 @Service
 class ProductDetailQuery(private val read: ProductDetailReadPort) {
     @Transactional(transactionManager = "transactionManager", readOnly = true)
-    fun card(id: Long): ProductCard? = read.publicCard(id)
+    fun card(id: Long, viewerId: Long?): ProductCard? = read.publicCard(id, viewerId)
 
     @Transactional(transactionManager = "transactionManager", readOnly = true)
     fun mine(ownerId: Long, isAdmin: Boolean, filter: MyProductsFilter): List<MyProduct> =
